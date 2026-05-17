@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Claude Code 내부 폴더
+.claude/
+
+# 메모리 (개인 메모)
+memory/
+
+# 임시 / 캐시
+scripts/data/
+*.tmp
+*.log
+
+# 다운로드 캐시는 yfinance가 매번 새로 받으므로 git에 포함하지 않음
