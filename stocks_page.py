@@ -109,12 +109,17 @@ for col in FUNDA_COLS:
 
 score_input = summary.merge(funda[FUNDA_COLS], on="ticker", how="left")
 scores_df = rank_stocks(score_input)
-score_disp = scores_df.merge(
-    score_input[["ticker", "close", "state", "action", "rsi14",
-                 "return_12m_pct", "per", "pbr", "roe_pct",
-                 "revenue_growth_yoy_pct", "earnings_growth_yoy_pct"]],
-    on="ticker", how="left",
-)
+_SCORE_INPUT_COLS = ["ticker", "close", "state", "action", "rsi14",
+                     "return_12m_pct", "per", "pbr", "roe_pct",
+                     "revenue_growth_yoy_pct", "earnings_growth_yoy_pct"]
+# 누락된 컬럼은 None으로 채워서 KeyError 방지
+for col in _SCORE_INPUT_COLS:
+    if col not in score_input.columns:
+        score_input[col] = None
+score_disp = scores_df.merge(score_input[_SCORE_INPUT_COLS], on="ticker", how="left")
+# scores_df에 growth_score 누락 시 (구버전 호환) 보강
+if "growth_score" not in score_disp.columns:
+    score_disp["growth_score"] = None
 score_disp["종목명"] = score_disp["ticker"].map(NAMES).fillna("-")
 
 
@@ -127,6 +132,9 @@ def composite_label(avg):
 
 
 def integrated_recommendation(qvm, action):
+    # qvm이 None/NaN이면 중립으로 처리
+    if qvm is None or pd.isna(qvm):
+        return "⚪ 관망", "점수 데이터 부족"
     good_funda = qvm >= 0.5
     avg_funda = qvm > -0.5
     if good_funda:
@@ -134,11 +142,11 @@ def integrated_recommendation(qvm, action):
         if action == "보유":  return "✅ 보유/분할매수", "펀더 우수 + 상승 추세 유지"
         if action == "미보유": return "⏳ 골든크로스 대기", "펀더 우수, 추세 전환 신호 기다리기"
         if action == "매도":  return "🟠 신중 매수", "펀더 우수하나 단기 약세"
-    elif avg_funda:
+        return "✅ 우수 종목", "추세 상태 불명"  # fallback
+    if avg_funda:
         if action == "매수":  return "🔵 단기 신호", "펀더는 평범, 추세는 매수"
         return "⚪ 관망", "특별한 매력 없음"
-    else:
-        return "❌ 회피", "펀더 약함"
+    return "❌ 회피", "펀더 약함"
 
 
 def priority_score(qvm, action):
