@@ -98,14 +98,21 @@ action_color = {
     "미보유": "⚪ 미보유",
 }
 
-score_input = summary.merge(
-    funda[["ticker", "per", "pbr", "roe_pct", "profit_margin_pct"]],
-    on="ticker", how="left",
-)
+FUNDA_COLS = [
+    "ticker", "per", "pbr", "roe_pct", "profit_margin_pct",
+    "revenue_growth_yoy_pct", "earnings_growth_yoy_pct",
+]
+# funda에 새 컬럼이 아직 없으면 안전하게 보강
+for col in FUNDA_COLS:
+    if col not in funda.columns:
+        funda[col] = None
+
+score_input = summary.merge(funda[FUNDA_COLS], on="ticker", how="left")
 scores_df = rank_stocks(score_input)
 score_disp = scores_df.merge(
     score_input[["ticker", "close", "state", "action", "rsi14",
-                 "return_12m_pct", "per", "pbr", "roe_pct"]],
+                 "return_12m_pct", "per", "pbr", "roe_pct",
+                 "revenue_growth_yoy_pct", "earnings_growth_yoy_pct"]],
     on="ticker", how="left",
 )
 score_disp["종목명"] = score_disp["ticker"].map(NAMES).fillna("-")
@@ -184,6 +191,7 @@ with tab_summary:
             st.markdown(
                 f"V {fmt(r.get('value_score'), '{:+d}')} · "
                 f"Q {fmt(r.get('quality_score'), '{:+d}')} · "
+                f"G {fmt(r.get('growth_score'), '{:+d}')} · "
                 f"M {fmt(r.get('momentum_score'), '{:+d}')} · "
                 f"T {fmt(r.get('technical_score'), '{:+d}')}"
             )
@@ -192,30 +200,35 @@ with tab_summary:
     rank_table = score_disp.copy()
     rank_table["순위"] = range(1, len(rank_table) + 1)
     rank_table = rank_table.rename(columns={
-        "ticker": "티커", "close": "종가", "composite": "QVM 점수",
-        "value_score": "가치", "quality_score": "품질",
+        "ticker": "티커", "close": "종가", "composite": "QVGM 점수",
+        "value_score": "가치", "quality_score": "품질", "growth_score": "성장",
         "momentum_score": "모멘텀", "technical_score": "기술적",
         "per": "PER", "pbr": "PBR", "roe_pct": "ROE(%)",
+        "revenue_growth_yoy_pct": "매출YoY(%)", "earnings_growth_yoy_pct": "EPS YoY(%)",
         "return_12m_pct": "12M 수익률(%)", "rsi14": "RSI",
     })
     st.dataframe(
         rank_table[["순위", "티커", "종목명", "통합 추천", "우선순위 점수",
-                    "QVM 점수", "추세", "판정",
-                    "가치", "품질", "모멘텀", "기술적",
-                    "종가", "PER", "PBR", "ROE(%)", "12M 수익률(%)", "RSI"]],
+                    "QVGM 점수", "추세", "판정",
+                    "가치", "품질", "성장", "모멘텀", "기술적",
+                    "종가", "PER", "PBR", "ROE(%)",
+                    "매출YoY(%)", "EPS YoY(%)", "12M 수익률(%)", "RSI"]],
         use_container_width=True,
         hide_index=True,
         column_config={
             "우선순위 점수": st.column_config.NumberColumn(format="%+.2f"),
-            "QVM 점수": st.column_config.NumberColumn(format="%+.2f"),
+            "QVGM 점수": st.column_config.NumberColumn(format="%+.2f"),
             "가치": st.column_config.NumberColumn(format="%+d"),
             "품질": st.column_config.NumberColumn(format="%+d"),
+            "성장": st.column_config.NumberColumn(format="%+d"),
             "모멘텀": st.column_config.NumberColumn(format="%+d"),
             "기술적": st.column_config.NumberColumn(format="%+d"),
             "종가": st.column_config.NumberColumn(format="%,.2f"),
             "PER": st.column_config.NumberColumn(format="%.2f"),
             "PBR": st.column_config.NumberColumn(format="%.2f"),
             "ROE(%)": st.column_config.NumberColumn(format="%.1f"),
+            "매출YoY(%)": st.column_config.NumberColumn(format="%+.1f"),
+            "EPS YoY(%)": st.column_config.NumberColumn(format="%+.1f"),
             "12M 수익률(%)": st.column_config.NumberColumn(format="%+.1f"),
             "RSI": st.column_config.NumberColumn(format="%.1f"),
         },
@@ -236,10 +249,10 @@ with tab_summary:
 
 ---
 
-**📈 4-팩터 점수 (각 -2~+2)**
-- **🏷️ Value** PER+PBR · **💎 Quality** ROE+영업이익률 · **🚀 Momentum** 12M수익률+추세 · **📐 Technical** RSI
+**📈 5-팩터 점수 — QVGMT (각 -2~+2)**
+- **🏷️ Value** PER+PBR · **💎 Quality** ROE+영업이익률 · **🌱 Growth** 매출/EPS YoY · **🚀 Momentum** 12M수익률+추세 · **📐 Technical** RSI
 
-**근거**: Fama-French QVM / Piotroski F-Score / Magic Formula / Jegadeesh-Titman 모멘텀
+**근거**: Fama-French QVM / Piotroski F-Score / Magic Formula / Jegadeesh-Titman 모멘텀 / Growth factor(MSCI/AQR)
 """
         )
 
@@ -248,7 +261,7 @@ with tab_summary:
 with tab_compare:
     st.subheader("📈 종목 비교 — 레이더 차트")
     st.caption(
-        "2~6개 종목을 선택하면 4-팩터 점수를 레이더 차트로 시각 비교합니다. "
+        "2~6개 종목을 선택하면 5-팩터(QVGMT) 점수를 레이더 차트로 비교합니다. "
         "면적이 클수록 종합적으로 우수."
     )
 
@@ -267,7 +280,7 @@ with tab_compare:
     if len(selected) < 2:
         st.info("2개 이상 선택해주세요.")
     else:
-        axes = ["가치", "품질", "모멘텀", "기술적"]
+        axes = ["가치", "품질", "성장", "모멘텀", "기술적"]
 
         def s(v):
             """None/NaN은 중립값 0으로 처리, 0~4 범위로 시프트."""
@@ -284,6 +297,7 @@ with tab_compare:
             vals = [
                 s(r["value_score"]),
                 s(r["quality_score"]),
+                s(r["growth_score"]),
                 s(r["momentum_score"]),
                 s(r["technical_score"]),
             ]
@@ -315,16 +329,19 @@ with tab_compare:
             "종목명": compare["종목명"],
             "통합 추천": compare["통합 추천"],
             "우선순위 점수": compare["우선순위 점수"].map(lambda v: f"{v:+.2f}"),
-            "QVM 점수": compare["composite"].map(lambda v: f"{v:+.2f}"),
+            "QVGM 점수": compare["composite"].map(lambda v: f"{v:+.2f}"),
             "추세": compare["추세"],
             "가치 (V)": compare["value_score"],
             "품질 (Q)": compare["quality_score"],
+            "성장 (G)": compare["growth_score"],
             "모멘텀 (M)": compare["momentum_score"],
             "기술적 (T)": compare["technical_score"],
             "종가": compare["close"].map(lambda v: f"{v:,.2f}"),
             "PER": compare["per"].map(lambda v: fmt(v)),
             "PBR": compare["pbr"].map(lambda v: fmt(v)),
             "ROE(%)": compare["roe_pct"].map(lambda v: fmt(v, "{:.1f}")),
+            "매출YoY(%)": compare["revenue_growth_yoy_pct"].map(lambda v: fmt(v, "{:+.1f}")),
+            "EPS YoY(%)": compare["earnings_growth_yoy_pct"].map(lambda v: fmt(v, "{:+.1f}")),
             "12M 수익률(%)": compare["return_12m_pct"].map(lambda v: fmt(v, "{:+.1f}")),
             "RSI": compare["rsi14"].map(lambda v: fmt(v, "{:.1f}")),
         }
@@ -350,19 +367,20 @@ with tab_detail:
                delta_color="off")
     sc2.metric("우선순위 점수", f"{sel_row['우선순위 점수']:+.2f}",
                delta=f"순위 #{int(sel_row.name)+1}", delta_color="off")
-    sc3.metric("QVM 점수", f"{sel_row['composite']:+.2f}",
+    sc3.metric("QVGM 점수", f"{sel_row['composite']:+.2f}",
                delta=sel_row["판정"], delta_color="off")
     sc4.metric("추세", sel_row["추세"],
                delta=row["last_cross"] if pd.notna(row["last_cross"]) else None,
                delta_color="off")
 
-    # 4-팩터 점수
-    st.markdown("#### 4-팩터 세부 점수")
-    f1, f2, f3, f4 = st.columns(4)
+    # 5-팩터 점수
+    st.markdown("#### 5-팩터 세부 점수 (QVGMT)")
+    f1, f2, f3, f4, f5 = st.columns(5)
     f1.metric("🏷️ 가치 (V)", fmt(sel_row.get("value_score"), "{:+d}"))
     f2.metric("💎 품질 (Q)", fmt(sel_row.get("quality_score"), "{:+d}"))
-    f3.metric("🚀 모멘텀 (M)", fmt(sel_row.get("momentum_score"), "{:+d}"))
-    f4.metric("📐 기술적 (T)", fmt(sel_row.get("technical_score"), "{:+d}"))
+    f3.metric("🌱 성장 (G)", fmt(sel_row.get("growth_score"), "{:+d}"))
+    f4.metric("🚀 모멘텀 (M)", fmt(sel_row.get("momentum_score"), "{:+d}"))
+    f5.metric("📐 기술적 (T)", fmt(sel_row.get("technical_score"), "{:+d}"))
 
     # 밸류에이션 카드
     st.markdown("#### 밸류에이션 / 펀더멘털")
@@ -382,6 +400,13 @@ with tab_detail:
         sector = f.get("sector") if pd.notna(f.get("sector")) else "-"
         industry = f.get("industry") if pd.notna(f.get("industry")) else "-"
         v8.metric("섹터", str(sector), delta=str(industry), delta_color="off")
+
+        # 성장률 (Growth) — 새로 추가
+        st.markdown("##### 🌱 성장률 (YoY)")
+        g1, g2, g3 = st.columns(3)
+        g1.metric("매출 YoY", fmt(f.get("revenue_growth_yoy_pct"), "{:+.1f}", suffix="%"))
+        g2.metric("EPS YoY (연간)", fmt(f.get("earnings_growth_yoy_pct"), "{:+.1f}", suffix="%"))
+        g3.metric("분기 EPS YoY", fmt(f.get("eps_growth_q_pct"), "{:+.1f}", suffix="%"))
     else:
         st.info("이 종목의 밸류에이션 정보가 없습니다.")
 
@@ -392,8 +417,14 @@ with tab_detail:
 
     df = pd.read_csv(df_file, parse_dates=["Date"], index_col="Date")
 
-    # 가격 차트
-    st.markdown("#### 가격 차트 (50일선 / 200일선 + 크로스)")
+    # 가격 차트 + 보조 지표 토글
+    st.markdown("#### 가격 차트 + 기술적 지표")
+    opt_cols = st.columns(4)
+    show_bb = opt_cols[0].checkbox("📊 볼린저밴드", value=False, help="20일 평균 ± 2σ. 상단터치=과열, 하단터치=과매도")
+    show_macd = opt_cols[1].checkbox("📉 MACD", value=False, help="12-26 EMA 차이 + 9일 시그널선. 골든/데드 크로스로 추세 확인")
+    show_rsi = opt_cols[2].checkbox("⚡ RSI(14)", value=False, help="70 이상 과매수, 30 이하 과매도")
+    show_obv = opt_cols[3].checkbox("📦 OBV", value=False, help="거래량 누적. 가격과 다이버전스 보면 추세 약화 신호")
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="종가",
                              line=dict(color="#888")))
@@ -403,23 +434,69 @@ with tab_detail:
     if "ma200" in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df["ma200"], name="200일선",
                                  line=dict(color="#e67e22")))
+
+    if show_bb and "bb_upper" in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df["bb_upper"], name="BB 상단",
+                                 line=dict(color="#9b59b6", width=1, dash="dot")))
+        fig.add_trace(go.Scatter(x=df.index, y=df["bb_lower"], name="BB 하단",
+                                 line=dict(color="#9b59b6", width=1, dash="dot"),
+                                 fill="tonexty", fillcolor="rgba(155,89,182,0.08)"))
+
     golden = df[df["signal"] == "golden_cross"]
     dead = df[df["signal"] == "death_cross"]
     if not golden.empty:
         fig.add_trace(go.Scatter(
             x=golden.index, y=golden["Close"], mode="markers",
-            name="골든크로스 (매수)",
+            name="골든크로스",
             marker=dict(symbol="triangle-up", size=14, color="green"),
         ))
     if not dead.empty:
         fig.add_trace(go.Scatter(
             x=dead.index, y=dead["Close"], mode="markers",
-            name="데드크로스 (매도)",
+            name="데드크로스",
             marker=dict(symbol="triangle-down", size=14, color="red"),
         ))
-    fig.update_layout(height=500, hovermode="x unified",
+    fig.update_layout(height=480, hovermode="x unified",
                       legend=dict(orientation="h"))
     st.plotly_chart(fig, use_container_width=True)
+
+    # MACD 보조 차트
+    if show_macd and "macd" in df.columns:
+        fig_macd = go.Figure()
+        fig_macd.add_trace(go.Scatter(x=df.index, y=df["macd"], name="MACD",
+                                       line=dict(color="#3498db")))
+        fig_macd.add_trace(go.Scatter(x=df.index, y=df["macd_signal"], name="Signal",
+                                       line=dict(color="#e67e22")))
+        colors = ["#26a96c" if v >= 0 else "#e54d4d" for v in df["macd_hist"].fillna(0)]
+        fig_macd.add_trace(go.Bar(x=df.index, y=df["macd_hist"], name="Histogram",
+                                   marker_color=colors, opacity=0.5))
+        fig_macd.add_hline(y=0, line_dash="dot", line_color="#888")
+        fig_macd.update_layout(height=220, hovermode="x unified", title="MACD(12,26,9)",
+                                legend=dict(orientation="h"), margin=dict(t=30))
+        st.plotly_chart(fig_macd, use_container_width=True)
+
+    # RSI 보조 차트
+    if show_rsi and "rsi14" in df.columns:
+        fig_rsi = go.Figure()
+        fig_rsi.add_trace(go.Scatter(x=df.index, y=df["rsi14"], name="RSI(14)",
+                                      line=dict(color="#9b59b6")))
+        fig_rsi.add_hline(y=70, line_dash="dash", line_color="#e54d4d",
+                          annotation_text="과매수 70")
+        fig_rsi.add_hline(y=30, line_dash="dash", line_color="#26a96c",
+                          annotation_text="과매도 30")
+        fig_rsi.update_layout(height=200, hovermode="x unified", title="RSI(14)",
+                               yaxis=dict(range=[0, 100]), margin=dict(t=30))
+        st.plotly_chart(fig_rsi, use_container_width=True)
+
+    # OBV 보조 차트
+    if show_obv and "obv" in df.columns:
+        fig_obv = go.Figure()
+        fig_obv.add_trace(go.Scatter(x=df.index, y=df["obv"], name="OBV",
+                                      line=dict(color="#16a085")))
+        fig_obv.update_layout(height=200, hovermode="x unified", title="OBV (On-Balance Volume)",
+                               margin=dict(t=30))
+        st.plotly_chart(fig_obv, use_container_width=True)
+        st.caption("가격은 오르는데 OBV가 못 따라오면 상승 동력 약화 신호 (다이버전스).")
 
     # 백테스트
     st.markdown("#### 간이 백테스트 (골든크로스 vs 매수후보유)")

@@ -96,10 +96,38 @@ def score_technical(rsi) -> int:
     return -2                  # 과매수
 
 
+# ---------- 5. Growth Score (성장성) ----------
+def score_growth(rev_growth_pct, eps_growth_pct) -> int:
+    """매출/EPS YoY 성장률 평균.
+    근거: Growth는 QVM의 G — 매출·이익이 빠르게 늘면 PER이 높아도 정당화될 수 있음."""
+    rev_s = eps_s = None
+
+    if rev_growth_pct is not None and not pd.isna(rev_growth_pct):
+        if rev_growth_pct >= 25: rev_s = 2
+        elif rev_growth_pct >= 10: rev_s = 1
+        elif rev_growth_pct >= 0: rev_s = 0
+        elif rev_growth_pct >= -10: rev_s = -1
+        else: rev_s = -2
+
+    if eps_growth_pct is not None and not pd.isna(eps_growth_pct):
+        if eps_growth_pct >= 30: eps_s = 2
+        elif eps_growth_pct >= 10: eps_s = 1
+        elif eps_growth_pct >= 0: eps_s = 0
+        elif eps_growth_pct >= -15: eps_s = -1
+        else: eps_s = -2
+
+    valid = [s for s in (rev_s, eps_s) if s is not None]
+    if not valid: return None
+    return round(sum(valid) / len(valid))
+
+
 # ---------- 종합 점수 + 추천 ----------
-def composite_stock_score(value, quality, momentum, technical) -> dict:
-    """4개 팩터 평균. None인 팩터는 제외."""
-    scores = {"가치": value, "품질": quality, "모멘텀": momentum, "기술적": technical}
+def composite_stock_score(value, quality, momentum, technical, growth=None) -> dict:
+    """5개 팩터(QVGMT) 평균. None인 팩터는 제외."""
+    scores = {
+        "가치": value, "품질": quality, "성장": growth,
+        "모멘텀": momentum, "기술적": technical,
+    }
     valid = {k: v for k, v in scores.items() if v is not None}
     if not valid:
         return {"avg": 0, "label": "데이터 없음", "scores": scores}
@@ -121,21 +149,24 @@ def composite_stock_score(value, quality, momentum, technical) -> dict:
 
 def rank_stocks(stocks_df: pd.DataFrame) -> pd.DataFrame:
     """
-    stocks_df: ticker, per, pbr, roe_pct, profit_margin_pct, return_12m_pct,
-               state, rsi14 컬럼 필요.
+    stocks_df: ticker, per, pbr, roe_pct, profit_margin_pct,
+               revenue_growth_yoy_pct, earnings_growth_yoy_pct,
+               return_12m_pct, state, rsi14 컬럼 필요.
     반환: 추천 점수 컬럼 + 정렬된 DataFrame
     """
     rows = []
     for _, r in stocks_df.iterrows():
         v = score_value(r.get("per"), r.get("pbr"))
         q = score_quality(r.get("roe_pct"), r.get("profit_margin_pct"))
+        g = score_growth(r.get("revenue_growth_yoy_pct"), r.get("earnings_growth_yoy_pct"))
         m = score_momentum(r.get("return_12m_pct"), r.get("state"))
         t = score_technical(r.get("rsi14"))
-        comp = composite_stock_score(v, q, m, t)
+        comp = composite_stock_score(v, q, m, t, growth=g)
         rows.append({
             "ticker": r["ticker"],
             "value_score": v,
             "quality_score": q,
+            "growth_score": g,
             "momentum_score": m,
             "technical_score": t,
             "composite": comp["avg"],

@@ -18,6 +18,23 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     rsi = ta.momentum.RSIIndicator(close=df["Close"], window=14)
     df["rsi14"] = rsi.rsi()
 
+    # MACD (12/26/9) — 추세 + 모멘텀 확인용
+    macd = ta.trend.MACD(close=df["Close"], window_slow=26, window_fast=12, window_sign=9)
+    df["macd"] = macd.macd()
+    df["macd_signal"] = macd.macd_signal()
+    df["macd_hist"] = macd.macd_diff()
+
+    # 볼린저밴드 (20, 2σ) — 변동성 / 평균회귀 신호
+    bb = ta.volatility.BollingerBands(close=df["Close"], window=20, window_dev=2)
+    df["bb_upper"] = bb.bollinger_hband()
+    df["bb_middle"] = bb.bollinger_mavg()
+    df["bb_lower"] = bb.bollinger_lband()
+    df["bb_pct"] = bb.bollinger_pband()    # 0~1, 1=상단터치, 0=하단터치
+
+    # OBV — 거래량 누적 (수급 흐름)
+    obv = ta.volume.OnBalanceVolumeIndicator(close=df["Close"], volume=df["Volume"])
+    df["obv"] = obv.on_balance_volume()
+
     return df
 
 

@@ -75,6 +75,11 @@ def fetch_fundamentals(tickers: list) -> pd.DataFrame:
                 if (div_pct is None or div_pct == 0) and kr.get("dividend_yield_pct"):
                     div_pct = kr["dividend_yield_pct"]
 
+            # Growth factor: yfinance가 0.083 같은 소수로 반환 → %로 변환
+            def _pct(key):
+                v = info.get(key)
+                return v * 100 if v is not None and not pd.isna(v) else None
+
             rows.append({
                 "ticker": t,
                 "per": per,
@@ -82,8 +87,11 @@ def fetch_fundamentals(tickers: list) -> pd.DataFrame:
                 "pbr": pbr,
                 "dividend_yield_pct": div_pct,
                 "market_cap": info.get("marketCap"),
-                "roe_pct": (info.get("returnOnEquity") or 0) * 100 if info.get("returnOnEquity") else None,
-                "profit_margin_pct": (info.get("profitMargins") or 0) * 100 if info.get("profitMargins") else None,
+                "roe_pct": _pct("returnOnEquity"),
+                "profit_margin_pct": _pct("profitMargins"),
+                "revenue_growth_yoy_pct": _pct("revenueGrowth"),
+                "earnings_growth_yoy_pct": _pct("earningsGrowth"),
+                "eps_growth_q_pct": _pct("earningsQuarterlyGrowth"),
                 "sector": info.get("sector"),
                 "industry": info.get("industry"),
                 "currency": info.get("currency"),
