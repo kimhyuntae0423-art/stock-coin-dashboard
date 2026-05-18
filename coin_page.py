@@ -4,7 +4,7 @@ from pathlib import Path
 import plotly.graph_objects as go
 import sys
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
 from scripts.fear_greed import fetch_crypto_fear_greed
 from scripts.onchain import (
@@ -12,8 +12,6 @@ from scripts.onchain import (
     score_pi_cycle, score_fng, composite_score,
 )
 from scripts.ui import render_fng_gauge
-
-st.set_page_config(layout="wide", page_title="코인 분석 대시보드", page_icon="🪙")
 
 RESULTS = ROOT / "results"
 NAMES_FILE = ROOT / "coin_names.csv"
