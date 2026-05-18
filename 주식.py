@@ -97,26 +97,35 @@ with fng_col2:
 
 st.divider()
 
-# ===================== QVM + Technical 종합 점수 + 추천 =====================
-st.subheader("🎯 종목 종합 평가 (Quality × Value × Momentum × Technical)")
+# ===================== 통합 추천: QVM 펀더멘털 + 골든크로스 타이밍 =====================
+st.subheader("🎯 통합 추천 — 좋은 종목 + 지금이 살 타이밍인가")
 st.caption(
-    "학술적으로 검증된 4개 팩터를 결합한 종합 점수입니다. "
-    "Fama-French·AQR·Greenblatt·Piotroski 등 30년간 학술 연구에서 일관되게 초과수익을 보인 "
-    "**가치(Value) · 품질(Quality) · 모멘텀(Momentum) · 진입 타이밍(Technical/RSI)** 4개 팩터를 점수화."
+    "**무엇을 살까 (QVM 4-팩터: 가치/품질/모멘텀/기술적)** 와 "
+    "**언제 살까 (골든크로스 50/200일선 추세)** 를 결합해서 한 화면에 보여줍니다. "
+    "둘 다 좋으면 💎, 펀더는 좋은데 타이밍이 아직이면 ⏳, 등으로 표시."
 )
 
-# 점수 계산
+action_color = {
+    "매수": "🟢 매수",
+    "보유": "🔵 보유",
+    "매도": "🔴 매도",
+    "미보유": "⚪ 미보유",
+}
+
+
+# QVM 점수 계산
 score_input = summary.merge(funda[["ticker", "per", "pbr", "roe_pct", "profit_margin_pct"]],
                             on="ticker", how="left")
 scores_df = rank_stocks(score_input)
-
-# 종목명 + 종합 점수 + 추천 행동
-score_disp = scores_df.merge(score_input[["ticker", "close", "state", "rsi14",
-                                          "return_12m_pct", "per", "pbr", "roe_pct"]],
-                             on="ticker", how="left")
+score_disp = scores_df.merge(
+    score_input[["ticker", "close", "state", "action", "rsi14",
+                 "return_12m_pct", "per", "pbr", "roe_pct"]],
+    on="ticker", how="left"
+)
 score_disp["종목명"] = score_disp["ticker"].map(NAMES).fillna("-")
 
 
+# QVM 라벨
 def composite_label(avg):
     if avg >= 1.5: return "🟢🟢 강한 매수"
     if avg >= 0.5: return "🟢 매수 우호"
@@ -125,7 +134,42 @@ def composite_label(avg):
     return "🔴 매수 자제"
 
 
+# 통합 추천: QVM 펀더멘털 × 추세 타이밍 매트릭스
+def integrated_recommendation(qvm, action):
+    good_funda = qvm >= 0.5
+    avg_funda = qvm > -0.5
+    if good_funda:
+        if action == "매수":  return "💎 강력 매수", "펀더 우수 + 골든크로스 발생"
+        if action == "보유":  return "✅ 보유/분할매수", "펀더 우수 + 상승 추세 유지"
+        if action == "미보유": return "⏳ 골든크로스 대기", "펀더 우수, 추세 전환 신호 기다리기"
+        if action == "매도":  return "🟠 신중 매수", "펀더 우수하나 단기 약세"
+    elif avg_funda:
+        if action == "매수":  return "🔵 단기 신호", "펀더는 평범, 추세는 매수"
+        return "⚪ 관망", "특별한 매력 없음"
+    else:
+        return "❌ 회피", "펀더 약함"
+
+
+# 우선순위 점수: QVM + 추세 보정
+def priority_score(qvm, action):
+    bonus = {"매수": 0.5, "보유": 0.0, "미보유": -0.2, "매도": -0.5}.get(action, 0)
+    return qvm + bonus
+
+
 score_disp["판정"] = score_disp["composite"].apply(composite_label)
+score_disp["추세"] = score_disp["action"].map(action_color).fillna(score_disp["action"])
+
+recs = score_disp.apply(
+    lambda r: integrated_recommendation(r["composite"], r["action"]), axis=1
+)
+score_disp["통합 추천"] = [r[0] for r in recs]
+score_disp["추천 이유"] = [r[1] for r in recs]
+score_disp["우선순위 점수"] = score_disp.apply(
+    lambda r: round(priority_score(r["composite"], r["action"]), 2), axis=1
+)
+
+# 우선순위 점수로 재정렬
+score_disp = score_disp.sort_values("우선순위 점수", ascending=False).reset_index(drop=True)
 
 # 상위 5개 카드
 st.markdown("#### 💰 매수 우선순위 TOP 5")
@@ -136,20 +180,25 @@ for i, (_, r) in enumerate(top5.iterrows()):
         st.markdown(f"#### #{i+1}")
         st.markdown(f"**{r['종목명']}**")
         st.markdown(f"`{r['ticker']}`")
-        st.markdown(f"종합: **{r['composite']:+.2f}**")
-        st.caption(f"{r['판정']}")
+        st.markdown(f"### {r['통합 추천']}")
+        st.markdown(
+            f"**우선순위 {r['우선순위 점수']:+.2f}**  \n"
+            f"QVM {r['composite']:+.2f} · 추세 {r['추세']}"
+        )
+        st.caption(r["추천 이유"])
         st.markdown(
             f"V {fmt(r.get('value_score'), '{:+d}')} · Q {fmt(r.get('quality_score'), '{:+d}')}"
             f" · M {fmt(r.get('momentum_score'), '{:+d}')} · T {fmt(r.get('technical_score'), '{:+d}')}"
         )
 
-# 전체 순위표
-st.markdown("#### 전체 순위표")
+# 통합 순위표
+st.markdown("#### 전체 통합 순위표")
 rank_table = score_disp.copy()
 rank_table["순위"] = range(1, len(rank_table) + 1)
 rank_table = rank_table.rename(columns={
     "ticker": "티커",
-    "composite": "종합 점수",
+    "close": "종가",
+    "composite": "QVM 점수",
     "value_score": "가치",
     "quality_score": "품질",
     "momentum_score": "모멘텀",
@@ -161,17 +210,20 @@ rank_table = rank_table.rename(columns={
     "rsi14": "RSI",
 })
 st.dataframe(
-    rank_table[["순위", "티커", "종목명", "판정", "종합 점수",
+    rank_table[["순위", "티커", "종목명", "통합 추천", "우선순위 점수",
+                "QVM 점수", "추세", "판정",
                 "가치", "품질", "모멘텀", "기술적",
-                "PER", "PBR", "ROE(%)", "12M 수익률(%)", "RSI"]],
+                "종가", "PER", "PBR", "ROE(%)", "12M 수익률(%)", "RSI"]],
     use_container_width=True,
     hide_index=True,
     column_config={
-        "종합 점수": st.column_config.NumberColumn(format="%+.2f"),
+        "우선순위 점수": st.column_config.NumberColumn(format="%+.2f"),
+        "QVM 점수": st.column_config.NumberColumn(format="%+.2f"),
         "가치": st.column_config.NumberColumn(format="%+d"),
         "품질": st.column_config.NumberColumn(format="%+d"),
         "모멘텀": st.column_config.NumberColumn(format="%+d"),
         "기술적": st.column_config.NumberColumn(format="%+d"),
+        "종가": st.column_config.NumberColumn(format="%,.2f"),
         "PER": st.column_config.NumberColumn(format="%.2f"),
         "PBR": st.column_config.NumberColumn(format="%.2f"),
         "ROE(%)": st.column_config.NumberColumn(format="%.1f"),
@@ -180,95 +232,37 @@ st.dataframe(
     },
 )
 
-with st.expander("📘 4-팩터 점수 산정 기준"):
+with st.expander("📘 통합 추천 로직 + 점수 산정 기준"):
     st.markdown(
         """
-각 팩터는 -2(나쁨) ~ +2(좋음)로 점수화되고 평균이 종합 점수입니다.
+**우선순위 점수** = QVM 종합 점수 + 추세 보정
+- 추세 보정: 매수 +0.5 · 보유 0 · 미보유 -0.2 · 매도 -0.5
 
-**🏷️ Value (가치)** — PER + PBR 평균
-- PER <10: +2 | 10-15: +1 | 15-25: 0 | 25-40: -1 | >40: -2
-- PBR <1: +2 | 1-2: +1 | 2-4: 0 | 4-6: -1 | >6: -2
+**통합 추천 매트릭스**
 
-**💎 Quality (품질)** — ROE + 영업이익률 평균
-- ROE ≥25%: +2 | 15-25%: +1 | 8-15%: 0 | 0-8%: -1 | <0%: -2
-- 영업이익률 동일 기준
+| QVM | 매수(골든크로스) | 보유(추세 위) | 미보유(추세 아래) | 매도(데드크로스) |
+|---|---|---|---|---|
+| **≥0.5** 좋은 종목 | 💎 강력 매수 | ✅ 보유/분할매수 | ⏳ 골든크로스 대기 | 🟠 신중 매수 |
+| **0 근방** 평범 | 🔵 단기 신호 | ⚪ 관망 | ⚪ 관망 | ⚪ 관망 |
+| **<-0.5** 안 좋음 | ❌ 회피 | ❌ 회피 | ❌ 회피 | ❌ 회피 |
 
-**🚀 Momentum (모멘텀)** — 12개월 수익률 + 추세 상태 평균
-- 12M 수익률 ≥40%: +2 | 15-40%: +1 | 0-15%: 0 | -20-0%: -1 | <-20%: -2
-- 50일선 > 200일선(bull): +1, 반대: -1
+---
 
-**📐 Technical (진입 타이밍)** — RSI
-- RSI ≤30(과매도): +2 | 30-45: +1 | 45-60: 0 | 60-70: -1 | >70: -2
+**📈 4-팩터 점수 산정 (각 -2~+2)**
 
-**근거 학술 자료**:
-- Quality·Value·Momentum 3-팩터 모델 — Fama-French (1993, 2015), AQR Capital
-- Piotroski F-Score 9점 척도: 시장 대비 연 13.4% 초과 (1976-1996 백테스트)
-- Magic Formula (Greenblatt): 이익수익률 + 자본수익률, 연 30%+ 보고
-- 12개월 모멘텀 (Jegadeesh-Titman 1993): 2024년에도 최고 성과 팩터
+- **🏷️ Value**: PER + PBR 평균 — PER <10/<15/<25/<40/이상 = +2/+1/0/-1/-2, PBR도 비슷
+- **💎 Quality**: ROE + 영업이익률 — ≥25%/≥15%/≥8%/≥0%/<0% = +2/+1/0/-1/-2
+- **🚀 Momentum**: 12M 수익률 + 추세상태 — ≥40%/≥15%/≥0%/≥-20%/<-20% = +2/+1/0/-1/-2 (추세 bull +1, bear -1)
+- **📐 Technical (RSI)**: ≤30/≤45/≤60/≤70/>70 = +2/+1/0/-1/-2
+
+**추세 액션 (50/200일선)**
+- 🟢 **매수**: 최근 30일 이내 골든크로스 (50일선이 200일선 상향돌파)
+- 🔵 **보유**: 50일선이 200일선 위에서 유지 (이미 상승 추세)
+- ⚪ **미보유**: 50일선이 200일선 아래 유지 (하락 추세, 관망)
+- 🔴 **매도**: 최근 30일 이내 데드크로스 (50일선이 200일선 하향돌파)
+
+**근거 학술 자료**: Fama-French QVM 팩터 모델 / Piotroski F-Score / Magic Formula / Jegadeesh-Titman 모멘텀
 """
-    )
-
-st.divider()
-
-# ----- 전체 종목 요약 (기존 표) -----
-st.subheader("📊 전체 종목 추세(골든크로스 기반) 현재 상태")
-render_action_legend()
-
-action_color = {
-    "매수": "🟢 매수",
-    "보유": "🔵 보유",
-    "매도": "🔴 매도",
-    "미보유": "⚪ 미보유",
-}
-
-display = summary.copy()
-display["종목명"] = display["ticker"].map(NAMES).fillna("-")
-display["추천 행동"] = display["action"].map(action_color).fillna(display["action"])
-
-merged = display.merge(funda, on="ticker", how="left")
-merged = merged.rename(
-    columns={
-        "ticker": "티커",
-        "date": "기준일",
-        "close": "종가",
-        "last_cross": "최근 신호",
-        "last_cross_date": "신호 발생일",
-        "per": "PER",
-        "forward_per": "선행 PER",
-        "pbr": "PBR",
-        "dividend_yield_pct": "배당수익률(%)",
-        "roe_pct": "ROE(%)",
-        "sector": "섹터",
-    }
-)
-cols = [
-    "티커", "종목명", "추천 행동", "종가", "최근 신호", "신호 발생일",
-    "PER", "선행 PER", "PBR", "배당수익률(%)", "ROE(%)", "섹터",
-]
-cols = [c for c in cols if c in merged.columns]
-st.dataframe(
-    merged[cols],
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "PER": st.column_config.NumberColumn(format="%.2f"),
-        "선행 PER": st.column_config.NumberColumn(format="%.2f"),
-        "PBR": st.column_config.NumberColumn(format="%.2f"),
-        "배당수익률(%)": st.column_config.NumberColumn(format="%.2f"),
-        "ROE(%)": st.column_config.NumberColumn(format="%.1f"),
-        "종가": st.column_config.NumberColumn(format="%,.2f"),
-    },
-)
-
-with st.expander("📘 지표 해설"):
-    st.markdown(
-        """
-- **PER (주가수익비율)**: 주가 ÷ 1주당 순이익. 낮을수록 이익 대비 싸다고 봄. 일반적으로 10 이하면 저평가, 25 이상이면 고평가(섹터별로 다름).
-- **선행 PER**: 향후 1년 예상 이익 기준 PER. 미래 성장이 반영됨.
-- **PBR (주가순자산비율)**: 주가 ÷ 1주당 순자산. 1 미만이면 청산가치 이하 거래(전통적으로 저평가). 단 IT/플랫폼처럼 자산이 적은 업종은 PBR이 의미가 약함.
-- **배당수익률**: 연 배당금 ÷ 주가. 4% 이상이면 고배당주.
-- **ROE**: 자기자본수익률. 15% 이상이면 우량 기업으로 평가.
-        """
     )
 
 st.divider()
