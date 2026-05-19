@@ -43,9 +43,15 @@ jobs:
           git add results/
           if git diff --cached --quiet; then
             echo "변경 없음 — 커밋하지 않음"
-            exit 0
+          else
+            git commit -m "data: 자동 갱신 $(date -u +'%Y-%m-%d %H:%M UTC')"
+            # 사용자가 사이에 push했을 가능성에 대비
+            git pull --rebase origin main || true
+            git push
           fi
-          git commit -m "data: 자동 갱신 $(date -u +'%Y-%m-%d %H:%M UTC')"
-          # 사용자가 사이에 push했을 가능성에 대비
-          git pull --rebase origin main || true
-          git push
+
+      - name: 보유종목 매도/주의 신호 → 카카오톡 알림
+        env:
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+        run: python scripts/check_alerts.py
