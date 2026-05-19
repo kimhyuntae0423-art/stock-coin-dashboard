@@ -9,6 +9,7 @@
 환경변수:
   KAKAO_REST_API_KEY  : 앱의 REST API 키
   KAKAO_REFRESH_TOKEN : OAuth refresh token
+  KAKAO_CLIENT_SECRET : (선택) 클라이언트 시크릿이 ON인 경우 필수
 
 GitHub Actions에선 Secrets에 등록해서 사용.
 로컬 테스트는 set $env:KAKAO_REST_API_KEY = "..." 등.
@@ -40,14 +41,27 @@ def _post(url: str, data: dict, headers: dict | None = None):
         raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8', errors='ignore')}")
 
 
-def refresh_access_token(rest_api_key: str, refresh_token: str) -> dict:
+def refresh_access_token(rest_api_key: str, refresh_token: str,
+                         client_secret: str | None = None) -> dict:
     """refresh_token 으로 새 access_token 받기. refresh_token이 갱신될 수도 있음."""
-    result = _post(TOKEN_URL, {
+    data = {
         "grant_type": "refresh_token",
         "client_id": rest_api_key,
         "refresh_token": refresh_token,
-    })
-    return result   # access_token, optionally refresh_token
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    return _post(TOKEN_URL, data)   # access_token, optionally refresh_token
+
+
+def _load_local_tokens() -> dict | None:
+    """저장소 루트의 kakao_tokens.json 이 있으면 로드 (로컬 테스트용)."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(repo_root, "kakao_tokens.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def send_to_self(text: str, link_url: str | None = None,
@@ -55,12 +69,22 @@ def send_to_self(text: str, link_url: str | None = None,
     """카카오톡 메모챗('나에게 보내기')으로 텍스트 메시지 발송."""
     api_key = os.environ.get("KAKAO_REST_API_KEY")
     refresh_token = os.environ.get("KAKAO_REFRESH_TOKEN")
+    client_secret = os.environ.get("KAKAO_CLIENT_SECRET") or None
+
+    # 환경변수 없으면 로컬 파일에서 로드 (로컬 테스트용)
+    if not api_key or not refresh_token:
+        local = _load_local_tokens()
+        if local:
+            api_key = api_key or local.get("rest_api_key")
+            refresh_token = refresh_token or local.get("refresh_token")
+            client_secret = client_secret or local.get("client_secret")
+
     if not api_key or not refresh_token:
         raise RuntimeError(
-            "KAKAO_REST_API_KEY / KAKAO_REFRESH_TOKEN 환경변수 필요"
+            "KAKAO_REST_API_KEY / KAKAO_REFRESH_TOKEN 환경변수 또는 kakao_tokens.json 필요"
         )
 
-    tok = refresh_access_token(api_key, refresh_token)
+    tok = refresh_access_token(api_key, refresh_token, client_secret)
     access_token = tok["access_token"]
 
     url = link_url or DEFAULT_DASH_URL
