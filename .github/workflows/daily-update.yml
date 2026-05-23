@@ -50,9 +50,22 @@ jobs:
             git push
           fi
 
-      - name: 보유종목 매도/주의 신호 → 카카오톡 알림
+      - name: 보유종목 매도/주의 + BTC 사이클 단계 변경 → 카카오톡 알림
         env:
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: python scripts/check_alerts.py
+
+      - name: 사이클 상태 변경 시 커밋 & 푸시
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/cycle_alert_state.json
+          if git diff --cached --quiet; then
+            echo "사이클 단계 변경 없음 — 커밋 스킵"
+          else
+            git commit -m "alert: BTC 사이클 단계 변경 기록"
+            git pull --rebase origin main || true
+            git push
+          fi
