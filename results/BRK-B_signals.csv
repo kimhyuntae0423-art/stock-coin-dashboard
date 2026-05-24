@@ -1,4 +1,4 @@
-Date,Close,High,Low,Open,Volume,ma20,ma50,ma200,momentum20,rsi14,macd,macd_signal,macd_hist,bb_upper,bb_middle,bb_lower,bb_pct,obv,state,signal
+,Close,High,Low,Open,Volume,ma20,ma50,ma200,momentum20,rsi14,macd,macd_signal,macd_hist,bb_upper,bb_middle,bb_lower,bb_pct,obv,state,signal
 2021-05-24,289.7300109863281,290.4100036621094,287.9100036621094,289.1099853515625,3973300,,,,,,,,,,,,,3973300,bear,hold
 2021-05-25,287.20001220703125,291.6000061035156,287.1099853515625,290.19000244140625,4752300,,,,,,,,,,,,,-779000,bear,hold
 2021-05-26,287.3299865722656,289.6400146484375,285.75,289.6400146484375,4756300,,,,,,,,,,,,,3977300,bear,hold
