@@ -507,7 +507,7 @@ with tab_detail:
         st.warning("선택한 티커의 상세 결과 파일이 없습니다.")
         st.stop()
 
-    df = pd.read_csv(df_file, parse_dates=["Date"], index_col="Date")
+    df = pd.read_csv(df_file, index_col=0, parse_dates=True)
 
     # 가격 차트 + 보조 지표 토글
     st.markdown("#### 가격 차트 + 기술적 지표")

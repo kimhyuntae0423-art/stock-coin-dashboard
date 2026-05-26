@@ -390,7 +390,7 @@ if pd.notna(rsi):
 
 df_file = RESULTS / f"coin_{sel}_signals.csv"
 if df_file.exists():
-    df = pd.read_csv(df_file, parse_dates=["Date"], index_col="Date")
+    df = pd.read_csv(df_file, index_col=0, parse_dates=True)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="종가", line=dict(color="#888")))
     if "ma50" in df.columns:
