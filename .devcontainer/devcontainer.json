@@ -2,6 +2,10 @@
   "name": "주식 분석 대시보드",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
 
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" }
+  },
+
   "postCreateCommand": "pip install -r requirements.txt && npm install -g @anthropic-ai/claude-code",
 
   "customizations": {
