@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from scripts.fear_greed import fetch_cnn_fear_greed
 from scripts.ui import render_fng_gauge
 from scripts.stock_score import rank_stocks
+from scripts.factor_calc import enrich_price_factors
 
 BASE = Path(__file__).resolve().parent
 RESULTS = BASE / "results"
@@ -99,8 +100,8 @@ action_color = {
 }
 
 FUNDA_COLS = [
-    "ticker", "per", "pbr", "roe_pct", "profit_margin_pct",
-    "revenue_growth_yoy_pct", "earnings_growth_yoy_pct",
+    "ticker", "per", "forward_per", "pbr", "roe_pct", "profit_margin_pct",
+    "revenue_growth_yoy_pct", "earnings_growth_yoy_pct", "eps_growth_q_pct",
 ]
 # funda에 새 컬럼이 아직 없으면 안전하게 보강
 for col in FUNDA_COLS:
@@ -108,6 +109,7 @@ for col in FUNDA_COLS:
         funda[col] = None
 
 score_input = summary.merge(funda[FUNDA_COLS], on="ticker", how="left")
+score_input = enrich_price_factors(score_input)
 scores_df = rank_stocks(score_input)
 _SCORE_INPUT_COLS = ["ticker", "close", "state", "action", "rsi14",
                      "return_12m_pct", "per", "pbr", "roe_pct",
@@ -124,29 +126,29 @@ score_disp["종목명"] = score_disp["ticker"].map(NAMES).fillna("-")
 
 
 def composite_label(avg):
-    if avg >= 1.5: return "🟢🟢 강한 매수"
-    if avg >= 0.5: return "🟢 매수 우호"
-    if avg > -0.5: return "🔵 중립"
+    if avg >= 1.5: return "🟢🟢 강한 매수 추천"
+    if avg >= 0.5: return "🟢 매수 검토"
+    if avg > -0.5: return "🔵 중립 (관망)"
     if avg > -1.5: return "🟠 매도 우호"
     return "🔴 매수 자제"
 
 
 def integrated_recommendation(qvm, action):
-    # qvm이 None/NaN이면 중립으로 처리
+    """종합 점수 + 추세 상태를 결합한 사용자 친화적 추천 라벨."""
     if qvm is None or pd.isna(qvm):
-        return "⚪ 관망", "점수 데이터 부족"
+        return "⚪ 데이터 부족", "분석 데이터 미확보"
     good_funda = qvm >= 0.5
     avg_funda = qvm > -0.5
     if good_funda:
-        if action == "매수":  return "💎 강력 매수", "펀더 우수 + 골든크로스 발생"
-        if action == "보유":  return "✅ 보유/분할매수", "펀더 우수 + 상승 추세 유지"
-        if action == "미보유": return "⏳ 골든크로스 대기", "펀더 우수, 추세 전환 신호 기다리기"
-        if action == "매도":  return "🟠 신중 매수", "펀더 우수하나 단기 약세"
-        return "✅ 우수 종목", "추세 상태 불명"  # fallback
+        if action == "매수":  return "💎 지금이 기회", "회사 좋고 + 막 상승추세 진입"
+        if action == "보유":  return "✅ 계속 모아도 좋음", "회사 좋고 + 상승추세 유지"
+        if action == "미보유": return "⏳ 매수 타이밍 대기", "회사 좋지만 아직 하락추세 — 신호 기다리기"
+        if action == "매도":  return "🟠 신중 매수", "회사 좋으나 단기 약세 — 분할매수 검토"
+        return "✅ 우수 종목", "추세 상태 불명"
     if avg_funda:
-        if action == "매수":  return "🔵 단기 신호", "펀더는 평범, 추세는 매수"
-        return "⚪ 관망", "특별한 매력 없음"
-    return "❌ 회피", "펀더 약함"
+        if action == "매수":  return "🔵 추세만 좋음", "회사는 보통 + 상승추세 — 단기 매매용"
+        return "⚪ 매수 보류", "특별한 매력 없음"
+    return "❌ 회피 권장", "회사 펀더 약함"
 
 
 def priority_score(qvm, action):
@@ -156,6 +158,34 @@ def priority_score(qvm, action):
 
 score_disp["판정"] = score_disp["composite"].apply(composite_label)
 score_disp["추세"] = score_disp["action"].map(action_color).fillna(score_disp["action"])
+
+
+def timing_label(row):
+    """타이밍 라벨 — 일반인이 한눈에 이해할 수 있게 친근한 한국어로 표기.
+
+    우선순위:
+      1) 강한 과열 → 🔴 너무 올라 위험
+      2) 조정 받은 우량주 → 💎 / 💚
+      3) 가격이 실적보다 빨리 올랐음 → ⚠️
+      4) 약한 단기 과열 → 🟠
+    """
+    oh = row.get("overheat_penalty", 0) or 0
+    mr = row.get("mean_reversion_bonus", 0) or 0
+    me = row.get("multi_exp_penalty", 0) or 0
+    if oh <= -0.4:
+        return "🔴 너무 올라 위험"
+    if mr >= 0.30:
+        return "💎 떨어진 우량주"
+    if mr >= 0.15:
+        return "💚 매수 검토"
+    if me <= -0.30:
+        return "⚠️ 가격이 실적보다 빨리 오름"
+    if oh <= -0.20:
+        return "🟠 살짝 비쌈"
+    return ""
+
+
+score_disp["타이밍"] = score_disp.apply(timing_label, axis=1)
 recs = score_disp.apply(
     lambda r: integrated_recommendation(r["composite"], r["action"]), axis=1
 )
@@ -179,8 +209,46 @@ tab_summary, tab_compare, tab_detail = st.tabs([
 with tab_summary:
     st.subheader("🎯 통합 추천 — 좋은 종목 + 지금이 살 타이밍인가")
     st.caption(
-        "**무엇을 살까 (QVM 4-팩터)** 와 **언제 살까 (골든크로스 50/200일선)** 를 결합."
+        "**무엇을 살까 (회사 펀더멘털)** 와 **언제 살까 (추세 + 단기 과열도)** 를 결합한 점수입니다."
     )
+
+    with st.expander("📖 용어 사전 — 어렵게 느낀 표현 풀이"):
+        st.markdown("""
+**🧩 5개 평가 항목 (-2 = 매우 나쁨, 0 = 평균, +2 = 매우 좋음)**
+- **저평가**: PER·PBR이 낮을수록 좋음. "지금 사면 싸다"
+- **품질**: ROE·영업이익률. "회사가 효율적으로 돈을 버는가"
+- **성장**: 매출·이익 증가율. "회사가 빠르게 크는가"
+- **추세**: 최근 1년 수익률 + 골든크로스. "현재 상승 추세인가"
+- **타이밍**: RSI 기반. "지금 사도 단기 부담 없는가"
+
+**🚦 타이밍 라벨 (점수 옆에 표시)**
+- 🔴 **너무 올라 위험**: 단기 과매수(RSI≥75 또는 52주 고가 97%+) — 분할매수 권장
+- 🟠 **살짝 비쌈**: 단기 과열 약한 신호. 일부만 진입 권장
+- ⚠️ **가격이 실적보다 빨리 오름**: 1년 가격 상승률이 실적 성장률을 30%p+ 초과
+- 💎 **떨어진 우량주**: 펀더 좋고 + 추세 살아있고 + 최근 조정. 좋은 진입 기회
+- 💚 **매수 검토**: 약한 매수 기회 신호
+
+**📊 종합 점수 = 5개 항목 + 보너스/페널티 합산**
+- ≥ +1.5: 강한 매수 추천
+- +0.5 ~ +1.5: 매수 검토
+- -0.5 ~ +0.5: 중립
+- ≤ -1.5: 매수 자제
+
+**🎯 통합 추천 (펀더 + 추세 결합)**
+- 💎 **지금이 기회**: 회사 좋고 + 막 상승추세 진입 (골든크로스 발생)
+- ✅ **계속 모아도 좋음**: 회사 좋고 + 상승 추세 유지 중
+- ⏳ **매수 타이밍 대기**: 회사 좋지만 아직 하락추세 — 추세 전환 기다리기
+- 🟠 **신중 매수**: 회사 좋으나 단기 약세 — 분할매수
+- 🔵 **추세만 좋음**: 회사 펀더 보통 + 단기 추세만 매수 (단기매매용)
+- ⚪ **매수 보류**: 특별한 매력 없음
+- ❌ **회피 권장**: 회사 펀더 약함
+
+**💡 점수 시스템의 한계**
+- 점수 1·2위가 미래 수익률 1·2위 보장 ❌
+- 모멘텀 편향: 이미 오른 종목을 우대하는 구조적 한계
+- 단일 시점 스냅샷 → 사이클·외부 변화 미반영
+- **점수는 종목 후보 압축 도구**. 최종 결정은 본인 판단 + 공식 공시 확인.
+        """)
 
     st.markdown("#### 💰 매수 우선순위 TOP 5")
     top5 = score_disp.head(5)
@@ -193,44 +261,60 @@ with tab_summary:
             st.markdown(f"### {r['통합 추천']}")
             st.markdown(
                 f"**우선순위 {r['우선순위 점수']:+.2f}**  \n"
-                f"QVM {r['composite']:+.2f} · 추세 {r['추세']}"
+                f"종합점수 {r['composite']:+.2f} · 추세 {r['추세']}"
             )
             st.caption(r["추천 이유"])
+            if r.get("타이밍"):
+                st.markdown(f"**{r['타이밍']}**")
             st.markdown(
-                f"V {fmt(r.get('value_score'), '{:+d}')} · "
-                f"Q {fmt(r.get('quality_score'), '{:+d}')} · "
-                f"G {fmt(r.get('growth_score'), '{:+d}')} · "
-                f"M {fmt(r.get('momentum_score'), '{:+d}')} · "
-                f"T {fmt(r.get('technical_score'), '{:+d}')}"
+                f"저평가 {fmt(r.get('value_score'), '{:+d}')} · "
+                f"품질 {fmt(r.get('quality_score'), '{:+d}')} · "
+                f"성장 {fmt(r.get('growth_score'), '{:+d}')} · "
+                f"추세 {fmt(r.get('momentum_score'), '{:+d}')} · "
+                f"타이밍 {fmt(r.get('technical_score'), '{:+d}')}"
             )
 
     st.markdown("#### 전체 통합 순위표")
+    st.caption("💡 컬럼 이름 옆 **?** 아이콘에 마우스를 올리면 설명이 나옵니다. 자세한 풀이는 위 📖 용어 사전 참고.")
     rank_table = score_disp.copy()
     rank_table["순위"] = range(1, len(rank_table) + 1)
+    # "추세"는 이미 action 매핑된 컬럼이라 momentum_score는 "1년 추세"로 구분
     rank_table = rank_table.rename(columns={
-        "ticker": "티커", "close": "종가", "composite": "QVGM 점수",
-        "value_score": "가치", "quality_score": "품질", "growth_score": "성장",
-        "momentum_score": "모멘텀", "technical_score": "기술적",
+        "ticker": "티커", "close": "종가", "composite": "종합 점수",
+        "value_score": "저평가", "quality_score": "품질", "growth_score": "성장",
+        "momentum_score": "1년 추세", "technical_score": "RSI 신호",
         "per": "PER", "pbr": "PBR", "roe_pct": "ROE(%)",
         "revenue_growth_yoy_pct": "매출YoY(%)", "earnings_growth_yoy_pct": "EPS YoY(%)",
         "return_12m_pct": "12M 수익률(%)", "rsi14": "RSI",
     })
     st.dataframe(
-        rank_table[["순위", "티커", "종목명", "통합 추천", "우선순위 점수",
-                    "QVGM 점수", "추세", "판정",
-                    "가치", "품질", "성장", "모멘텀", "기술적",
+        rank_table[["순위", "티커", "종목명", "통합 추천", "타이밍", "우선순위 점수",
+                    "종합 점수", "추세", "판정",
+                    "저평가", "품질", "성장", "1년 추세", "RSI 신호",
                     "종가", "PER", "PBR", "ROE(%)",
                     "매출YoY(%)", "EPS YoY(%)", "12M 수익률(%)", "RSI"]],
         use_container_width=True,
         hide_index=True,
         column_config={
-            "우선순위 점수": st.column_config.NumberColumn(format="%+.2f"),
-            "QVGM 점수": st.column_config.NumberColumn(format="%+.2f"),
-            "가치": st.column_config.NumberColumn(format="%+d"),
-            "품질": st.column_config.NumberColumn(format="%+d"),
-            "성장": st.column_config.NumberColumn(format="%+d"),
-            "모멘텀": st.column_config.NumberColumn(format="%+d"),
-            "기술적": st.column_config.NumberColumn(format="%+d"),
+            "우선순위 점수": st.column_config.NumberColumn(
+                "우선순위 점수",
+                help="종합 점수 + 추세 보정 (골든크로스 +0.5 등). 매수 의사결정 정렬용.",
+                format="%+.2f"),
+            "종합 점수": st.column_config.NumberColumn(
+                "종합 점수",
+                help="5개 평가 항목 z-score 가중합 + 보너스/페널티. 0이 평균, ±1.5 이상이 극단.",
+                format="%+.2f"),
+            "저평가": st.column_config.NumberColumn(
+                "저평가", help="PER/PBR 기반. -2 비쌈, +2 매우 쌈.", format="%+d"),
+            "품질": st.column_config.NumberColumn(
+                "품질", help="ROE + 영업이익률. 회사가 얼마나 잘 버는가.", format="%+d"),
+            "성장": st.column_config.NumberColumn(
+                "성장", help="매출·이익 YoY 성장률. 빠르게 크는 회사일수록 높음.", format="%+d"),
+            "1년 추세": st.column_config.NumberColumn(
+                "1년 추세", help="최근 1년 수익률 + 골든크로스 상태.", format="%+d"),
+            "RSI 신호": st.column_config.NumberColumn(
+                "RSI 신호", help="RSI 기반 매수 타이밍. 과매도(+2)일수록 좋음, 과매수(-2) 부담.",
+                format="%+d"),
             "종가": st.column_config.NumberColumn(format="%,.2f"),
             "PER": st.column_config.NumberColumn(format="%.2f"),
             "PBR": st.column_config.NumberColumn(format="%.2f"),

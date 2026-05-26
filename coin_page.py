@@ -40,6 +40,34 @@ def fmt(v, fmt_str="{:,.2f}", suffix=""):
         return str(v)
 
 
+@st.cache_data(ttl=3600)
+def get_usd_krw_rate() -> float:
+    """USD/KRW 환율 — yfinance 사용, 1시간 캐시, 실패 시 폴백 1370."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("USDKRW=X").history(period="5d")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 1370.0
+
+
+def fmt_krw(usd_value, rate):
+    """USD 값을 KRW로 환산해 사람이 읽기 좋은 단위(억/만)로 포맷."""
+    if usd_value is None or pd.isna(usd_value) or rate is None:
+        return "-"
+    try:
+        krw = float(usd_value) * float(rate)
+    except Exception:
+        return "-"
+    if krw >= 1e8:
+        return f"{krw/1e8:,.2f}억원"
+    if krw >= 1e4:
+        return f"{krw/1e4:,.1f}만원"
+    return f"{krw:,.0f}원"
+
+
 st.title("🪙 코인 분석 대시보드")
 st.caption(
     "여러 신뢰받는 코인 분석 지표를 종합하여 **합성 매매 신호**를 만들고, 그에 따라 **매수 우선순위 추천**까지 보여줍니다."
@@ -257,7 +285,11 @@ else:
     st.error(f"⚠️ 종합 신호 매도 우호 ({comp['avg']:+.2f}). 신규 매수 자제 권장.")
 
 st.markdown("#### 전체 추천 순위표")
+usd_krw = get_usd_krw_rate()
+st.caption(f"💱 적용 환율: 1 USD = **{usd_krw:,.2f} KRW** (yfinance, 1시간 캐시)")
+
 display = rec_df.copy()
+display["종가(KRW)"] = display["close"] * usd_krw  # 원화 환산 (raw numeric for sortable)
 display = display.rename(columns={
     "ticker": "티커",
     "close": "종가(USD)",
@@ -265,11 +297,13 @@ display = display.rename(columns={
     "return_90d_pct": "90일 수익률(%)",
 })
 st.dataframe(
-    display[["순위", "티커", "코인명", "추천 점수", "종가(USD)", "RSI", "90일 수익률(%)"]],
+    display[["순위", "티커", "코인명", "추천 점수", "종가(USD)", "종가(KRW)", "RSI", "90일 수익률(%)"]],
     use_container_width=True,
     hide_index=True,
     column_config={
         "종가(USD)": st.column_config.NumberColumn(format="$%.4f"),
+        "종가(KRW)": st.column_config.NumberColumn(format="₩%,.0f",
+                                                   help=f"USD × {usd_krw:,.2f} KRW 환산"),
         "RSI": st.column_config.NumberColumn(format="%.1f"),
         "90일 수익률(%)": st.column_config.NumberColumn(format="%+.1f"),
         "추천 점수": st.column_config.NumberColumn(format="%+.2f"),
@@ -336,12 +370,14 @@ row = summary[summary["ticker"] == sel].iloc[0]
 rec_row = rec_df[rec_df["ticker"] == sel].iloc[0]
 st.markdown(f"### {label(sel)}")
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("추천 점수", f"{rec_row['추천 점수']:+.2f}", delta=f"순위 #{rec_row['순위']}",
           delta_color="off")
 c2.metric("종가 (USD)", f"${row['close']:,.4f}")
-c3.metric("RSI(14)", fmt(row.get("rsi14")))
-c4.metric("90일 수익률", fmt(row.get("return_90d_pct"), "{:+.1f}", "%"))
+c3.metric("종가 (KRW)", fmt_krw(row['close'], usd_krw),
+          delta=f"@ {usd_krw:,.0f}원/USD", delta_color="off")
+c4.metric("RSI(14)", fmt(row.get("rsi14")))
+c5.metric("90일 수익률", fmt(row.get("return_90d_pct"), "{:+.1f}", "%"))
 
 rsi = row.get("rsi14")
 if pd.notna(rsi):
