@@ -19,8 +19,10 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 
-# Claude Code 내부 폴더
-.claude/
+# Claude Code 내부 폴더 (commands는 Codespaces에서도 쓰기 위해 추적)
+.claude/*
+!.claude/commands
+!.claude/commands/**
 
 # 메모리 (개인 메모)
 memory/
