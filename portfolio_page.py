@@ -105,7 +105,7 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
             add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
         with fc3:
             add_notes = st.text_input("메모 (선택)")
-        add_date = st.text_input("매수일 (선택)", placeholder="YYYY-MM-DD, 비워도 됩니다")
+        add_date = ""
         submitted = st.form_submit_button("✅ 추가")
 
     if submitted:
