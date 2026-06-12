@@ -187,7 +187,7 @@ edited = st.data_editor(
         "ticker": st.column_config.TextColumn("티커", help="위 '매수 추가' 폼으로 입력하면 자동 채워집니다.", required=True),
         "qty": st.column_config.NumberColumn("수량", format="%.8f"),
         "buy_price": st.column_config.NumberColumn("매수가", format="%.2f"),
-        "buy_date": st.column_config.TextColumn("매수일", help="YYYY-MM-DD"),
+        "buy_date": None,
         "notes": st.column_config.TextColumn("메모"),
     },
     key="holdings_editor",
