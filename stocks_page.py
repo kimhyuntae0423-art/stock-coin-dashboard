@@ -483,18 +483,36 @@ with tab_detail:
         f = funda[funda["ticker"] == sel].iloc[0]
         currency = f.get("currency") if pd.notna(f.get("currency")) else ""
         v1, v2, v3, v4 = st.columns(4)
+        consensus_tgt = f.get("consensus_target")
+        analyst_n = f.get("analyst_count")
+        tgt_label = (f"목표 {fmt(consensus_tgt, '{:,.0f}')} ({int(analyst_n)}명)" if (
+            pd.notna(consensus_tgt) and consensus_tgt and
+            pd.notna(analyst_n) and analyst_n)
+            else fmt(consensus_tgt, "{:,.0f}") if pd.notna(consensus_tgt) and consensus_tgt
+            else "-")
         v1.metric("PER", fmt(f.get("per")))
-        v2.metric("선행 PER", fmt(f.get("forward_per")))
+        v2.metric("선행 PER (컨센서스)", fmt(f.get("forward_per")),
+                  help="yfinance 추정치. 한국 종목은 실제 컨센서스(삼성 ~7x)와 다를 수 있음.")
         v3.metric("PBR", fmt(f.get("pbr")))
         v4.metric("배당수익률", fmt(f.get("dividend_yield_pct"), suffix="%"))
 
-        v5, v6, v7, v8 = st.columns(4)
-        v5.metric("시가총액", fmt_mcap(f.get("market_cap"), currency or ""))
-        v6.metric("ROE", fmt(f.get("roe_pct"), suffix="%"))
-        v7.metric("영업이익률", fmt(f.get("profit_margin_pct"), suffix="%"))
+        rec = f.get("recommendation_mean")
+        rec_text = {1: "강력매수", 2: "매수", 3: "중립", 4: "매도", 5: "강력매도"}
+        rec_label = rec_text.get(round(rec) if pd.notna(rec) and rec else None, "-") if pd.notna(rec) and rec else "-"
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("애널리스트 목표가", tgt_label,
+                  help="yfinance consensus targetMeanPrice. 한국 종목은 없을 수 있음.")
+        c2.metric("투자의견", f"{rec_label} ({fmt(rec, '{:.1f}')})" if pd.notna(rec) and rec else "-",
+                  help="1=강력매수 ~ 5=강력매도 (애널리스트 평균)")
+        c3.metric("시가총액", fmt_mcap(f.get("market_cap"), currency or ""))
+        c4.metric("ROE", fmt(f.get("roe_pct"), suffix="%"))
+
+        v5, v6, v7 = st.columns(3)
+        v5.metric("영업이익률", fmt(f.get("profit_margin_pct"), suffix="%"))
         sector = f.get("sector") if pd.notna(f.get("sector")) else "-"
         industry = f.get("industry") if pd.notna(f.get("industry")) else "-"
-        v8.metric("섹터", str(sector), delta=str(industry), delta_color="off")
+        v6.metric("섹터", str(sector), delta=str(industry), delta_color="off")
 
         # 성장률 (Growth) — 새로 추가
         st.markdown("##### 🌱 성장률 (YoY)")

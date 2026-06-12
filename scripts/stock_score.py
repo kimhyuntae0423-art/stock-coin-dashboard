@@ -9,6 +9,8 @@
 - 52주 고가 근접도 (George-Hwang 2004): 12M 모멘텀보다 일관된 우위
 - AQR Z-score 결합 방식: 절대 임계값 대신 cross-sectional z-score로 안정성↑
 
+v3.4 (2026-06): z_fwd_value 추가 — forward PER을 가치 z-score에 직접 반영.
+  컨센서스 forward PER(삼성 ~7x)이 미국 테크(20-30x) 대비 횡단면 우위를 점수로 표현.
 v3 (2026-05): Z-score 결합 + Quality Composite + 12-1 모멘텀 + 52주 고가
 v2: Forward PER · 턴어라운드 보너스 · 밸류 트랩 패널티 (legacy)
 """
@@ -305,6 +307,8 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     # ---- 1) 각 종목별 raw 팩터 계산 ----
     df["_value_raw"] = -pd.to_numeric(df.get("per"), errors="coerce")  # 낮을수록 좋음 → 부호 반전
     df["_pbr_raw"] = -pd.to_numeric(df.get("pbr"), errors="coerce")
+    # forward PER: 컨센서스 기준 저PER(삼성 ~7x) 종목을 미국 테크(20-30x) 대비 가치 우위로 반영
+    df["_fwd_value_raw"] = -pd.to_numeric(df.get("forward_per"), errors="coerce")
     # ROE + Profit Margin
     roe = pd.to_numeric(df.get("roe_pct"), errors="coerce")
     pm = pd.to_numeric(df.get("profit_margin_pct"), errors="coerce")
@@ -329,6 +333,7 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     factor_cols = {
         "z_value": df["_value_raw"],
         "z_pbr": df["_pbr_raw"],
+        "z_fwd_value": df["_fwd_value_raw"],
         "z_quality": df["_quality_raw"],
         "z_growth": df["_growth_raw"],
         "z_momentum": df["_mom_raw"],
@@ -344,7 +349,9 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     #   - 가치 1.3 (저평가 우대 ↑)
     #   - 품질·성장·QC·추세 1.0
     #   - 모멘텀 0.3 (과거 가격 상승률 영향 최소화)
-    df["z_value_combined"] = (df["z_value"] + df["z_pbr"]) / 2
+    # 가치 3-팩터 블렌드: 후행PER + 선행PER(컨센서스) + PBR
+    # forward_per 없는 종목은 z_fwd_value=0(평균)으로 처리 — 불이익 없음
+    df["z_value_combined"] = (df["z_value"] + df["z_fwd_value"] + df["z_pbr"]) / 3
     # v3.3: 모멘텀/추세 더 약화, 가치 더 강조 (사용자 피드백: "여전히 모멘텀이 쎄다")
     _W_VALUE, _W_QUAL, _W_GROW, _W_MOM, _W_TREND, _W_QC = 1.5, 1.0, 1.0, 0.1, 0.5, 1.0
     _W_TOTAL = _W_VALUE + _W_QUAL + _W_GROW + _W_MOM + _W_TREND + _W_QC
@@ -407,7 +414,7 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     df["label"] = df["composite"].apply(_composite_label_v3)
 
     cols = ["ticker", "composite", "label", "composite_base",
-            "z_value_combined", "z_quality", "z_growth", "z_momentum", "z_trend", "z_qc",
+            "z_value_combined", "z_fwd_value", "z_quality", "z_growth", "z_momentum", "z_trend", "z_qc",
             "turnaround_bonus", "value_trap_penalty",
             "overheat_penalty", "multi_exp_penalty", "mean_reversion_bonus"]
     out = df[cols].copy()

@@ -20,6 +20,7 @@ RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
 NAMES_FILE = ROOT / "names.csv"
 COIN_NAMES_FILE = ROOT / "coin_names.csv"
+CORE_ETF_FILE = ROOT / "core_etfs.csv"
 
 
 def load_names() -> dict:
@@ -31,20 +32,104 @@ def load_names() -> dict:
     return names
 
 
+def build_asset_options() -> list[tuple[str, str]]:
+    """이름 검색용 (display_label, ticker) 목록.
+    순서: 국내 ETF → 해외 ETF → 코인 → 한국 주식 → 미국 주식
+    """
+    rows = []
+
+    # 1) Core ETF 목록
+    if CORE_ETF_FILE.exists():
+        etf_df = pd.read_csv(CORE_ETF_FILE)
+        for _, r in etf_df.iterrows():
+            t = str(r["ticker"])
+            name = str(r["name"])
+            cat = str(r.get("category", "ETF"))
+            cur = str(r.get("currency", ""))
+            tag = "국내 ETF" if cur == "KRW" else "해외 ETF"
+            rows.append((f"{name}  ({t}) · {tag}", t))
+
+    # 2) 코인
+    if COIN_NAMES_FILE.exists():
+        coin_df = pd.read_csv(COIN_NAMES_FILE)
+        for _, r in coin_df.iterrows():
+            t = str(r["ticker"])
+            rows.append((f"{r['name']}  ({t}) · 코인", t))
+
+    # 3) 한국 주식
+    if NAMES_FILE.exists():
+        names_df = pd.read_csv(NAMES_FILE)
+        for _, r in names_df.iterrows():
+            t = str(r["ticker"])
+            tag = "한국 주식" if t.endswith(".KS") or t.endswith(".KQ") else "미국 주식"
+            rows.append((f"{r['name']}  ({t}) · {tag}", t))
+
+    return rows
+
+
 NAMES = load_names()
+ASSET_OPTIONS = build_asset_options()
+ASSET_LABEL_TO_TICKER = {label: ticker for label, ticker in ASSET_OPTIONS}
+ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
 
-def label(t: str) -> str:
-    return f"{t} · {NAMES[t]}" if t in NAMES else t
+def _load_holdings() -> pd.DataFrame:
+    if not HOLDINGS_FILE.exists() or HOLDINGS_FILE.stat().st_size < 10:
+        return pd.DataFrame(columns=["ticker", "qty", "buy_price", "buy_date", "notes"])
+    return pd.read_csv(HOLDINGS_FILE)
+
+
+def _save_holdings(df: pd.DataFrame):
+    df.to_csv(HOLDINGS_FILE, index=False, encoding="utf-8")
 
 
 st.title("💼 보유 종목")
-st.caption(
-    "내가 매수한 종목들. 매수가 대비 현재 수익률과 **매도 신호**를 한눈에. "
-    "편집은 두 가지: (1) 로컬에서 `holdings.csv` 직접 수정 후 git push (2) 아래 표에서 즉시 수정 → CSV 다운로드 → 파일 교체."
-)
+st.caption("장기 분할매수 포트폴리오 추적. 매수 내역 입력 → 수익률·비중·리밸런싱 자동 계산.")
 
-with st.expander("📖 용어 사전 — 이 페이지에서 쓰이는 표현 풀이"):
+# =====================================================================
+# ➕ 매수 내역 추가 (이름 검색)
+# =====================================================================
+with st.expander("➕ 매수 내역 추가", expanded=True):
+    st.caption("종목 이름으로 검색해서 선택하세요. 티커를 몰라도 됩니다.")
+    with st.form("add_holding_form", clear_on_submit=True):
+        selected_label = st.selectbox(
+            "종목 검색",
+            options=[""] + ASSET_LABELS,
+            index=0,
+            help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
+        )
+        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
+        with fc1:
+            add_date = st.date_input("매수일")
+        with fc2:
+            add_qty = st.number_input("수량", min_value=0.0, step=0.00000001, format="%.8f")
+        with fc3:
+            add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
+        with fc4:
+            add_notes = st.text_input("메모 (선택)")
+        submitted = st.form_submit_button("✅ 추가")
+
+    if submitted:
+        if not selected_label or selected_label not in ASSET_LABEL_TO_TICKER:
+            st.error("종목을 선택해주세요.")
+        elif add_qty <= 0 or add_price <= 0:
+            st.error("수량과 매수가는 0보다 커야 합니다.")
+        else:
+            ticker = ASSET_LABEL_TO_TICKER[selected_label]
+            current = _load_holdings()
+            new_row = pd.DataFrame([{
+                "ticker": ticker,
+                "qty": add_qty,
+                "buy_price": add_price,
+                "buy_date": str(add_date),
+                "notes": add_notes,
+            }])
+            updated = pd.concat([current, new_row], ignore_index=True)
+            _save_holdings(updated)
+            st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.2f}) 추가 완료!")
+            st.rerun()
+
+with st.expander("📖 용어 사전", expanded=False):
     st.markdown("""
 **🚦 타이밍 라벨** (추천 포트폴리오 표 옆에 표시)
 - 🔴 **너무 올라 위험**: 단기 과매수 — 분할매수 권장
@@ -69,10 +154,7 @@ with st.expander("📖 용어 사전 — 이 페이지에서 쓰이는 표현 �
     """)
 
 # ===== 데이터 로드 =====
-if not HOLDINGS_FILE.exists() or HOLDINGS_FILE.stat().st_size < 50:
-    holdings = pd.DataFrame(columns=["ticker", "qty", "buy_price", "buy_date", "notes"])
-else:
-    holdings = pd.read_csv(HOLDINGS_FILE)
+holdings = _load_holdings()
 
 # 분석 결과
 summary_file = RESULTS / "summary_signals.csv"
@@ -95,16 +177,16 @@ else:
 
 
 # ===== 편집 가능한 테이블 =====
-st.subheader("✏️ 보유 종목 입력 · 편집")
-st.caption("표에서 직접 수정 가능. 새 행 추가는 맨 아래 빈 행에 입력 → Enter. 저장은 우상단 '⬇️ CSV 다운로드'.")
+st.subheader("✏️ 보유 내역 편집")
+st.caption("수량·매수가·메모 수정 가능. 행 삭제는 체크박스 선택 후 Delete키. 수정 후 반드시 '💾 저장' 클릭.")
 
 edited = st.data_editor(
     holdings,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
-        "ticker": st.column_config.TextColumn("티커", help="예: AAPL, 005930.KS, BTC-USD", required=True),
-        "qty": st.column_config.NumberColumn("수량", format="%.4f"),
+        "ticker": st.column_config.TextColumn("티커", help="위 '매수 추가' 폼으로 입력하면 자동 채워집니다.", required=True),
+        "qty": st.column_config.NumberColumn("수량", format="%.8f"),
         "buy_price": st.column_config.NumberColumn("매수가", format="%.2f"),
         "buy_date": st.column_config.TextColumn("매수일", help="YYYY-MM-DD"),
         "notes": st.column_config.TextColumn("메모"),
@@ -112,14 +194,14 @@ edited = st.data_editor(
     key="holdings_editor",
 )
 
-# 다운로드 (사용자가 git에 commit하기 위함)
-csv_bytes = edited.to_csv(index=False).encode("utf-8")
-st.download_button(
-    "⬇️ CSV 다운로드 (홈 폴더 holdings.csv 교체용)",
-    data=csv_bytes,
-    file_name="holdings.csv",
-    mime="text/csv",
-)
+sc1, sc2 = st.columns([1, 4])
+with sc1:
+    if st.button("💾 저장", type="primary", use_container_width=True):
+        _save_holdings(edited)
+        st.success("저장 완료!")
+        st.rerun()
+with sc2:
+    st.caption("추가는 위 '➕ 매수 내역 추가' 폼 사용 권장. 여기서 직접 편집 후 저장도 가능.")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
@@ -231,7 +313,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
-        "수량": st.column_config.NumberColumn(format="%.4f"),
+        "수량": st.column_config.NumberColumn(format="%.8f"),
         "매수가": st.column_config.NumberColumn(format="%,.2f"),
         "현재가": st.column_config.NumberColumn(format="%,.2f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),

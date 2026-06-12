@@ -16,7 +16,7 @@ GLD,SPDR Gold Shares,원자재 - 금,commodity,Global,0.40,USD,금 노출. 인�
 305080.KS,ACE 미국30년국채액티브(H),채권 - 미국 장기국채(헷지),bond,US,0.30,KRW,장기 국채 환헷지
 130730.KS,KOSEF 국고채10년,채권 - 한국 국채,bond,KR,0.15,KRW,한국 10년 국채
 XLU,Utilities Select Sector SPDR,섹터 - 미국 유틸리티,equity,US,0.09,USD,AI 데이터센터 전력 수요 베네피셔리
-VPU,Vanguard Utilities,섹터 - 미국 유틸리티,equity,US,0.10,USD,XLU 대안, 저보수
+VPU,Vanguard Utilities,섹터 - 미국 유틸리티,equity,US,0.10,USD,XLU 대안 · 저보수
 URA,Global X Uranium,섹터 - 우라늄/원자력,equity,Global,0.69,USD,AI 24/7 전력 -> 원자력 르네상스
 URNM,Sprott Uranium Miners,섹터 - 우라늄 채굴,equity,Global,0.75,USD,순수 우라늄 채굴 노출
 COPX,Global X Copper Miners,섹터 - 구리 채굴,equity,Global,0.65,USD,전력 그리드 + EV 구리 수요
@@ -30,7 +30,7 @@ SOXX,iShares Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,AI 직�
 SMH,VanEck Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,SOXX 대안. NVIDIA 비중 큼
 IRBO,iShares Robotics & AI,테마 - AI/로봇,equity,Global,0.47,USD,저보수 AI ETF
 AIQ,Global X AI & Tech,테마 - AI/기술,equity,US,0.68,USD,빅테크 편중
-INDA,iShares MSCI India,주식 - 인도,equity,IN,0.65,USD,신흥 메가 마켓, 중국 대안
+INDA,iShares MSCI India,주식 - 인도,equity,IN,0.65,USD,신흥 메가 마켓 · 중국 대안
 DXJ,WisdomTree Japan Hedged Equity,주식 - 일본(환헷지),equity,JP,0.48,USD,일본 정책 + 환율 + 거버넌스
 466980.KS,KODEX 미국방산,섹터 - 미국 방산(원화),equity,US,0.30,KRW,ITA 한국판. ISA 가능
 314250.KS,KODEX 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.30,KRW,SCHD 가까운 한국 ETF. ISA 가능
