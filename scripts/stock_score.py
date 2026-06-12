@@ -315,6 +315,8 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     mom = pd.to_numeric(df.get("mom_12_1"), errors="coerce")
     ret12 = pd.to_numeric(df.get("return_12m_pct"), errors="coerce")
     df["_mom_raw"] = mom.combine_first(ret12)
+    # 단기 모멘텀: 1개월(22거래일) 수익률 — 최근 흐름 반영
+    df["_mom_1m_raw"] = pd.to_numeric(df.get("return_1m_pct"), errors="coerce")
     # 추세: 52주 고가 근접도 (없으면 state로 대체)
     h52 = pd.to_numeric(df.get("high52_ratio"), errors="coerce")
     state_map = {"bull": 1.0, "bear": -1.0}
@@ -330,6 +332,7 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
         "z_quality": df["_quality_raw"],
         "z_growth": df["_growth_raw"],
         "z_momentum": df["_mom_raw"],
+        "z_mom_1m": df["_mom_1m_raw"],
         "z_trend": df["_trend_raw"],
         "z_qc": df["_qc_raw"],
     }
@@ -343,14 +346,15 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     #   - 품질·성장·QC·추세 1.0
     #   - 모멘텀 0.3 (과거 가격 상승률 영향 최소화)
     df["z_value_combined"] = (df["z_value"] + df["z_pbr"]) / 2
-    # v3.3: 모멘텀/추세 더 약화, 가치 더 강조 (사용자 피드백: "여전히 모멘텀이 쎄다")
-    _W_VALUE, _W_QUAL, _W_GROW, _W_MOM, _W_TREND, _W_QC = 1.5, 1.0, 1.0, 0.1, 0.5, 1.0
-    _W_TOTAL = _W_VALUE + _W_QUAL + _W_GROW + _W_MOM + _W_TREND + _W_QC
+    # v3.4: 1M 단기 모멘텀 추가 (가중치 0.3) — 최근 급락 반영, 장기 전략 유지
+    _W_VALUE, _W_QUAL, _W_GROW, _W_MOM, _W_MOM1M, _W_TREND, _W_QC = 1.5, 1.0, 1.0, 0.1, 0.3, 0.5, 1.0
+    _W_TOTAL = _W_VALUE + _W_QUAL + _W_GROW + _W_MOM + _W_MOM1M + _W_TREND + _W_QC
     df["composite_base"] = (
         _W_VALUE * df["z_value_combined"]
         + _W_QUAL * df["z_quality"]
         + _W_GROW * df["z_growth"]
         + _W_MOM * df["z_momentum"]
+        + _W_MOM1M * df["z_mom_1m"]
         + _W_TREND * df["z_trend"]
         + _W_QC * df["z_qc"]
     ) / _W_TOTAL
@@ -405,7 +409,7 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
     df["label"] = df["composite"].apply(_composite_label_v3)
 
     cols = ["ticker", "composite", "label", "composite_base",
-            "z_value_combined", "z_quality", "z_growth", "z_momentum", "z_trend", "z_qc",
+            "z_value_combined", "z_quality", "z_growth", "z_momentum", "z_mom_1m", "z_trend", "z_qc",
             "turnaround_bonus", "value_trap_penalty",
             "overheat_penalty", "multi_exp_penalty", "mean_reversion_bonus"]
     out = df[cols].copy()

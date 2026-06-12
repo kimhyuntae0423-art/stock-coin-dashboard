@@ -112,7 +112,7 @@ score_input = summary.merge(funda[FUNDA_COLS], on="ticker", how="left")
 score_input = enrich_price_factors(score_input)
 scores_df = rank_stocks(score_input)
 _SCORE_INPUT_COLS = ["ticker", "close", "state", "action", "rsi14",
-                     "return_12m_pct", "per", "pbr", "roe_pct",
+                     "return_12m_pct", "return_1m_pct", "per", "pbr", "roe_pct",
                      "revenue_growth_yoy_pct", "earnings_growth_yoy_pct"]
 # 누락된 컬럼은 None으로 채워서 KeyError 방지
 for col in _SCORE_INPUT_COLS:
@@ -285,14 +285,14 @@ with tab_summary:
         "momentum_score": "1년 추세", "technical_score": "RSI 신호",
         "per": "PER", "pbr": "PBR", "roe_pct": "ROE(%)",
         "revenue_growth_yoy_pct": "매출YoY(%)", "earnings_growth_yoy_pct": "EPS YoY(%)",
-        "return_12m_pct": "12M 수익률(%)", "rsi14": "RSI",
+        "return_12m_pct": "12M 수익률(%)", "return_1m_pct": "1M 수익률(%)", "rsi14": "RSI",
     })
     st.dataframe(
         rank_table[["순위", "티커", "종목명", "통합 추천", "타이밍", "우선순위 점수",
                     "종합 점수", "추세", "판정",
                     "저평가", "품질", "성장", "1년 추세", "RSI 신호",
                     "종가", "PER", "PBR", "ROE(%)",
-                    "매출YoY(%)", "EPS YoY(%)", "12M 수익률(%)", "RSI"]],
+                    "매출YoY(%)", "EPS YoY(%)", "12M 수익률(%)", "1M 수익률(%)", "RSI"]],
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -322,6 +322,8 @@ with tab_summary:
             "매출YoY(%)": st.column_config.NumberColumn(format="%+.1f"),
             "EPS YoY(%)": st.column_config.NumberColumn(format="%+.1f"),
             "12M 수익률(%)": st.column_config.NumberColumn(format="%+.1f"),
+            "1M 수익률(%)": st.column_config.NumberColumn(
+                "1M 수익률(%)", help="최근 22거래일(약 1개월) 수익률. 단기 흐름 확인용.", format="%+.1f"),
             "RSI": st.column_config.NumberColumn(format="%.1f"),
         },
     )
@@ -435,6 +437,7 @@ with tab_compare:
             "매출YoY(%)": compare["revenue_growth_yoy_pct"].map(lambda v: fmt(v, "{:+.1f}")),
             "EPS YoY(%)": compare["earnings_growth_yoy_pct"].map(lambda v: fmt(v, "{:+.1f}")),
             "12M 수익률(%)": compare["return_12m_pct"].map(lambda v: fmt(v, "{:+.1f}")),
+            "1M 수익률(%)": compare["return_1m_pct"].map(lambda v: fmt(v, "{:+.1f}")),
             "RSI": compare["rsi14"].map(lambda v: fmt(v, "{:.1f}")),
         }
         comp_df = pd.DataFrame(rows).T

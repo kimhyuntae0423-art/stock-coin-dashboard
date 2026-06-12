@@ -29,13 +29,19 @@ def run_stocks(out_dir):
             meta = latest_signal(sigs)
             meta["ticker"] = t
 
-            # 12개월 모멘텀 + 현재 RSI 추가
+            # 12개월 모멘텀 + 1개월 모멘텀 + 현재 RSI 추가
             if len(sigs) >= 252:
                 meta["return_12m_pct"] = round(
                     (float(sigs["Close"].iloc[-1]) / float(sigs["Close"].iloc[-252]) - 1) * 100, 2
                 )
             else:
                 meta["return_12m_pct"] = None
+            if len(sigs) >= 22:
+                meta["return_1m_pct"] = round(
+                    (float(sigs["Close"].iloc[-1]) / float(sigs["Close"].iloc[-22]) - 1) * 100, 2
+                )
+            else:
+                meta["return_1m_pct"] = None
             last_rsi = sigs["rsi14"].iloc[-1] if "rsi14" in sigs.columns else None
             meta["rsi14"] = round(float(last_rsi), 2) if last_rsi is not None and not pd.isna(last_rsi) else None
             rows.append(meta)
