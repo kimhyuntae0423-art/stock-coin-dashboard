@@ -98,15 +98,14 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
             index=0,
             help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
         )
-        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
+        fc1, fc2, fc3 = st.columns([2, 2, 3])
         with fc1:
-            add_date = st.date_input("매수일")
-        with fc2:
             add_qty = st.number_input("수량", min_value=0.0, step=0.00000001, format="%.8f")
-        with fc3:
+        with fc2:
             add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
-        with fc4:
+        with fc3:
             add_notes = st.text_input("메모 (선택)")
+        add_date = st.text_input("매수일 (선택)", placeholder="YYYY-MM-DD, 비워도 됩니다")
         submitted = st.form_submit_button("✅ 추가")
 
     if submitted:
