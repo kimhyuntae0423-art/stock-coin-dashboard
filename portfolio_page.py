@@ -105,12 +105,8 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
     with st.form("add_holding_form", clear_on_submit=True):
         fc1, fc2, fc3 = st.columns([2, 2, 3])
         with fc1:
-            if is_coin:
-                add_qty = st.number_input("수량", min_value=0.0, step=0.00000001, format="%.8f",
-                                          help="코인: 소수점 8자리까지 입력 가능")
-            else:
-                add_qty = st.number_input("수량", min_value=0.0, step=1.0, format="%.4f",
-                                          help="주식/ETF: 1주 단위 (소수주식이면 직접 입력)")
+            qty_help = "코인: 예) 0.005" if is_coin else "주식/ETF: 예) 10, 598"
+            add_qty_str = st.text_input("수량", value="", placeholder="예) 10" if not is_coin else "예) 0.005", help=qty_help)
         with fc2:
             add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
         with fc3:
@@ -120,6 +116,10 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
 
     if submitted:
         selected_label = st.session_state.get("add_holding_label", "")
+        try:
+            add_qty = float(add_qty_str.replace(",", "").strip())
+        except (ValueError, AttributeError):
+            add_qty = 0.0
         if not selected_label or selected_label not in ASSET_LABEL_TO_TICKER:
             st.error("종목을 선택해주세요.")
         elif add_qty <= 0 or add_price <= 0:
