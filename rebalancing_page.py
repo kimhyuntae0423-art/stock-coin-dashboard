@@ -62,6 +62,16 @@ st.caption("Core-Satellite 자산배분 추적 · DCA 시뮬레이터 · 추천 
 
 holdings = _load_holdings()
 
+all_persons = sorted([p for p in holdings["person"].unique() if p and str(p).strip()])
+selected_person = st.selectbox(
+    "👤 계산 대상",
+    options=["전체"] + all_persons,
+    index=0,
+    key="rebal_person_filter",
+)
+if selected_person != "전체":
+    holdings = holdings[holdings["person"] == selected_person].copy()
+
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
