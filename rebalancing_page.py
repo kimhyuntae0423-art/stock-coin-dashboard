@@ -226,25 +226,53 @@ if new_money > 0 and alloc["Total"] > 0:
             st.info("분석 데이터(summary_signals.csv)에 Core ETF 현재가 없음. GitHub Actions 갱신 후 확인하세요.")
 
     # Satellite 매수 후보
-    if sat_buy > 0 and not scores_df.empty:
-        st.markdown("##### 🎯 Satellite 매수 후보 (QVGM 상위)")
-        _sat_pool = scores_df.copy()
-        if not summary.empty:
-            _sat_pool = _sat_pool.merge(summary[["ticker", "close"]], on="ticker", how="left")
-        _sat_pool = _sat_pool[_sat_pool["composite"] > 0].head(10).copy()
-        _sat_pool["종목명"] = _sat_pool["ticker"].map(NAMES).fillna("-")
-        n_sat = max(len(_sat_pool), 1)
-        _sat_pool["균등배분"] = round(sat_buy / n_sat)
-        st.dataframe(
-            _sat_pool[["ticker", "종목명", "composite", "균등배분"]].rename(
-                columns={"ticker": "티커", "composite": "QVGM점수", "균등배분": "배분금액"}
-            ),
-            hide_index=True, use_container_width=True,
-            column_config={
-                "QVGM점수": st.column_config.NumberColumn(format="%+.2f"),
-                "배분금액": st.column_config.NumberColumn(format="%,.0f"),
-            },
-        )
+    if sat_buy > 0:
+        st.markdown("##### 🎯 Satellite 매수 후보")
+        _STOCK_THRESHOLD = 1.0  # QVGM ≥ +1.0 (상위 ~16%) 일 때만 개별주 추천
+
+        _sat_stocks = pd.DataFrame()
+        if not scores_df.empty:
+            _sat_pool = scores_df.copy()
+            if not summary.empty:
+                _sat_pool = _sat_pool.merge(summary[["ticker", "close"]], on="ticker", how="left")
+            _sat_stocks = _sat_pool[_sat_pool["composite"] >= _STOCK_THRESHOLD].head(10).copy()
+
+        if not _sat_stocks.empty:
+            st.caption(f"QVGM ≥ +{_STOCK_THRESHOLD} 개별주가 있어 개별주를 추천합니다.")
+            _sat_stocks["종목명"] = _sat_stocks["ticker"].map(NAMES).fillna("-")
+            n_sat = max(len(_sat_stocks), 1)
+            _sat_stocks["균등배분"] = round(sat_buy / n_sat)
+            st.dataframe(
+                _sat_stocks[["ticker", "종목명", "composite", "균등배분"]].rename(
+                    columns={"ticker": "티커", "composite": "QVGM점수", "균등배분": "배분금액"}
+                ),
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "QVGM점수": st.column_config.NumberColumn(format="%+.2f"),
+                    "배분금액": st.column_config.NumberColumn(format="%,.0f"),
+                },
+            )
+        else:
+            st.caption(f"QVGM +{_STOCK_THRESHOLD} 이상 개별주 없음 → 섹터/테마 ETF를 추천합니다.")
+            _sector_etfs = core_etfs[
+                core_etfs["category"].str.contains("섹터|테마", na=False)
+            ].copy()
+            if not summary.empty:
+                _pm = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"]))
+                _sector_etfs["현재가"] = _sector_etfs["ticker"].astype(str).str.upper().map(_pm)
+            if not _sector_etfs.empty:
+                n_etf = max(len(_sector_etfs), 1)
+                _sector_etfs["균등배분"] = round(sat_buy / n_etf)
+                st.dataframe(
+                    _sector_etfs[["ticker", "name", "category", "expense_ratio", "currency", "균등배분"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
+                        "균등배분": st.column_config.NumberColumn(format="%,.0f"),
+                    },
+                )
+            else:
+                st.info("섹터/테마 ETF 데이터 없음. core_etfs.csv를 확인하세요.")
 elif new_money > 0:
     st.info("현재 보유 포트폴리오가 없습니다. 보유종목 페이지에서 먼저 종목을 추가하세요.")
 
