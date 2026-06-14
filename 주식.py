@@ -8,9 +8,10 @@ st.set_page_config(
 )
 
 pages = [
-    st.Page("stocks_page.py",    title="주식",      icon="📈", default=True),
-    st.Page("coin_page.py",      title="코인",      icon="🪙"),
-    st.Page("portfolio_page.py", title="보유 종목", icon="💼"),
+    st.Page("stocks_page.py",       title="주식",      icon="📈", default=True),
+    st.Page("coin_page.py",         title="코인",      icon="🪙"),
+    st.Page("portfolio_page.py",    title="보유종목",  icon="💼"),
+    st.Page("rebalancing_page.py",  title="리밸런싱",  icon="⚖️"),
 ]
 nav = st.navigation(pages)
 nav.run()
