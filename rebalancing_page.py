@@ -241,6 +241,20 @@ else:
         on="ticker", how="left",
     )
 
+    # ETF는 fundamentals.csv에 없으므로 core_etfs.csv에서 currency/sector 보완
+    _etf_meta = core_etfs[["ticker", "currency", "category"]].copy()
+    _etf_meta["ticker"] = _etf_meta["ticker"].astype(str).str.strip().str.upper()
+    _etf_meta = _etf_meta.rename(columns={"currency": "_etf_cur", "category": "_etf_sec"})
+    pool["ticker"] = pool["ticker"].astype(str).str.strip().str.upper()
+    pool = pool.merge(_etf_meta, on="ticker", how="left")
+    if "currency" not in pool.columns:
+        pool["currency"] = None
+    if "sector" not in pool.columns:
+        pool["sector"] = None
+    pool["currency"] = pool["currency"].combine_first(pool["_etf_cur"])
+    pool["sector"] = pool["sector"].combine_first(pool["_etf_sec"])
+    pool.drop(columns=["_etf_cur", "_etf_sec"], inplace=True, errors="ignore")
+
     def _timing(row):
         oh = row.get("overheat_penalty", 0) or 0
         mr = row.get("mean_reversion_bonus", 0) or 0
