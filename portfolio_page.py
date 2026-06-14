@@ -74,9 +74,20 @@ ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
 
 def _load_holdings() -> pd.DataFrame:
+    empty = pd.DataFrame({
+        "ticker": pd.Series(dtype="str"),
+        "qty": pd.Series(dtype="float64"),
+        "buy_price": pd.Series(dtype="float64"),
+        "buy_date": pd.Series(dtype="str"),
+        "notes": pd.Series(dtype="str"),
+    })
     if not HOLDINGS_FILE.exists() or HOLDINGS_FILE.stat().st_size < 10:
-        return pd.DataFrame(columns=["ticker", "qty", "buy_price", "buy_date", "notes"])
-    return pd.read_csv(HOLDINGS_FILE)
+        return empty
+    df = pd.read_csv(HOLDINGS_FILE)
+    for col in ["qty", "buy_price"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    return df
 
 
 def _save_holdings(df: pd.DataFrame):
