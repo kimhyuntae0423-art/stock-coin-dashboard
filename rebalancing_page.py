@@ -228,17 +228,22 @@ if new_money > 0 and alloc["Total"] > 0:
     # Satellite 매수 후보
     if sat_buy > 0:
         st.markdown("##### 🎯 Satellite 매수 후보")
-        _STOCK_THRESHOLD = 1.0  # QVGM ≥ +1.0 (상위 ~16%) 일 때만 개별주 추천
+        # 장기 시장 초과수익 기대: composite ≥ +1.5(상위 7%) AND quality_z > 0(수익성 평균 이상)
+        # 근거: Fama-French/AQR — Value+Quality 교차점이 장기 알파의 핵심 동인
+        _STOCK_THRESHOLD = 1.5
 
         _sat_stocks = pd.DataFrame()
         if not scores_df.empty:
             _sat_pool = scores_df.copy()
             if not summary.empty:
                 _sat_pool = _sat_pool.merge(summary[["ticker", "close"]], on="ticker", how="left")
-            _sat_stocks = _sat_pool[_sat_pool["composite"] >= _STOCK_THRESHOLD].head(10).copy()
+            _mask = _sat_pool["composite"] >= _STOCK_THRESHOLD
+            if "z_quality" in _sat_pool.columns:
+                _mask &= _sat_pool["z_quality"] > 0
+            _sat_stocks = _sat_pool[_mask].head(10).copy()
 
         if not _sat_stocks.empty:
-            st.caption(f"QVGM ≥ +{_STOCK_THRESHOLD} 개별주가 있어 개별주를 추천합니다.")
+            st.caption(f"QVGM ≥ +{_STOCK_THRESHOLD} & 수익성 평균 이상 — 장기 시장 초과수익 기대 종목입니다.")
             _sat_stocks["종목명"] = _sat_stocks["ticker"].map(NAMES).fillna("-")
             n_sat = max(len(_sat_stocks), 1)
             _sat_stocks["균등배분"] = round(sat_buy / n_sat)
