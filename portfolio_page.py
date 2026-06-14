@@ -223,24 +223,33 @@ _edit_df["person"] = _edit_df["person"].fillna("").astype(str) if "person" in _e
 _edit_df["notes"] = _edit_df["notes"].fillna("").astype(str) if "notes" in _edit_df.columns else ""
 _edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"})
 
+# 선택한 사람만 편집 테이블에 표시
+if selected_person != "전체":
+    _edit_df_show = _edit_df[_edit_df["이름"] == selected_person].copy()
+    _others = holdings[holdings["person"] != selected_person].copy()
+else:
+    _edit_df_show = _edit_df.copy()
+    _others = None
+
 edited_partial = st.data_editor(
-    _edit_df,
+    _edit_df_show,
     num_rows="dynamic",
     use_container_width=True,
-    key="holdings_editor",
+    key=f"holdings_editor_{selected_person}",
 )
-edited = edited_partial.rename(columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"})
-edited["buy_date"] = (
-    holdings["buy_date"].values[:len(edited)]
-    if "buy_date" in holdings.columns and len(holdings) == len(edited)
-    else ""
-)
+edited_cur = edited_partial.rename(columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"})
+edited_cur["buy_date"] = ""
 
-# 사람 필터 적용 (현황 계산용)
-if selected_person != "전체":
-    holdings_view = edited[edited["person"] == selected_person].copy()
+# 다른 사람 데이터 합쳐서 전체 저장용 DataFrame 구성
+if selected_person != "전체" and _others is not None and not _others.empty:
+    edited = pd.concat([edited_cur, _others], ignore_index=True)
 else:
-    holdings_view = edited.copy()
+    edited = edited_cur.copy()
+    if selected_person == "전체" and "buy_date" in holdings.columns and len(holdings) == len(edited):
+        edited["buy_date"] = holdings["buy_date"].values
+
+# 현황 계산용은 현재 편집 대상만
+holdings_view = edited_cur.copy()
 
 sc1, sc2, sc3 = st.columns([1, 1, 4])
 with sc1:
