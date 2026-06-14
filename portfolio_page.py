@@ -91,16 +91,26 @@ st.caption("장기 분할매수 포트폴리오 추적. 매수 내역 입력 →
 # =====================================================================
 with st.expander("➕ 매수 내역 추가", expanded=True):
     st.caption("종목 이름으로 검색해서 선택하세요. 티커를 몰라도 됩니다.")
+
+    # selectbox를 form 밖으로 분리 → 선택 즉시 수량 입력 형식 전환
+    selected_label = st.selectbox(
+        "종목 검색",
+        options=[""] + ASSET_LABELS,
+        index=0,
+        help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
+        key="add_holding_label",
+    )
+    is_coin = selected_label.endswith("· 코인")
+
     with st.form("add_holding_form", clear_on_submit=True):
-        selected_label = st.selectbox(
-            "종목 검색",
-            options=[""] + ASSET_LABELS,
-            index=0,
-            help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
-        )
         fc1, fc2, fc3 = st.columns([2, 2, 3])
         with fc1:
-            add_qty = st.number_input("수량", min_value=0.0, step=0.00000001, format="%.8f")
+            if is_coin:
+                add_qty = st.number_input("수량", min_value=0.0, step=0.00000001, format="%.8f",
+                                          help="코인: 소수점 8자리까지 입력 가능")
+            else:
+                add_qty = st.number_input("수량", min_value=0.0, step=1.0, format="%.4f",
+                                          help="주식/ETF: 1주 단위 (소수주식이면 직접 입력)")
         with fc2:
             add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
         with fc3:
@@ -109,6 +119,7 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
         submitted = st.form_submit_button("✅ 추가")
 
     if submitted:
+        selected_label = st.session_state.get("add_holding_label", "")
         if not selected_label or selected_label not in ASSET_LABEL_TO_TICKER:
             st.error("종목을 선택해주세요.")
         elif add_qty <= 0 or add_price <= 0:
