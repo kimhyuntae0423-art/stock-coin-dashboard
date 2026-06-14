@@ -201,19 +201,25 @@ else:
 st.subheader("✏️ 보유 내역 편집")
 st.caption("수량·매수가·메모 수정 가능. 행 삭제는 체크박스 선택 후 Delete키. 수정 후 반드시 '💾 저장' 클릭.")
 
-edited = st.data_editor(
-    holdings,
+_edit_cols = ["ticker", "qty", "buy_price", "notes"]
+_edit_df = holdings[_edit_cols].copy() if all(c in holdings.columns for c in _edit_cols) else holdings.copy()
+
+edited_partial = st.data_editor(
+    _edit_df,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
         "ticker": st.column_config.TextColumn("티커", help="위 '매수 추가' 폼으로 입력하면 자동 채워집니다.", required=True),
-        "qty": st.column_config.NumberColumn("수량", format="%.8f"),
-        "buy_price": st.column_config.NumberColumn("매수가", format="%.2f"),
-        "buy_date": None,
+        "qty": st.column_config.NumberColumn("수량"),
+        "buy_price": st.column_config.NumberColumn("매수가"),
         "notes": st.column_config.TextColumn("메모"),
     },
     key="holdings_editor",
 )
+# buy_date 컬럼 복원
+edited = edited_partial.copy()
+if "buy_date" not in edited.columns:
+    edited["buy_date"] = holdings["buy_date"].values[:len(edited)] if "buy_date" in holdings.columns and len(holdings) == len(edited) else ""
 
 sc1, sc2 = st.columns([1, 4])
 with sc1:
