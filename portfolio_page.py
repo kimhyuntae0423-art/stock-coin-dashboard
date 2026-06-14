@@ -69,6 +69,7 @@ def _load_holdings() -> pd.DataFrame:
         "buy_price": pd.Series(dtype="float64"),
         "buy_date": pd.Series(dtype="str"),
         "notes": pd.Series(dtype="str"),
+        "person": pd.Series(dtype="str"),
     })
     if not HOLDINGS_FILE.exists() or HOLDINGS_FILE.stat().st_size < 10:
         return empty
@@ -76,6 +77,9 @@ def _load_holdings() -> pd.DataFrame:
     for col in ["qty", "buy_price"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    if "person" not in df.columns:
+        df["person"] = ""
+    df["person"] = df["person"].fillna("")
     return df
 
 
@@ -119,6 +123,17 @@ tab1, tab2 = st.tabs(["📋 보유내역", "🏛️ 자산배분"])
 # =====================================================================
 with tab1:
 
+    # ── 사람 필터 ────────────────────────────────────────────────────
+    all_persons = sorted([p for p in holdings["person"].unique() if p and str(p).strip()])
+    person_options = ["전체"] + all_persons
+    selected_person = st.selectbox(
+        "👤 보기/계산 대상",
+        options=person_options,
+        index=0,
+        help="선택한 사람의 보유종목만 표시하고 리밸런싱을 계산합니다.",
+        key="person_filter",
+    )
+
     # ── 매수 내역 추가 ──────────────────────────────────────────────
     with st.expander("➕ 매수 내역 추가", expanded=True):
         st.caption("종목 이름으로 검색해서 선택하세요. 티커를 몰라도 됩니다.")
@@ -133,7 +148,7 @@ with tab1:
         is_coin = selected_label.endswith("· 코인")
 
         with st.form("add_holding_form", clear_on_submit=True):
-            fc1, fc2, fc3 = st.columns([2, 2, 3])
+            fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
             with fc1:
                 qty_help = "코인: 예) 0.005" if is_coin else "주식/ETF: 예) 10, 598"
                 add_qty_str = st.text_input(
@@ -144,6 +159,8 @@ with tab1:
             with fc2:
                 add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
             with fc3:
+                add_person = st.text_input("이름", placeholder="예) 김철수")
+            with fc4:
                 add_notes = st.text_input("메모 (선택)")
             submitted = st.form_submit_button("✅ 추가")
 
@@ -163,10 +180,11 @@ with tab1:
                 new_row = pd.DataFrame([{
                     "ticker": ticker, "qty": add_qty,
                     "buy_price": add_price, "buy_date": "", "notes": add_notes,
+                    "person": add_person.strip(),
                 }])
                 updated = pd.concat([current, new_row], ignore_index=True)
                 _save_holdings(updated)
-                st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.2f}) 추가 완료!")
+                st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.2f}) [{add_person or '미지정'}] 추가 완료!")
                 st.rerun()
 
     # ── CSV 백업 / 복원 ─────────────────────────────────────────────
@@ -215,13 +233,14 @@ with tab1:
     st.subheader("✏️ 보유 내역 편집")
     st.caption("수량·매수가·메모 수정 가능. 행 삭제는 체크박스 선택 후 Delete키. 수정 후 반드시 '💾 저장' 클릭.")
 
-    _edit_cols = ["ticker", "qty", "buy_price", "notes"]
+    _edit_cols = ["ticker", "qty", "buy_price", "person", "notes"]
     _edit_df = holdings[_edit_cols].copy() if all(c in holdings.columns for c in _edit_cols) else holdings[["ticker", "qty", "buy_price"]].copy()
     _edit_df["ticker"] = _edit_df["ticker"].fillna("").astype(str)
     _edit_df["qty"] = pd.to_numeric(_edit_df["qty"], errors="coerce").fillna(0.0)
     _edit_df["buy_price"] = pd.to_numeric(_edit_df["buy_price"], errors="coerce").fillna(0.0)
+    _edit_df["person"] = _edit_df["person"].fillna("").astype(str) if "person" in _edit_df.columns else ""
     _edit_df["notes"] = _edit_df["notes"].fillna("").astype(str) if "notes" in _edit_df.columns else ""
-    _edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "notes": "메모"})
+    _edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"})
 
     edited_partial = st.data_editor(
         _edit_df,
@@ -229,12 +248,18 @@ with tab1:
         use_container_width=True,
         key="holdings_editor",
     )
-    edited = edited_partial.rename(columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "메모": "notes"})
+    edited = edited_partial.rename(columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"})
     edited["buy_date"] = (
         holdings["buy_date"].values[:len(edited)]
         if "buy_date" in holdings.columns and len(holdings) == len(edited)
         else ""
     )
+
+    # 사람 필터 적용 (현황 계산용)
+    if selected_person != "전체":
+        holdings_view = edited[edited["person"] == selected_person].copy()
+    else:
+        holdings_view = edited.copy()
 
     sc1, sc2, sc3 = st.columns([1, 1, 4])
     with sc1:
@@ -261,9 +286,11 @@ with tab1:
     st.divider()
 
     # ── 현황 + 매도 신호 ─────────────────────────────────────────────
-    st.subheader("📊 현황 + 매도 신호")
+    label_suffix = f" — {selected_person}" if selected_person != "전체" else " — 전체"
+    st.subheader(f"📊 현황 + 매도 신호{label_suffix}")
 
-    view = edited.dropna(subset=["ticker"]).copy()
+    view = holdings_view.dropna(subset=["ticker"]).copy()
+    view = view[view["ticker"].astype(str).str.strip() != ""].copy()
     view["ticker"] = view["ticker"].astype(str).str.strip().str.upper()
 
     if not summary.empty:
