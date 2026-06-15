@@ -349,7 +349,7 @@ def holding_signal(row):
         return "🟠 주의", " · ".join(reasons)
     if action == "매수":
         return "🟢 추가 매수 가능", "단기(50일)선이 장기(200일)선 위로 올라옴 → 상승 추세 확인, 분할 매수 적기"
-    return "✅ 보유", "특이사항 없음"
+    return "🔵 보유", "특이사항 없음"
 
 
 sigs = view.apply(holding_signal, axis=1)
