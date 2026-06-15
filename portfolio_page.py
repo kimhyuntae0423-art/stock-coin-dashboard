@@ -325,14 +325,18 @@ def holding_signal(row):
         reasons.append(f"RSI {rsi:.0f} — 단기 과열 구간, 추가 상승 여력 제한적")
         severity = max(severity, 1)
     if pd.notna(pnl_pct) and pnl_pct <= -20:
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 크게 이탈, 매도 검토 필요")
         severity = max(severity, 2)
+        if action == "매수":
+            # 골든크로스(상승추세)인데 손실이 큰 경우 — 충돌 신호
+            return (
+                "⚡ 신호 충돌",
+                f"📉 매수가 대비 {pnl_pct:.1f}% 손절 이탈 — 매도 검토 필요\n"
+                f"📈 단, 현재 골든크로스(50일선>200일선) — 시장 추세는 상승 중",
+            )
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 크게 이탈, 매도 검토 필요")
     elif pd.notna(pnl_pct) and pnl_pct <= -8 and severity < 2:
         reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈, 추가 하락 시 대응 필요")
         severity = max(severity, 1)
-    # 손실 신호로 매도 검토가 떴지만, 현재 추세가 상승(골든크로스)인 경우 병기
-    if severity >= 2 and action == "매수":
-        reasons.append("※ 단, 현재 50일선이 200일선 위(골든크로스) — 시장 추세는 상승 전환 중. 내 매수가 기준 손실이지 현재 추세가 나쁜 것은 아님")
     if severity == 2:
         return "🔴 매도 검토", " · ".join(reasons)
     if severity == 1:
@@ -405,9 +409,6 @@ display["신호"] = display["신호"].str.extract(r"^(\S)")[0]
 _display_cols = ["신호", "종목명", "수량", "매수가", "현재가",
                  "원금", "손익", "평가금액", "수익률(%)", "사유"]
 display_table = display[_display_cols].copy()
-display_table["사유"] = display_table["사유"].apply(
-    lambda x: str(x).split(" · ")[0] if pd.notna(x) else ""
-)
 
 for _col in ["매수가", "현재가"]:
     display_table[_col] = display_table[_col].apply(
@@ -435,25 +436,30 @@ st.dataframe(
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
+        "사유": st.column_config.TextColumn("사유", width="large"),
     },
 )
 st.markdown("""
-<div style='display:flex; gap:12px; margin-top:16px; margin-bottom:32px'>
-  <div style='flex:1; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:12px 14px'>
+<div style='display:flex; gap:10px; margin-top:16px; margin-bottom:32px; flex-wrap:wrap'>
+  <div style='flex:1; min-width:160px; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 가능</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>단기(50일) 평균선이 장기(200일) 위<br>상승 추세 확인 → 분할 매수 검토</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>단기(50일) 평균선이 장기(200일) 위<br>상승 추세 → 분할 매수 검토</div>
   </div>
-  <div style='flex:1; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px 14px'>
+  <div style='flex:1; min-width:160px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유</div>
     <div style='font-size:12px; color:#555; line-height:1.6'>특이 신호 없음<br>현재 추세 유지 중</div>
   </div>
-  <div style='flex:1; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:12px 14px'>
+  <div style='flex:1; min-width:160px; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 주의</div>
     <div style='font-size:12px; color:#555; line-height:1.6'>하락 추세 / RSI 70+ 과열 /<br>매수가 대비 -8% 이상 손실</div>
   </div>
-  <div style='flex:1; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:12px 14px'>
+  <div style='flex:1; min-width:160px; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 매도 검토</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>단기선이 장기선 아래로 하락 전환 /<br>RSI 80+ 극단 과열 / -20% 이상 손실</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>하락 전환 / RSI 80+ 극단 과열<br>매수가 대비 -20% 이상 손실</div>
+  </div>
+  <div style='flex:1; min-width:160px; background:#fefce8; border-left:4px solid #eab308; border-radius:6px; padding:12px 14px'>
+    <div style='font-size:14px; font-weight:700; color:#a16207; margin-bottom:4px'>⚡ 신호 충돌</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>현재 추세는 상승(골든크로스)인데<br>내 매수가 대비 -20% 이상 손실<br>→ 직접 판단 필요</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
