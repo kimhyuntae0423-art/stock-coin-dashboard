@@ -414,6 +414,8 @@ display_table = display[_display_cols].rename(
 
 _totals = {c: "" for c in display_table.columns}
 _totals["티커"] = "합계"
+_totals["매수가"] = None
+_totals["현재가"] = None
 _totals["원금"] = total_cost
 _totals["손익"] = total_pnl
 _totals["평가금액"] = total_value
