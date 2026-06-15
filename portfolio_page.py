@@ -549,12 +549,16 @@ for _, row in view.iterrows():
 
             fig_detail = go.Figure()
             fig_detail.add_trace(go.Scatter(
-                x=sig_df["date"], y=sig_df["close"], name="종가",
+                x=sig_df["date"], y=sig_df["close"], name="현재가격",
                 line=dict(color="#4C9BE8", width=1.5)))
 
-            ma_styles = [("ma20","MA20","#FFA500"),("ma50","MA50","#2CA02C"),
-                         ("ma200","MA200","#D62728"),("sma20w","SMA20W","#9467BD"),
-                         ("ema21w","EMA21W","#8C564B")]
+            ma_styles = [
+                ("ma20",  "20일 평균선 (단기)",  "#FFA500"),
+                ("ma50",  "50일 평균선 (중기)",  "#2CA02C"),
+                ("ma200", "200일 평균선 (장기)", "#D62728"),
+                ("sma20w","20주 평균선",         "#9467BD"),
+                ("ema21w","21주 가중평균선",      "#8C564B"),
+            ]
             for ma_col, ma_name, ma_color in ma_styles:
                 if ma_col in sig_df.columns:
                     fig_detail.add_trace(go.Scatter(
@@ -563,7 +567,7 @@ for _, row in view.iterrows():
 
             fig_detail.add_hline(
                 y=buy_line, line_dash="dash", line_color="#E377C2",
-                annotation_text=f"매수가 {buy_line:,.0f}",
+                annotation_text=f"내 매수가 {buy_line:,.0f}",
                 annotation_position="bottom right")
             fig_detail.update_layout(
                 height=300, margin=dict(t=10, b=30, l=10, r=10),
@@ -571,51 +575,86 @@ for _, row in view.iterrows():
                 xaxis_rangeslider_visible=False,
                 yaxis_tickformat=",")
             st.plotly_chart(fig_detail, use_container_width=True)
+            st.caption(
+                "📌 **차트 보는 법**: 파란선=실제 가격 / 주황·초록·빨간선=기간별 평균 가격(평균선이 우상향이면 상승 추세) / "
+                "보라 점선=내가 산 가격 / **초록선(50일)이 빨간선(200일) 위**면 상승 추세, 아래면 하락 추세"
+            )
 
-            # ── 기술적 지표 ────────────────────────────────────────
+            # ── 핵심 지표 (쉬운 설명) ──────────────────────────────
+            st.markdown("**📊 핵심 지표**")
             latest = sig_df.iloc[-1]
             cols = sig_df.columns.tolist()
             ind1, ind2, ind3, ind4 = st.columns(4)
 
             rsi = latest.get("rsi14")
             if pd.notna(rsi):
-                rsi_tag = "과열" if rsi >= 70 else ("과매도(반등)" if rsi <= 30 else "정상")
-                ind1.metric("RSI(14)", f"{rsi:.1f}", delta=rsi_tag, delta_color="off")
+                rsi_tag = "🔥 과열 — 단기 조정 주의" if rsi >= 70 else ("🟢 낙폭 과다 — 반등 가능" if rsi <= 30 else "✅ 정상 구간")
+                ind1.metric(
+                    "과열 온도계 (RSI)",
+                    f"{rsi:.0f} / 100",
+                    delta=rsi_tag,
+                    delta_color="off",
+                    help="0~100 사이 숫자. 70 이상이면 단기 과열(조정 가능), 30 이하면 낙폭 과다(반등 가능), 그 사이는 정상.",
+                )
 
             ma50v = latest.get("ma50")
             ma200v = latest.get("ma200")
             if pd.notna(ma50v) and pd.notna(ma200v) and ma200v > 0:
                 spread = (ma50v / ma200v - 1) * 100
-                ind2.metric("MA50/200 괴리율", f"{spread:+.1f}%",
-                            delta="상승추세" if spread > 0 else "하락추세",
-                            delta_color="normal" if spread > 0 else "inverse")
+                ind2.metric(
+                    "추세 방향",
+                    "상승 추세 ▲" if spread > 0 else "하락 추세 ▼",
+                    delta=f"단기평균이 장기평균보다 {abs(spread):.1f}% {'높음' if spread > 0 else '낮음'}",
+                    delta_color="normal" if spread > 0 else "inverse",
+                    help="50일 평균선이 200일 평균선보다 높으면 상승 추세(골든크로스), 낮으면 하락 추세(데드크로스).",
+                )
 
             if "macd_hist" in cols:
                 mh = latest.get("macd_hist")
-                mv = latest.get("macd")
-                if pd.notna(mh) and pd.notna(mv):
-                    ind3.metric("MACD", f"{mv:,.1f}",
-                                delta=f"히스토그램 {mh:+.1f}",
-                                delta_color="normal" if mh > 0 else "inverse")
+                if pd.notna(mh):
+                    ind3.metric(
+                        "상승 가속도 (MACD)",
+                        "가속 중 ▲" if mh > 0 else "감속 중 ▼",
+                        delta=f"{'오름세 강해지는 중' if mh > 0 else '내림세 강해지는 중'}",
+                        delta_color="normal" if mh > 0 else "inverse",
+                        help="양수(+)면 현재 오르는 속도가 빨라지고 있다는 뜻, 음수(-)면 내리는 속도가 빨라지고 있다는 뜻.",
+                    )
 
             if "bb_pct" in cols:
                 bb = latest.get("bb_pct")
                 if pd.notna(bb):
-                    bb_tag = "상단 근접(과열)" if bb > 0.8 else ("하단 근접(반등)" if bb < 0.2 else "중간권")
-                    ind4.metric("볼린저밴드 위치", f"{bb:.0%}", delta=bb_tag, delta_color="off")
+                    if bb > 0.8:
+                        bb_tag, bb_desc = "상단 근접 — 단기 비쌈", "inverse"
+                    elif bb < 0.2:
+                        bb_tag, bb_desc = "하단 근접 — 단기 저렴", "normal"
+                    else:
+                        bb_tag, bb_desc = "중간 구간 — 보통 수준", "off"
+                    ind4.metric(
+                        "가격 위치 (볼린저밴드)",
+                        f"{bb:.0%}",
+                        delta=bb_tag,
+                        delta_color=bb_desc,
+                        help="최근 가격 변동 범위 안에서 지금 가격이 어디 있는지. 0%=밴드 바닥(저렴), 100%=밴드 천장(비쌈), 50%=중간.",
+                    )
             elif "momentum20" in cols:
                 mom = latest.get("momentum20")
                 if pd.notna(mom):
-                    ind4.metric("20일 모멘텀", f"{mom:+.2%}",
-                                delta_color="normal" if mom > 0 else "inverse")
+                    ind4.metric(
+                        "20일 상승률",
+                        f"{mom:+.1%}",
+                        delta="오르는 중" if mom > 0 else "내리는 중",
+                        delta_color="normal" if mom > 0 else "inverse",
+                        help="최근 20일 동안 가격이 얼마나 올랐는지(양수) 또는 내렸는지(음수).",
+                    )
 
         # ── 현재 신호 사유 ─────────────────────────────────────────
-        st.info(f"**신호 사유**: {row['사유']}")
+        st.info(f"**지금 이 신호가 뜬 이유**: {row['사유']}")
 
         # ── BTC 온체인 지표 ────────────────────────────────────────
         if ticker == "BTC-USD" and _cycle is not None:
             st.markdown("---")
-            st.markdown("**📡 BTC 온체인 사이클 지표**")
+            st.markdown("**📡 비트코인 사이클 온도계** — 블록체인 데이터로 보는 BTC 현재 국면")
+            st.caption("온체인 지표는 실제 BTC 거래 데이터를 기반으로 계산합니다. 가격 차트보다 더 근본적인 시장 상태를 알려줍니다.")
             oc1, oc2, oc3, oc4 = st.columns(4)
 
             mvrv = _cycle.get("mvrv_z")
@@ -625,22 +664,44 @@ for _, row in view.iterrows():
             pi_sma350x2 = _cycle.get("pi_sma350x2")
 
             if pd.notna(mvrv):
-                mvrv_tag = "극단과열(매도)" if mvrv>7 else ("과열주의" if mvrv>3.7 else ("적정" if mvrv>0 else "바닥권(매수적기)"))
-                oc1.metric("MVRV Z-Score", f"{mvrv:.2f}", delta=mvrv_tag, delta_color="off")
+                mvrv_tag = "🔴 극단 과열 — 매도 구간" if mvrv>7 else ("🟠 과열 주의" if mvrv>3.7 else ("🟢 적정 수준" if mvrv>0 else "🟢 역사적 바닥권"))
+                oc1.metric(
+                    "거품 온도계 (MVRV)",
+                    f"{mvrv:.2f}",
+                    delta=mvrv_tag,
+                    delta_color="off",
+                    help="BTC 전체 보유자의 평균 수익률을 나타내는 지표. 0 이하=역사적 바닥, 3.7 이상=과열, 7 이상=극단 거품(역대 고점 직전 수준).",
+                )
 
             if pd.notna(nupl):
-                nupl_tag = "극단탐욕" if nupl>0.75 else ("탐욕" if nupl>0.5 else ("낙관" if nupl>0.25 else ("희망" if nupl>0 else "항복(바닥)")))
-                oc2.metric("NUPL", f"{nupl:.3f}", delta=nupl_tag, delta_color="off")
+                nupl_tag = "🔴 극단 탐욕" if nupl>0.75 else ("🟠 탐욕" if nupl>0.5 else ("🟡 낙관" if nupl>0.25 else ("🟢 희망(바닥권)" if nupl>0 else "🟢 항복(매수 적기)")))
+                oc2.metric(
+                    "투자자 심리 (NUPL)",
+                    f"{nupl:.2f}",
+                    delta=nupl_tag,
+                    delta_color="off",
+                    help="전체 BTC 투자자가 지금 얼마나 수익/손실 상태인지를 -1~1로 나타냄. 0 근처=손익분기점, 0.75 이상=극단 탐욕(팔아야 할 때), 0 이하=항복(살 때).",
+                )
 
             if pd.notna(puell):
-                puell_tag = "매수 적기" if puell < 0.5 else ("과열" if puell > 4 else "중립")
-                oc3.metric("Puell Multiple", f"{puell:.2f}", delta=puell_tag, delta_color="off")
+                puell_tag = "🟢 채굴자 수익 낮음 — 매수 적기" if puell < 0.5 else ("🔴 채굴자 수익 과열" if puell > 4 else "🟡 중립")
+                oc3.metric(
+                    "채굴자 수익 지표 (Puell)",
+                    f"{puell:.2f}",
+                    delta=puell_tag,
+                    delta_color="off",
+                    help="채굴자들이 지금 얼마나 수익을 내는지. 0.5 이하=채굴자 손실 중(역사적 바닥 신호), 4 이상=채굴자 과잉 수익(고점 신호).",
+                )
 
             if pd.notna(pi_sma111) and pd.notna(pi_sma350x2):
                 pi_cross = pi_sma111 > pi_sma350x2
-                oc4.metric("Pi Cycle Top", "⚠️ 교차(정점 신호)" if pi_cross else "안전",
-                           delta=f"SMA111: {pi_sma111:,.0f} / 350×2: {pi_sma350x2:,.0f}",
-                           delta_color="inverse" if pi_cross else "off")
+                oc4.metric(
+                    "사이클 고점 신호 (Pi Cycle)",
+                    "⚠️ 교차 발생 — 고점 신호" if pi_cross else "✅ 안전 구간",
+                    delta="두 평균선이 교차하면 역대 사이클 고점과 일치했음" if pi_cross else "두 평균선 미교차 — 아직 고점 아님",
+                    delta_color="inverse" if pi_cross else "off",
+                    help="111일 평균선이 350일×2 평균선을 돌파하면 BTC 사이클 정점 신호. 역사적으로 이 교차 직후 대폭락이 시작됐음.",
+                )
 
             alt_score = _cycle.get("alt_season_score")
             alt_label = _cycle.get("alt_season_label", "")
