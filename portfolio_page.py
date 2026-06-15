@@ -412,12 +412,8 @@ display["RSI(과열)"] = display["RSI(과열)"].apply(_rsi_label)
 display["신호"] = display["신호"].str.extract(r"^(\S)")[0]
 
 _display_cols = ["신호", "종목명", "수량", "매수가", "현재가",
-                 "원금", "손익", "평가금액", "수익률(%)", "사유",
-                 "action", "RSI(과열)", "last_cross_date", "notes"]
-display_table = display[_display_cols].rename(
-    columns={"action": "추세(50/200일선)",
-             "last_cross_date": "추세 시작일", "notes": "메모"}
-)
+                 "원금", "손익", "평가금액", "수익률(%)", "사유"]
+display_table = display[_display_cols].copy()
 
 for _col in ["매수가", "현재가"]:
     display_table[_col] = display_table[_col].apply(
@@ -437,18 +433,14 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
-        "신호": st.column_config.TextColumn("", width="small"),
+        "신호": st.column_config.TextColumn("신호", width="small"),
         "수량": st.column_config.TextColumn("수량"),
         "매수가": st.column_config.TextColumn("매수가"),
         "현재가": st.column_config.TextColumn("현재가"),
-        "추세 시작일": st.column_config.TextColumn("추세 시작일",
-            help="마지막 골든크로스(상승 전환) 또는 데드크로스(하락 전환) 발생일"),
         "원금": st.column_config.NumberColumn(format="%,.0f"),
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
-        "RSI(과열)": st.column_config.TextColumn("RSI(과열)",
-            help="0~100. 70+ 과열, 30- 과매도(반등 기회), 그 외 정상"),
     },
 )
 st.caption(
