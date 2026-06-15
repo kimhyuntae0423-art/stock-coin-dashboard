@@ -376,7 +376,7 @@ display = view.rename(columns={
 
 # 코인 여부 판별 (티커에 -USD 포함)
 def _qty_fmt(row):
-    return f"{row['수량']:.8g}" if "-USD" in str(row["티커"]) else f"{int(round(row['수량'])):,}"
+    return f"{row['수량']:.8f}" if "-USD" in str(row["티커"]) else f"{int(round(row['수량'])):,}"
 display["수량"] = display.apply(_qty_fmt, axis=1)
 display["action"] = display["action"].map({"매수": "상승추세", "미보유": "하락추세"}).fillna(display["action"])
 
