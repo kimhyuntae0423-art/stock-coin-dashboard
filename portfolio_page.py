@@ -404,15 +404,24 @@ def _rsi_label(v):
     return f"{v:.1f} (정상)"
 display["RSI(과열)"] = display["RSI(과열)"].apply(_rsi_label)
 
-display = display.sort_values(["원금", "손익", "평가금액"], ascending=False).reset_index(drop=True)
+_display_cols = ["신호", "티커", "종목명", "수량", "매수가", "현재가",
+                 "원금", "손익", "평가금액", "수익률(%)", "사유",
+                 "action", "RSI(과열)", "last_cross_date", "notes"]
+display_table = display[_display_cols].rename(
+    columns={"action": "추세(50/200일선)",
+             "last_cross_date": "추세 시작일", "notes": "메모"}
+)
+
+_totals = {c: "" for c in display_table.columns}
+_totals["티커"] = "합계"
+_totals["원금"] = total_cost
+_totals["손익"] = total_pnl
+_totals["평가금액"] = total_value
+_totals["수익률(%)"] = total_pnl_pct
+display_table = pd.concat([display_table, pd.DataFrame([_totals])], ignore_index=True)
 
 st.dataframe(
-    display[["신호", "티커", "종목명", "수량", "매수가", "현재가",
-             "평가금액", "수익률(%)", "손익", "사유",
-             "action", "RSI(과열)", "last_cross_date", "notes"]].rename(
-        columns={"action": "추세(50/200일선)",
-                 "last_cross_date": "추세 시작일", "notes": "메모"}
-    ),
+    display_table,
     use_container_width=True,
     hide_index=True,
     column_config={
@@ -421,6 +430,7 @@ st.dataframe(
             help="마지막 골든크로스(상승 전환) 또는 데드크로스(하락 전환) 발생일"),
         "매수가": st.column_config.NumberColumn(format="%,.0f"),
         "현재가": st.column_config.NumberColumn(format="%,.0f"),
+        "원금": st.column_config.NumberColumn(format="%,.0f"),
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
