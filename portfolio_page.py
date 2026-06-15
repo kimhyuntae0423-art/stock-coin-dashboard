@@ -379,24 +379,37 @@ def _qty_fmt(row):
     return f"{row['수량']:.8g}" if "-USD" in str(row["티커"]) else f"{int(round(row['수량'])):,}"
 display["수량"] = display.apply(_qty_fmt, axis=1)
 
+def _rsi_label(v):
+    if pd.isna(v):
+        return "-"
+    v = float(v)
+    if v >= 70:
+        return f"{v:.1f} (과열)"
+    if v <= 30:
+        return f"{v:.1f} (과매도)"
+    return f"{v:.1f} (정상)"
+display["RSI(과열)"] = display["RSI(과열)"].apply(_rsi_label)
+
 st.dataframe(
     display[["신호", "티커", "종목명", "수량", "매수가", "현재가",
              "평가금액", "수익률(%)", "손익", "사유",
              "action", "RSI(과열)", "last_cross_date", "notes"]].rename(
         columns={"action": "추세(50/200일선)",
-                 "last_cross_date": "신호일", "notes": "메모"}
+                 "last_cross_date": "추세 시작일", "notes": "메모"}
     ),
     use_container_width=True,
     hide_index=True,
     column_config={
         "수량": st.column_config.TextColumn("수량"),
+        "추세 시작일": st.column_config.TextColumn("추세 시작일",
+            help="마지막 골든크로스(상승 전환) 또는 데드크로스(하락 전환) 발생일"),
         "매수가": st.column_config.NumberColumn(format="%,.0f"),
         "현재가": st.column_config.NumberColumn(format="%,.0f"),
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
-        "RSI(과열)": st.column_config.NumberColumn(format="%.1f",
-            help="0~100. 70 이상이면 단기 과열, 30 이하면 과매도(반등 기회)"),
+        "RSI(과열)": st.column_config.TextColumn("RSI(과열)",
+            help="0~100. 70+ 과열, 30- 과매도(반등 기회), 그 외 정상"),
     },
 )
 st.caption(
