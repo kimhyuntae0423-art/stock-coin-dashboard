@@ -149,60 +149,7 @@ selected_person = st.selectbox(
     key="person_filter",
 )
 
-# ── 매수 내역 추가 ──────────────────────────────────────────────
-with st.expander("➕ 매수 내역 추가", expanded=True):
-    ra, rb = st.columns([3, 1])
-    with ra:
-        selected_label = st.selectbox(
-            "종목 검색",
-            options=[""] + ASSET_LABELS,
-            index=0,
-            help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
-            key="add_holding_label",
-        )
-    with rb:
-        derived_ticker = ASSET_LABEL_TO_TICKER.get(selected_label, "")
-        st.text_input("티커", value=derived_ticker, disabled=True)
-
-    is_coin = selected_label.endswith("· 코인")
-
-    with st.form("add_holding_form", clear_on_submit=True):
-        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
-        with fc1:
-            add_qty_str = st.text_input(
-                "수량", value="",
-                placeholder="예) 0.005" if is_coin else "예) 10",
-            )
-        with fc2:
-            add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
-        with fc3:
-            add_person = st.text_input("이름", placeholder="예) 김철수")
-        with fc4:
-            add_notes = st.text_input("메모 (선택)")
-        submitted = st.form_submit_button("✅ 추가")
-
-    if submitted:
-        _sel = st.session_state.get("add_holding_label", "")
-        try:
-            add_qty = float(add_qty_str.replace(",", "").strip())
-        except (ValueError, AttributeError):
-            add_qty = 0.0
-        if not _sel or _sel not in ASSET_LABEL_TO_TICKER:
-            st.error("종목을 선택해주세요.")
-        elif add_qty <= 0 or add_price <= 0:
-            st.error("수량과 매수가는 0보다 커야 합니다.")
-        else:
-            ticker = ASSET_LABEL_TO_TICKER[_sel]
-            current = _load_holdings()
-            new_row = pd.DataFrame([{
-                "ticker": ticker, "qty": add_qty,
-                "buy_price": add_price, "buy_date": "", "notes": add_notes,
-                "person": add_person.strip(),
-            }])
-            updated = pd.concat([current, new_row], ignore_index=True)
-            _save_holdings(updated)
-            st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.0f}) [{add_person or '미지정'}] 추가 완료!")
-            st.rerun()
+# ── 보유 내역 추가 / 편집 ────────────────────────────────────────
 
 # ── CSV 백업 / 복원 ─────────────────────────────────────────────
 with st.expander("💾 데이터 백업 / 복원", expanded=False):
@@ -242,8 +189,62 @@ with st.expander("📖 용어 사전", expanded=False):
 **📊 점수** = -3 ~ +3 사이의 종합 평가. 0이 평균. +1 이상이면 매수 우호, -1 이하면 매도 우호.
     """)
 
-# ── 보유 내역 편집 ───────────────────────────────────────────────
-st.subheader("✏️ 보유 내역 편집")
+st.subheader("✏️ 보유 내역 추가 / 편집")
+
+# 종목 추가 폼
+ra, rb = st.columns([3, 1])
+with ra:
+    selected_label = st.selectbox(
+        "종목 검색",
+        options=[""] + ASSET_LABELS,
+        index=0,
+        help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
+        key="add_holding_label",
+    )
+with rb:
+    derived_ticker = ASSET_LABEL_TO_TICKER.get(selected_label, "")
+    st.text_input("티커", value=derived_ticker, disabled=True)
+
+is_coin = selected_label.endswith("· 코인")
+
+with st.form("add_holding_form", clear_on_submit=True):
+    fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
+    with fc1:
+        add_qty_str = st.text_input(
+            "수량", value="",
+            placeholder="예) 0.005" if is_coin else "예) 10",
+        )
+    with fc2:
+        add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
+    with fc3:
+        add_person = st.text_input("이름", placeholder="예) 김철수")
+    with fc4:
+        add_notes = st.text_input("메모 (선택)")
+    submitted = st.form_submit_button("✅ 추가")
+
+if submitted:
+    _sel = st.session_state.get("add_holding_label", "")
+    try:
+        add_qty = float(add_qty_str.replace(",", "").strip())
+    except (ValueError, AttributeError):
+        add_qty = 0.0
+    if not _sel or _sel not in ASSET_LABEL_TO_TICKER:
+        st.error("종목을 선택해주세요.")
+    elif add_qty <= 0 or add_price <= 0:
+        st.error("수량과 매수가는 0보다 커야 합니다.")
+    else:
+        ticker = ASSET_LABEL_TO_TICKER[_sel]
+        current = _load_holdings()
+        new_row = pd.DataFrame([{
+            "ticker": ticker, "qty": add_qty,
+            "buy_price": add_price, "buy_date": "", "notes": add_notes,
+            "person": add_person.strip(),
+        }])
+        updated = pd.concat([current, new_row], ignore_index=True)
+        _save_holdings(updated)
+        st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.0f}) [{add_person or '미지정'}] 추가 완료!")
+        st.rerun()
+
 st.caption("수량·매수가·메모 수정 가능. 행 삭제는 체크박스 선택 후 Delete키. 수정 후 반드시 '💾 저장' 클릭.")
 
 _edit_cols = ["ticker", "qty", "buy_price", "person", "notes"]
