@@ -1,4 +1,6 @@
 """포트폴리오 페이지 — 보유 종목 + 매수가 추적 + 매도 신호 알림."""
+import base64
+import requests
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -53,6 +55,17 @@ def build_asset_options() -> list[tuple[str, str]]:
 
 NAMES = load_names()
 ASSET_OPTIONS = build_asset_options()
+ASSET_LABEL_TO_TICKER = {label: ticker for label, ticker in ASSET_OPTIONS}
+ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
+
+# 종목명 → 티커 역방향 매핑 (테이블 첫 열 자동완성용)
+_NAME_TO_TICKER: dict[str, str] = {}
+if CORE_ETF_FILE.exists():
+    _etf_df = pd.read_csv(CORE_ETF_FILE)
+    for _, _r in _etf_df.iterrows():
+        _NAME_TO_TICKER[str(_r["name"])] = str(_r["ticker"])
+_NAME_TO_TICKER.update({v: k for k, v in NAMES.items()})
+_ALL_NAMES = [""] + sorted(_NAME_TO_TICKER.keys())
 
 
 @st.cache_data(ttl=3600)
@@ -92,6 +105,36 @@ def _load_holdings() -> pd.DataFrame:
 
 def _save_holdings(df: pd.DataFrame):
     df.to_csv(HOLDINGS_FILE, index=False, encoding="utf-8")
+
+
+_GH_REPO = "kimhyuntae0423-art/stock-coin-dashboard"
+_GH_FILE = "holdings.csv"
+
+
+def _push_to_github(df: pd.DataFrame) -> tuple[bool, str]:
+    token = st.secrets.get("GITHUB_TOKEN", "")
+    if not token:
+        return False, "Streamlit secrets에 GITHUB_TOKEN이 없습니다."
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    api_url = f"https://api.github.com/repos/{_GH_REPO}/contents/{_GH_FILE}"
+    resp = requests.get(api_url, headers=headers)
+    if resp.status_code != 200:
+        return False, f"GitHub 파일 조회 실패: {resp.status_code}"
+    sha = resp.json()["sha"]
+    content = df.to_csv(index=False)
+    encoded = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+    payload = {
+        "message": f"update: holdings.csv ({pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')})",
+        "content": encoded,
+        "sha": sha,
+    }
+    put_resp = requests.put(api_url, headers=headers, json=payload)
+    if put_resp.status_code in (200, 201):
+        return True, "GitHub에 저장 완료! 영구 보존됩니다."
+    return False, f"GitHub 저장 실패: {put_resp.status_code}"
 
 
 # =====================================================================
@@ -190,22 +233,7 @@ with st.expander("📖 용어 사전", expanded=False):
     """)
 
 st.subheader("✏️ 보유 내역 추가 / 편집")
-
-# 티커 조회용 (참고용 — 폼 없음)
-ra, rb = st.columns([3, 1])
-with ra:
-    selected_label = st.selectbox(
-        "종목 검색 (티커 확인용)",
-        options=[""] + ASSET_LABELS,
-        index=0,
-        help="이름으로 티커를 확인하세요. 아래 표 빈 행에 직접 입력 후 저장하세요.",
-        key="add_holding_label",
-    )
-with rb:
-    derived_ticker = ASSET_LABEL_TO_TICKER.get(selected_label, "")
-    st.text_input("티커", value=derived_ticker, disabled=True)
-
-st.caption("새 종목은 아래 표 맨 아래 빈 행에 입력 → 💾 저장. 행 삭제는 체크박스 선택 후 Delete키.")
+st.caption("새 행 맨 아래 추가, 행 삭제는 체크박스 → Delete. 종목명 선택 시 저장할 때 티커 자동 입력.")
 
 _edit_cols = ["ticker", "qty", "buy_price", "person", "notes"]
 _edit_df = holdings[_edit_cols].copy() if all(c in holdings.columns for c in _edit_cols) else holdings[["ticker", "qty", "buy_price"]].copy()
@@ -214,6 +242,8 @@ _edit_df["qty"] = pd.to_numeric(_edit_df["qty"], errors="coerce").fillna(0.0)
 _edit_df["buy_price"] = pd.to_numeric(_edit_df["buy_price"], errors="coerce").fillna(0.0)
 _edit_df["person"] = _edit_df["person"].fillna("").astype(str) if "person" in _edit_df.columns else ""
 _edit_df["notes"] = _edit_df["notes"].fillna("").astype(str) if "notes" in _edit_df.columns else ""
+# 종목명 열 추가 (첫 열)
+_edit_df.insert(0, "종목명", _edit_df["ticker"].map(NAMES).fillna(""))
 _edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"})
 
 # 선택한 사람만 편집 테이블에 표시
@@ -229,8 +259,32 @@ edited_partial = st.data_editor(
     num_rows="dynamic",
     use_container_width=True,
     key=f"holdings_editor_{selected_person}",
+    column_config={
+        "종목명": st.column_config.SelectboxColumn(
+            "종목명 검색",
+            options=_ALL_NAMES,
+            help="이름 선택 → 저장 시 티커 자동 입력",
+            width="medium",
+        ),
+        "티커": st.column_config.TextColumn("티커", width="small"),
+        "수량": st.column_config.NumberColumn("수량", format="%.8g"),
+        "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
+        "이름": st.column_config.TextColumn("이름", width="small"),
+        "메모": st.column_config.TextColumn("메모"),
+    },
 )
-edited_cur = edited_partial.rename(columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"})
+
+# 종목명으로 티커 자동 파생 (티커가 비어 있고 종목명이 선택된 경우)
+edited_partial = edited_partial.copy()
+for idx, row in edited_partial.iterrows():
+    if (not str(row.get("티커", "")).strip()) and str(row.get("종목명", "")).strip():
+        derived = _NAME_TO_TICKER.get(str(row["종목명"]), "")
+        if derived:
+            edited_partial.at[idx, "티커"] = derived
+
+edited_cur = edited_partial.drop(columns=["종목명"]).rename(
+    columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"}
+)
 edited_cur["buy_date"] = ""
 
 # 다른 사람 데이터 합쳐서 전체 저장용 DataFrame 구성
@@ -248,10 +302,14 @@ sc1, sc2 = st.columns([1, 5])
 with sc1:
     if st.button("💾 저장", type="primary", use_container_width=True):
         _save_holdings(edited)
-        st.success("저장 완료!")
+        ok, msg = _push_to_github(edited)
+        if ok:
+            st.success(msg)
+        else:
+            st.warning(f"로컬 저장 완료. GitHub 동기화 실패: {msg}")
         st.rerun()
 with sc2:
-    st.caption("수정 후 반드시 저장 클릭. 백업/복원은 위 '데이터 백업 / 복원' 메뉴 이용.")
+    st.caption("저장 버튼 클릭 시 GitHub에도 자동 반영됩니다.")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
