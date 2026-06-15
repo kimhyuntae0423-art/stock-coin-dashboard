@@ -272,7 +272,7 @@ else:
 # 현황 계산용은 현재 편집 대상만
 holdings_view = edited_cur.copy()
 
-sc1, sc2, sc3 = st.columns([1, 1, 4])
+sc1, sc2 = st.columns([1, 1])
 with sc1:
     if st.button("💾 저장", type="primary", use_container_width=True):
         _save_holdings(edited)
@@ -286,32 +286,6 @@ with sc2:
     csv_dl = edited.to_csv(index=False).encode("utf-8")
     st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
                        mime="text/csv", use_container_width=True)
-with sc3:
-    st.markdown("""
-    <style>
-    [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
-    [data-testid="stFileUploader"] { margin-top: -12px !important; }
-    [data-testid="stFileUploader"] section {
-        padding: 4px 8px !important;
-        min-height: 0 !important;
-        border: 1px solid rgba(49,51,63,0.2) !important;
-        border-radius: 4px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    uploaded = st.file_uploader("📤 복원", type=["csv"], key="restore_csv",
-                                label_visibility="collapsed")
-    if uploaded is not None:
-        try:
-            restored = pd.read_csv(uploaded)
-            for col in ["qty", "buy_price"]:
-                if col in restored.columns:
-                    restored[col] = pd.to_numeric(restored[col], errors="coerce").fillna(0.0)
-            _save_holdings(restored)
-            _push_to_github(restored)
-            st.success(f"✅ {len(restored)}개 복원 완료!")
-        except Exception as e:
-            st.error(f"복원 실패: {e}")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
