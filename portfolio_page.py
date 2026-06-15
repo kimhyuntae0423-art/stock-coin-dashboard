@@ -284,23 +284,14 @@ else:
 # 현황 계산용은 현재 편집 대상만
 holdings_view = edited_cur.copy()
 
-sc1, sc2, sc3 = st.columns([1, 1, 4])
+sc1, sc2 = st.columns([1, 5])
 with sc1:
     if st.button("💾 저장", type="primary", use_container_width=True):
         _save_holdings(edited)
         st.success("저장 완료!")
         st.rerun()
 with sc2:
-    csv_bytes2 = edited.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "📥 백업",
-        data=csv_bytes2,
-        file_name="holdings_backup.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-with sc3:
-    st.caption("편집 후 저장 → 백업 버튼으로 CSV 다운로드해 두세요.")
+    st.caption("수정 후 반드시 저장 클릭. 백업/복원은 위 '데이터 백업 / 복원' 메뉴 이용.")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
