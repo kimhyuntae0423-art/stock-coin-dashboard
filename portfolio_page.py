@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
 from scripts.stock_score import rank_stocks
 from scripts.factor_calc import enrich_price_factors
-from scripts.asset_allocation import add_on_buy_triggers
 
 RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
@@ -428,40 +427,3 @@ st.caption(
     "**매도 신호 기준**: 데드크로스 발생, RSI ≥ 80, QVGM ≤ -1.0 중 하나만 충족해도 🔴 표시."
 )
 
-st.divider()
-
-# ── 분할매수 트리거 알림 ─────────────────────────────────────────
-st.subheader("🎯 분할매수 트리거 알림")
-st.caption(
-    "보유 종목 중 매수가 대비 -5% / -10% / -15% / -20% 하락 도달한 종목. "
-    "**점수가 양수면 분할 추가매수 기회**, 음수면 펀더 변화 검토 신호."
-)
-
-price_map = dict(zip(view["ticker"], view["close"]))
-score_map = dict(zip(scores_df["ticker"], scores_df["composite"])) if not scores_df.empty else {}
-triggers = add_on_buy_triggers(view, current_price_map=price_map, score_map=score_map,
-                               thresholds=(-5, -10, -15, -20))
-
-if triggers.empty:
-    st.info("📭 분할매수 트리거 도달 종목 없음. 모든 보유 종목이 매수가 대비 -5% 이내.")
-else:
-    triggers_disp = triggers.copy()
-    triggers_disp["종목명"] = triggers_disp["ticker"].map(NAMES).fillna("-")
-    triggers_disp = triggers_disp[["ticker", "종목명", "buy_price", "current_price",
-                                   "drop_pct", "trigger", "score", "verdict"]].rename(
-        columns={"ticker": "티커", "buy_price": "매수가", "current_price": "현재가",
-                 "drop_pct": "하락률(%)", "trigger": "도달선", "score": "QVGM", "verdict": "판정"}
-    )
-    st.dataframe(
-        triggers_disp, hide_index=True, use_container_width=True,
-        column_config={
-            "매수가": st.column_config.NumberColumn(format="%,.2f"),
-            "현재가": st.column_config.NumberColumn(format="%,.2f"),
-            "하락률(%)": st.column_config.NumberColumn(format="%+.2f"),
-            "QVGM": st.column_config.NumberColumn(format="%+.2f"),
-        },
-    )
-    st.caption(
-        "**룰**: 점수 ≥ +0.5 → 💎 추가매수 기회 / 0 ~ +0.5 → 🔵 분할매수 검토 / "
-        "-0.5 ~ 0 → 🟠 신중 / ≤ -0.5 → 🔴 손절 검토."
-    )
