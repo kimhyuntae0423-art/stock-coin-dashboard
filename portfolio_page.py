@@ -392,7 +392,7 @@ display = view.rename(columns={
 
 st.dataframe(
     display[["신호", "티커", "종목명", "수량", "매수가", "현재가",
-             "수익률(%)", "손익", "사유", "매수일",
+             "평가금액", "수익률(%)", "손익", "사유", "매수일",
              "action", "RSI", "composite", "last_cross_date", "notes"]].rename(
         columns={"action": "추세", "composite": "종합점수",
                  "last_cross_date": "신호일", "notes": "메모"}
@@ -403,6 +403,7 @@ st.dataframe(
         "수량": st.column_config.NumberColumn(format="%.8f"),
         "매수가": st.column_config.NumberColumn(format="%,.2f"),
         "현재가": st.column_config.NumberColumn(format="%,.2f"),
+        "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
         "RSI": st.column_config.NumberColumn(format="%.1f"),
