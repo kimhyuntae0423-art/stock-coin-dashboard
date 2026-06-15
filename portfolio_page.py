@@ -204,7 +204,6 @@ with st.expander("📖 신호 설명", expanded=False):
 **컬럼 설명**
 - **추세(50/200일선)**: 매수 = 상승 추세 / 미보유 = 하락 추세
 - **RSI(과열)**: 70 이상이면 단기 과열, 30 이하면 반등 구간
-- **펀더점수(-3~+3)**: 기업 실적·밸류에이션 종합. +1 이상 양호, -1 이하 주의
     """)
 
 st.subheader("✏️ 보유 내역 추가 / 편집")
@@ -330,9 +329,6 @@ def holding_signal(row):
     if pd.notna(rsi) and rsi >= 80:
         reasons.append(f"RSI {rsi:.0f} — 단기 급등으로 과매수 구간, 조정 가능성 높음")
         severity = max(severity, 2)
-    if pd.notna(composite) and composite <= -1.0:
-        reasons.append(f"기업 펀더멘털 종합점수 {composite:+.2f} — 실적·밸류에이션 악화")
-        severity = max(severity, 2)
     if action == "미보유" and severity < 2:
         reasons.append("단기(50일)선이 장기(200일)선 아래 — 추세 하락 구간, 반등 확인 후 매수 권장")
         severity = max(severity, 1)
@@ -386,9 +382,8 @@ display["수량"] = display.apply(_qty_fmt, axis=1)
 st.dataframe(
     display[["신호", "티커", "종목명", "수량", "매수가", "현재가",
              "평가금액", "수익률(%)", "손익", "사유",
-             "action", "RSI(과열)", "composite", "last_cross_date", "notes"]].rename(
+             "action", "RSI(과열)", "last_cross_date", "notes"]].rename(
         columns={"action": "추세(50/200일선)",
-                 "composite": "펀더점수(-3~+3)",
                  "last_cross_date": "신호일", "notes": "메모"}
     ),
     use_container_width=True,
@@ -402,14 +397,11 @@ st.dataframe(
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
         "RSI(과열)": st.column_config.NumberColumn(format="%.1f",
             help="0~100. 70 이상이면 단기 과열, 30 이하면 과매도(반등 기회)"),
-        "펀더점수(-3~+3)": st.column_config.NumberColumn(format="%+.2f",
-            help="+1 이상: 실적·밸류에이션 양호 / -1 이하: 펀더멘털 악화 주의"),
     },
 )
 st.caption(
     "**추세(50/200일선)**: 매수 = 50일선이 200일선 위(상승세) / 미보유 = 아래(하락세). "
-    "**RSI**: 단기 가격 모멘텀(70+ 과열·30- 반등). "
-    "**펀더점수**: PER·ROE·성장률 등 기업 체력 종합(-3~+3)."
+    "**RSI**: 단기 가격 모멘텀(70+ 과열·30- 반등)."
 )
 
 # 파이차트
