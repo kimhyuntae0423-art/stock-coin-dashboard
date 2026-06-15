@@ -412,10 +412,13 @@ display_table = display[_display_cols].rename(
              "last_cross_date": "추세 시작일", "notes": "메모"}
 )
 
+for _col in ["매수가", "현재가"]:
+    display_table[_col] = display_table[_col].apply(
+        lambda x: f"{x:,.0f}" if pd.notna(x) and isinstance(x, (int, float)) else ""
+    )
+
 _totals = {c: "" for c in display_table.columns}
 _totals["티커"] = "합계"
-_totals["매수가"] = None
-_totals["현재가"] = None
 _totals["원금"] = total_cost
 _totals["손익"] = total_pnl
 _totals["평가금액"] = total_value
@@ -428,10 +431,10 @@ st.dataframe(
     hide_index=True,
     column_config={
         "수량": st.column_config.TextColumn("수량"),
+        "매수가": st.column_config.TextColumn("매수가"),
+        "현재가": st.column_config.TextColumn("현재가"),
         "추세 시작일": st.column_config.TextColumn("추세 시작일",
             help="마지막 골든크로스(상승 전환) 또는 데드크로스(하락 전환) 발생일"),
-        "매수가": st.column_config.NumberColumn(format="%,.0f"),
-        "현재가": st.column_config.NumberColumn(format="%,.0f"),
         "원금": st.column_config.NumberColumn(format="%,.0f"),
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
