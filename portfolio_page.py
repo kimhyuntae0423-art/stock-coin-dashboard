@@ -401,8 +401,8 @@ st.dataframe(
     hide_index=True,
     column_config={
         "수량": st.column_config.NumberColumn(format="%.8f"),
-        "매수가": st.column_config.NumberColumn(format="%,.2f"),
-        "현재가": st.column_config.NumberColumn(format="%,.2f"),
+        "매수가": st.column_config.NumberColumn(format="%,.0f"),
+        "현재가": st.column_config.NumberColumn(format="%,.0f"),
         "평가금액": st.column_config.NumberColumn(format="%,.0f"),
         "수익률(%)": st.column_config.NumberColumn(format="%+.2f"),
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
