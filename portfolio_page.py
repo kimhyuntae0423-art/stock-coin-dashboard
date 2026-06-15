@@ -330,6 +330,9 @@ def holding_signal(row):
     elif pd.notna(pnl_pct) and pnl_pct <= -8 and severity < 2:
         reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈, 추가 하락 시 대응 필요")
         severity = max(severity, 1)
+    # 손실 신호로 매도 검토가 떴지만, 현재 추세가 상승(골든크로스)인 경우 병기
+    if severity >= 2 and action == "매수":
+        reasons.append("※ 단, 현재 50일선이 200일선 위(골든크로스) — 시장 추세는 상승 전환 중. 내 매수가 기준 손실이지 현재 추세가 나쁜 것은 아님")
     if severity == 2:
         return "🔴 매도 검토", " · ".join(reasons)
     if severity == 1:
