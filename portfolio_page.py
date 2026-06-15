@@ -432,11 +432,23 @@ st.dataframe(
     },
 )
 st.markdown("""
-<div style='display:flex; gap:24px; font-size:12px; color:#888; line-height:1.6'>
-  <div style='flex:1'><b>🟢 추가 매수 가능</b><br>단기(50일) 평균선이 장기(200일) 평균선 위.<br>상승 추세 확인, 분할 매수 검토 가능</div>
-  <div style='flex:1'><b>🔵 보유</b><br>특이 신호 없음.<br>현재 추세 유지 중</div>
-  <div style='flex:1'><b>🟠 주의</b><br>하락 추세 / RSI 70 이상 과열 /<br>매수가 대비 -8% 이상 손실. 대응 준비</div>
-  <div style='flex:1'><b>🔴 매도 검토</b><br>단기선이 장기선 아래로 하락 전환 /<br>RSI 80 이상 극단 과열 / 매수가 대비 -20% 이상 손실</div>
+<div style='display:flex; gap:12px; margin-top:16px; margin-bottom:32px'>
+  <div style='flex:1; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:12px 14px'>
+    <div style='font-size:14px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 가능</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>단기(50일) 평균선이 장기(200일) 위<br>상승 추세 확인 → 분할 매수 검토</div>
+  </div>
+  <div style='flex:1; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px 14px'>
+    <div style='font-size:14px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>특이 신호 없음<br>현재 추세 유지 중</div>
+  </div>
+  <div style='flex:1; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:12px 14px'>
+    <div style='font-size:14px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 주의</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>하락 추세 / RSI 70+ 과열 /<br>매수가 대비 -8% 이상 손실</div>
+  </div>
+  <div style='flex:1; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:12px 14px'>
+    <div style='font-size:14px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 매도 검토</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>단기선이 장기선 아래로 하락 전환 /<br>RSI 80+ 극단 과열 / -20% 이상 손실</div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
