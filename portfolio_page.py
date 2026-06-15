@@ -1,5 +1,6 @@
 """포트폴리오 페이지 — 보유 종목 + 매수가 추적 + 매도 신호 알림."""
 import base64
+import json
 import requests
 import streamlit as st
 import pandas as pd
@@ -475,6 +476,11 @@ st.subheader("📋 자산별 상세 리포트")
 _cycle_file = RESULTS / "cycle_metrics.csv"
 _cycle = pd.read_csv(_cycle_file).iloc[0] if _cycle_file.exists() else None
 
+_reports_file = ROOT / "asset_reports.json"
+_reports = json.loads(_reports_file.read_text(encoding="utf-8")) if _reports_file.exists() else {}
+
+_OPINION_COLOR = {"positive": "green", "caution": "orange", "negative": "red"}
+
 for _, row in view.iterrows():
     ticker = str(row["ticker"])
     name = row["종목명"]
@@ -486,6 +492,35 @@ for _, row in view.iterrows():
 
     header = f"{row['신호']}  |  **{name}** ({ticker})  —  {pnl_pct:+.2f}%"
     with st.expander(header, expanded=False):
+
+        # ── 리서치 의견 ────────────────────────────────────────────
+        _rpt = _reports.get(ticker)
+        if _rpt:
+            _otype = _rpt.get("opinion_type", "caution")
+            _color = _OPINION_COLOR.get(_otype, "gray")
+            st.markdown(
+                f"<div style='background:{'#e8f5e9' if _otype=='positive' else ('#fff3e0' if _otype=='caution' else '#ffebee')};"
+                f"border-left:4px solid {'#43a047' if _otype=='positive' else ('#fb8c00' if _otype=='caution' else '#e53935')};"
+                f"padding:12px 16px;border-radius:4px;margin-bottom:8px'>"
+                f"<b>종합 의견</b>: {_rpt.get('opinion','')}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(_rpt.get("summary", ""))
+            _bc, _brc = st.columns(2)
+            with _bc:
+                st.markdown("**📈 강세 근거**")
+                st.success(_rpt.get("bull", "-"))
+            with _brc:
+                st.markdown("**📉 약세 근거 (틀릴 조건)**")
+                st.error(_rpt.get("bear", "-"))
+            _src = _rpt.get("sources", [])
+            if _src:
+                st.markdown("**출처**:  " + "  ·  ".join(
+                    f"[{s['title']}]({s['url']})" for s in _src
+                ))
+            st.markdown(f"<small style='color:gray'>분석 기준일: {_rpt.get('updated','')}</small>",
+                        unsafe_allow_html=True)
+            st.divider()
 
         # ── 수익률 메트릭 ──────────────────────────────────────────
         m1, m2, m3, m4, m5 = st.columns(5)
