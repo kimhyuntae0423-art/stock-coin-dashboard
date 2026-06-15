@@ -466,3 +466,167 @@ st.caption(
     "**매도 신호 기준**: 데드크로스 발생, RSI ≥ 80, QVGM ≤ -1.0 중 하나만 충족해도 🔴 표시."
 )
 
+# =====================================================================
+# 자산별 상세 리포트
+# =====================================================================
+st.divider()
+st.subheader("📋 자산별 상세 리포트")
+
+_cycle_file = RESULTS / "cycle_metrics.csv"
+_cycle = pd.read_csv(_cycle_file).iloc[0] if _cycle_file.exists() else None
+
+for _, row in view.iterrows():
+    ticker = str(row["ticker"])
+    name = row["종목명"]
+    is_coin = "-USD" in ticker
+    pnl_pct = row["수익률(%)"]
+
+    sig_filename = f"coin_{ticker}_signals.csv" if is_coin else f"{ticker}_signals.csv"
+    sig_file = RESULTS / sig_filename
+
+    header = f"{row['신호']}  |  **{name}** ({ticker})  —  {pnl_pct:+.2f}%"
+    with st.expander(header, expanded=False):
+
+        # ── 수익률 메트릭 ──────────────────────────────────────────
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("매수가", f"{row['buy_price']:,.0f}")
+        m2.metric("현재가", f"{row['현재가']:,.0f}")
+        m3.metric("원금", f"{row['원금']:,.0f}원")
+        m4.metric("평가금액", f"{row['평가금액']:,.0f}원")
+        m5.metric("손익", f"{row['손익']:+,.0f}원", delta=f"{pnl_pct:+.2f}%",
+                  delta_color="normal" if pnl_pct >= 0 else "inverse")
+
+        # ── 가격 차트 ──────────────────────────────────────────────
+        if sig_file.exists():
+            sig_df = pd.read_csv(sig_file)
+            sig_df = sig_df.rename(columns={"Date": "date", "Close": "close",
+                                            "High": "high", "Low": "low"})
+            sig_df["date"] = pd.to_datetime(sig_df["date"])
+            sig_df = sig_df.dropna(subset=["close"]).tail(365)
+
+            if is_coin:
+                for _c in ["close", "ma50", "ma200", "sma20w", "ema21w"]:
+                    if _c in sig_df.columns:
+                        sig_df[_c] = sig_df[_c] * usdkrw
+                buy_line = row["buy_price"]
+            else:
+                buy_line = row["buy_price"]
+
+            fig_detail = go.Figure()
+            fig_detail.add_trace(go.Scatter(
+                x=sig_df["date"], y=sig_df["close"], name="종가",
+                line=dict(color="#4C9BE8", width=1.5)))
+
+            ma_styles = [("ma20","MA20","#FFA500"),("ma50","MA50","#2CA02C"),
+                         ("ma200","MA200","#D62728"),("sma20w","SMA20W","#9467BD"),
+                         ("ema21w","EMA21W","#8C564B")]
+            for ma_col, ma_name, ma_color in ma_styles:
+                if ma_col in sig_df.columns:
+                    fig_detail.add_trace(go.Scatter(
+                        x=sig_df["date"], y=sig_df[ma_col], name=ma_name,
+                        line=dict(color=ma_color, width=1), opacity=0.75))
+
+            fig_detail.add_hline(
+                y=buy_line, line_dash="dash", line_color="#E377C2",
+                annotation_text=f"매수가 {buy_line:,.0f}",
+                annotation_position="bottom right")
+            fig_detail.update_layout(
+                height=300, margin=dict(t=10, b=30, l=10, r=10),
+                legend=dict(orientation="h", y=-0.25),
+                xaxis_rangeslider_visible=False,
+                yaxis_tickformat=",")
+            st.plotly_chart(fig_detail, use_container_width=True)
+
+            # ── 기술적 지표 ────────────────────────────────────────
+            latest = sig_df.iloc[-1]
+            cols = sig_df.columns.tolist()
+            ind1, ind2, ind3, ind4 = st.columns(4)
+
+            rsi = latest.get("rsi14")
+            if pd.notna(rsi):
+                rsi_tag = "과열" if rsi >= 70 else ("과매도(반등)" if rsi <= 30 else "정상")
+                ind1.metric("RSI(14)", f"{rsi:.1f}", delta=rsi_tag, delta_color="off")
+
+            ma50v = latest.get("ma50")
+            ma200v = latest.get("ma200")
+            if pd.notna(ma50v) and pd.notna(ma200v) and ma200v > 0:
+                spread = (ma50v / ma200v - 1) * 100
+                ind2.metric("MA50/200 괴리율", f"{spread:+.1f}%",
+                            delta="상승추세" if spread > 0 else "하락추세",
+                            delta_color="normal" if spread > 0 else "inverse")
+
+            if "macd_hist" in cols:
+                mh = latest.get("macd_hist")
+                mv = latest.get("macd")
+                if pd.notna(mh) and pd.notna(mv):
+                    ind3.metric("MACD", f"{mv:,.1f}",
+                                delta=f"히스토그램 {mh:+.1f}",
+                                delta_color="normal" if mh > 0 else "inverse")
+
+            if "bb_pct" in cols:
+                bb = latest.get("bb_pct")
+                if pd.notna(bb):
+                    bb_tag = "상단 근접(과열)" if bb > 0.8 else ("하단 근접(반등)" if bb < 0.2 else "중간권")
+                    ind4.metric("볼린저밴드 위치", f"{bb:.0%}", delta=bb_tag, delta_color="off")
+            elif "momentum20" in cols:
+                mom = latest.get("momentum20")
+                if pd.notna(mom):
+                    ind4.metric("20일 모멘텀", f"{mom:+.2%}",
+                                delta_color="normal" if mom > 0 else "inverse")
+
+        # ── 현재 신호 사유 ─────────────────────────────────────────
+        st.info(f"**신호 사유**: {row['사유']}")
+
+        # ── BTC 온체인 지표 ────────────────────────────────────────
+        if ticker == "BTC-USD" and _cycle is not None:
+            st.markdown("---")
+            st.markdown("**📡 BTC 온체인 사이클 지표**")
+            oc1, oc2, oc3, oc4 = st.columns(4)
+
+            mvrv = _cycle.get("mvrv_z")
+            nupl = _cycle.get("nupl")
+            puell = _cycle.get("puell")
+            pi_sma111 = _cycle.get("pi_sma111")
+            pi_sma350x2 = _cycle.get("pi_sma350x2")
+
+            if pd.notna(mvrv):
+                mvrv_tag = "극단과열(매도)" if mvrv>7 else ("과열주의" if mvrv>3.7 else ("적정" if mvrv>0 else "바닥권(매수적기)"))
+                oc1.metric("MVRV Z-Score", f"{mvrv:.2f}", delta=mvrv_tag, delta_color="off")
+
+            if pd.notna(nupl):
+                nupl_tag = "극단탐욕" if nupl>0.75 else ("탐욕" if nupl>0.5 else ("낙관" if nupl>0.25 else ("희망" if nupl>0 else "항복(바닥)")))
+                oc2.metric("NUPL", f"{nupl:.3f}", delta=nupl_tag, delta_color="off")
+
+            if pd.notna(puell):
+                puell_tag = "매수 적기" if puell < 0.5 else ("과열" if puell > 4 else "중립")
+                oc3.metric("Puell Multiple", f"{puell:.2f}", delta=puell_tag, delta_color="off")
+
+            if pd.notna(pi_sma111) and pd.notna(pi_sma350x2):
+                pi_cross = pi_sma111 > pi_sma350x2
+                oc4.metric("Pi Cycle Top", "⚠️ 교차(정점 신호)" if pi_cross else "안전",
+                           delta=f"SMA111: {pi_sma111:,.0f} / 350×2: {pi_sma350x2:,.0f}",
+                           delta_color="inverse" if pi_cross else "off")
+
+            alt_score = _cycle.get("alt_season_score")
+            alt_label = _cycle.get("alt_season_label", "")
+            btc_r90 = _cycle.get("btc_return_90d_pct")
+            st.caption(
+                f"알트시즌 점수: {alt_score:.0f}/100  |  {alt_label}  |  "
+                f"BTC 90일 수익률: {btc_r90:+.1f}%" if pd.notna(alt_score) and pd.notna(btc_r90)
+                else ""
+            )
+
+        # ── 코인 공통: regime + 90일 수익률 ───────────────────────
+        elif is_coin:
+            _cs_file = RESULTS / "coin_summary.csv"
+            if _cs_file.exists():
+                _cs = pd.read_csv(_cs_file)
+                _cs_row = _cs[_cs["ticker"] == ticker]
+                if not _cs_row.empty:
+                    regime = _cs_row.iloc[0].get("regime", "-")
+                    r90 = _cs_row.iloc[0].get("return_90d_pct")
+                    st.caption(
+                        f"사이클 국면: **{regime}**  |  90일 수익률: **{r90:+.1f}%**"
+                        if pd.notna(r90) else f"사이클 국면: **{regime}**"
+                    )
+
