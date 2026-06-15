@@ -408,7 +408,10 @@ def _rsi_label(v):
     return f"{v:.1f} (정상)"
 display["RSI(과열)"] = display["RSI(과열)"].apply(_rsi_label)
 
-_display_cols = ["신호", "티커", "종목명", "수량", "매수가", "현재가",
+# 신호에서 동그라미만 추출
+display["신호"] = display["신호"].str.extract(r"^(\S)")[0]
+
+_display_cols = ["신호", "종목명", "수량", "매수가", "현재가",
                  "원금", "손익", "평가금액", "수익률(%)", "사유",
                  "action", "RSI(과열)", "last_cross_date", "notes"]
 display_table = display[_display_cols].rename(
@@ -422,7 +425,7 @@ for _col in ["매수가", "현재가"]:
     )
 
 _totals = {c: "" for c in display_table.columns}
-_totals["티커"] = "합계"
+_totals["종목명"] = "합계"
 _totals["원금"] = total_cost
 _totals["손익"] = total_pnl
 _totals["평가금액"] = total_value
@@ -434,6 +437,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
+        "신호": st.column_config.TextColumn("", width="small"),
         "수량": st.column_config.TextColumn("수량"),
         "매수가": st.column_config.TextColumn("매수가"),
         "현재가": st.column_config.TextColumn("현재가"),
@@ -448,8 +452,9 @@ st.dataframe(
     },
 )
 st.caption(
-    "**추세(50/200일선)**: 매수 = 50일선이 200일선 위(상승세) / 미보유 = 아래(하락세). "
-    "**RSI**: 단기 가격 모멘텀(70+ 과열·30- 반등)."
+    "🟢 추가 매수 가능 · 🔵 보유 · 🟠 주의 · 🔴 매도 검토  |  "
+    "**추세**: 50일 평균선이 200일 평균선 위면 상승세, 아래면 하락세  |  "
+    "**RSI**: 70 이상 과열, 30 이하 낙폭 과다"
 )
 
 # 파이차트
