@@ -12,24 +12,28 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    above = df["ma50"] > df["ma200"]
-    prev_above = above.shift(1)
+    # MA 유효 행만 비교 (NaN 제거 후 명시적 bool 변환)
+    ma50 = df["ma50"].astype("float64")
+    ma200 = df["ma200"].astype("float64")
 
-    df["state"] = "bear"
-    df.loc[above, "state"] = "bull"
+    above = (ma50 > ma200).astype("bool")          # True/False, no NaN
+    prev_above = above.shift(1, fill_value=False)   # 첫 행은 False로 채움
 
-    # MA200이 처음 유효해지는 행은 크로스가 아니라 데이터 시작점이므로 제외
-    ma200_valid = df["ma200"].notna()
-    first_valid_idx = ma200_valid.idxmax() if ma200_valid.any() else None
-
+    df["state"] = above.map({True: "bull", False: "bear"})
     df["signal"] = "hold"
-    golden = above & (~prev_above.fillna(False))
-    death = (~above) & (prev_above.fillna(False))
-    if first_valid_idx is not None:
-        golden.loc[first_valid_idx] = False
-        death.loc[first_valid_idx] = False
-    df.loc[golden, "signal"] = "golden_cross"
-    df.loc[death, "signal"] = "death_cross"
+
+    # 첫 번째 MA200 유효 행 이후부터만 크로스 감지
+    first_ma200_valid = df["ma200"].first_valid_index()
+
+    cross_mask = above != prev_above                # 전환이 일어난 행
+    if first_ma200_valid is not None:
+        # MA200이 없었던 기간은 크로스로 인정하지 않음
+        cross_mask = cross_mask & (df.index >= first_ma200_valid)
+        # 데이터 시작점(첫 유효 행) 자체도 제외 — 이전 상태를 알 수 없으므로
+        cross_mask.loc[first_ma200_valid] = False
+
+    df.loc[cross_mask & above, "signal"] = "golden_cross"
+    df.loc[cross_mask & ~above, "signal"] = "death_cross"
 
     return df
 
