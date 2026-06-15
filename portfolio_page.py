@@ -151,25 +151,27 @@ selected_person = st.selectbox(
 
 # ── 매수 내역 추가 ──────────────────────────────────────────────
 with st.expander("➕ 매수 내역 추가", expanded=True):
-    st.caption("종목 이름으로 검색해서 선택하세요. 티커를 몰라도 됩니다.")
+    ra, rb = st.columns([3, 1])
+    with ra:
+        selected_label = st.selectbox(
+            "종목 검색",
+            options=[""] + ASSET_LABELS,
+            index=0,
+            help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
+            key="add_holding_label",
+        )
+    with rb:
+        derived_ticker = ASSET_LABEL_TO_TICKER.get(selected_label, "")
+        st.text_input("티커", value=derived_ticker, disabled=True)
 
-    selected_label = st.selectbox(
-        "종목 검색",
-        options=[""] + ASSET_LABELS,
-        index=0,
-        help="이름 일부를 입력하면 필터링됩니다. 예: 'S&P', '삼성', '비트코인'",
-        key="add_holding_label",
-    )
     is_coin = selected_label.endswith("· 코인")
 
     with st.form("add_holding_form", clear_on_submit=True):
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
         with fc1:
-            qty_help = "코인: 예) 0.005" if is_coin else "주식/ETF: 예) 10, 598"
             add_qty_str = st.text_input(
                 "수량", value="",
                 placeholder="예) 0.005" if is_coin else "예) 10",
-                help=qty_help,
             )
         with fc2:
             add_price = st.number_input("매수가", min_value=0.0, step=1.0, format="%.2f")
@@ -199,7 +201,7 @@ with st.expander("➕ 매수 내역 추가", expanded=True):
             }])
             updated = pd.concat([current, new_row], ignore_index=True)
             _save_holdings(updated)
-            st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.2f}) [{add_person or '미지정'}] 추가 완료!")
+            st.success(f"✅ {ticker} ({add_qty} @ {add_price:,.0f}) [{add_person or '미지정'}] 추가 완료!")
             st.rerun()
 
 # ── CSV 백업 / 복원 ─────────────────────────────────────────────
