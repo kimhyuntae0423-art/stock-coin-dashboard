@@ -457,7 +457,11 @@ if total_value > 0:
         labels=[f"{r['종목명']} ({r['ticker']})" for _, r in view.iterrows()],
         values=view["평가금액"], hole=0.45,
     ))
-    fig_pie.update_layout(height=380, margin=dict(t=10, b=10, l=10, r=10))
+    fig_pie.update_layout(
+        height=480,
+        margin=dict(t=10, b=10, l=10, r=200),
+        legend=dict(font=dict(size=14), x=1.02, y=0.5, xanchor="left", yanchor="middle"),
+    )
     st.plotly_chart(fig_pie, use_container_width=True)
 
 st.caption(
