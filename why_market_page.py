@@ -72,68 +72,53 @@ st.title("투자 대원칙")
 # ════════════════════════════════════════════════════════
 # 핵심 구조 — 최상단 full-width
 # ════════════════════════════════════════════════════════
-st.markdown("""
-<div style='background:#0f172a; border-radius:12px; padding:28px 32px; margin-bottom:8px'>
-  <div style='font-size:13px; color:#94a3b8; letter-spacing:2px; text-transform:uppercase;
-              margin-bottom:16px'>우리 전략의 핵심 구조</div>
-  <div style='display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px'>
+st.markdown(
+    "<div style='font-size:13px; color:#94a3b8; letter-spacing:2px; margin-bottom:8px'>"
+    "우리 전략의 핵심 구조</div>",
+    unsafe_allow_html=True,
+)
 
-    <div style='background:#1e293b; border-top:3px solid #3b82f6; border-radius:8px; padding:18px'>
-      <div style='font-size:13px; color:#94a3b8; margin-bottom:6px'>Core ETF</div>
-      <div style='font-size:32px; font-weight:800; color:#3b82f6; line-height:1'>63%</div>
-      <div style='font-size:13px; color:#cbd5e1; margin-top:8px; line-height:1.5'>
-        시장 평균 수익 확보<br>
-        <span style='color:#64748b; font-size:12px'>개별 종목 60~70%가 시장 못 이김</span>
-      </div>
-    </div>
+buckets = [
+    ("#3b82f6", "Core ETF", "63%", "시장 평균 수익 확보", "개별 종목 60~70%가 시장 못 이김"),
+    ("#a855f7", "Satellite", "15%", "알파 시도", "잃어도 치명적이지 않은 비중"),
+    ("#f59e0b", "BTC", "15%", "비대칭 옵션 (4년 사이클)", "알트 18%만 BTC 초과 → BTC만"),
+    ("#22c55e", "Cash", "7%", "폭락 시 추가매수 탄약", "-15% 조정 시 Core 추가매수"),
+]
+cols = st.columns(4)
+for col, (color, name, pct, role, note) in zip(cols, buckets):
+    col.markdown(
+        f"""
+        <div style='background:#1e293b; border-top:3px solid {color};
+                    border-radius:8px; padding:18px; height:100%'>
+          <div style='font-size:13px; color:#94a3b8; margin-bottom:6px'>{name}</div>
+          <div style='font-size:36px; font-weight:800; color:{color}; line-height:1'>{pct}</div>
+          <div style='font-size:14px; color:#cbd5e1; margin-top:10px; line-height:1.5'>
+            {role}<br>
+            <span style='color:#64748b; font-size:12px'>{note}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    <div style='background:#1e293b; border-top:3px solid #a855f7; border-radius:8px; padding:18px'>
-      <div style='font-size:13px; color:#94a3b8; margin-bottom:6px'>Satellite</div>
-      <div style='font-size:32px; font-weight:800; color:#a855f7; line-height:1'>15%</div>
-      <div style='font-size:13px; color:#cbd5e1; margin-top:8px; line-height:1.5'>
-        알파 시도<br>
-        <span style='color:#64748b; font-size:12px'>잃어도 치명적이지 않은 비중</span>
-      </div>
-    </div>
+st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
 
-    <div style='background:#1e293b; border-top:3px solid #f59e0b; border-radius:8px; padding:18px'>
-      <div style='font-size:13px; color:#94a3b8; margin-bottom:6px'>BTC</div>
-      <div style='font-size:32px; font-weight:800; color:#f59e0b; line-height:1'>15%</div>
-      <div style='font-size:13px; color:#cbd5e1; margin-top:8px; line-height:1.5'>
-        비대칭 옵션 (4년 사이클)<br>
-        <span style='color:#64748b; font-size:12px'>알트 18%만 BTC 초과 → BTC만</span>
-      </div>
-    </div>
-
-    <div style='background:#1e293b; border-top:3px solid #22c55e; border-radius:8px; padding:18px'>
-      <div style='font-size:13px; color:#94a3b8; margin-bottom:6px'>Cash</div>
-      <div style='font-size:32px; font-weight:800; color:#22c55e; line-height:1'>7%</div>
-      <div style='font-size:13px; color:#cbd5e1; margin-top:8px; line-height:1.5'>
-        폭락 시 추가매수 탄약<br>
-        <span style='color:#64748b; font-size:12px'>-15% 조정 시 Core 추가매수</span>
-      </div>
-    </div>
-
-  </div>
-  <div style='display:grid; grid-template-columns:repeat(3,1fr); gap:12px'>
-    <div style='background:#1e293b; border-radius:6px; padding:12px 16px;
-                font-size:13px; color:#94a3b8; line-height:1.6'>
-      ① Core ETF 매달 자동 매수<br>
-      <span style='color:#64748b'>판단 개입 없음</span>
-    </div>
-    <div style='background:#1e293b; border-radius:6px; padding:12px 16px;
-                font-size:13px; color:#94a3b8; line-height:1.6'>
-      ② 분기 리밸런싱으로 목표 비중 유지<br>
-      <span style='color:#64748b'>자동 저가매수 효과</span>
-    </div>
-    <div style='background:#1e293b; border-radius:6px; padding:12px 16px;
-                font-size:13px; color:#94a3b8; line-height:1.6'>
-      ③ 주식/코인 신호는 현황 파악용<br>
-      <span style='color:#64748b'>행동 근거로 쓰지 않음</span>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+principles = st.columns(3)
+for col, text, sub in zip(
+    principles,
+    ["① Core ETF 매달 자동 매수", "② 분기 리밸런싱으로 목표 비중 유지", "③ 주식/코인 신호는 현황 파악용"],
+    ["판단 개입 없음", "자동 저가매수 효과", "행동 근거로 쓰지 않음"],
+):
+    col.markdown(
+        f"""
+        <div style='background:#1e293b; border-radius:6px; padding:12px 16px;
+                    font-size:14px; color:#94a3b8; line-height:1.6'>
+          {text}<br>
+          <span style='color:#64748b; font-size:12px'>{sub}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 st.markdown("#### 아래 데이터가 위 전략의 근거입니다")
