@@ -405,6 +405,9 @@ display["신호"] = display["신호"].str.extract(r"^(\S)")[0]
 _display_cols = ["신호", "종목명", "수량", "매수가", "현재가",
                  "원금", "손익", "평가금액", "수익률(%)", "사유"]
 display_table = display[_display_cols].copy()
+display_table["사유"] = display_table["사유"].apply(
+    lambda x: str(x).split(" · ")[0] if pd.notna(x) else ""
+)
 
 for _col in ["매수가", "현재가"]:
     display_table[_col] = display_table[_col].apply(
