@@ -90,11 +90,11 @@ for col, (color, name, pct, role, note) in zip(cols, buckets):
         f"""
         <div style='background:#1e293b; border-top:3px solid {color};
                     border-radius:8px; padding:18px; height:100%'>
-          <div style='font-size:15px; color:#94a3b8; margin-bottom:6px'>{name}</div>
+          <div style='font-size:17px; color:#94a3b8; margin-bottom:6px'>{name}</div>
           <div style='font-size:36px; font-weight:800; color:{color}; line-height:1'>{pct}</div>
-          <div style='font-size:16px; color:#cbd5e1; margin-top:10px; line-height:1.5'>
+          <div style='font-size:18px; color:#cbd5e1; margin-top:10px; line-height:1.5'>
             {role}<br>
-            <span style='color:#94a3b8; font-size:14px'>{note}</span>
+            <span style='color:#94a3b8; font-size:16px'>{note}</span>
           </div>
         </div>
         """,
@@ -112,9 +112,9 @@ for col, text, sub in zip(
     col.markdown(
         f"""
         <div style='background:#1e293b; border-radius:6px; padding:14px 18px;
-                    font-size:16px; color:#cbd5e1; line-height:1.6'>
+                    font-size:18px; color:#cbd5e1; line-height:1.6'>
           {text}<br>
-          <span style='color:#94a3b8; font-size:14px'>{sub}</span>
+          <span style='color:#94a3b8; font-size:16px'>{sub}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -156,12 +156,12 @@ for cat, label, bench_name, col, color in cat_info:
             f"""
             <div style='background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;
                         padding:24px; text-align:center'>
-              <div style='font-size:15px; color:#64748b; margin-bottom:8px'>{label} ({len(sub)}개 종목)</div>
+              <div style='font-size:17px; color:#64748b; margin-bottom:8px'>{label} ({len(sub)}개 종목)</div>
               <div style='font-size:52px; font-weight:800; color:{"#ef4444" if pct < 50 else "#22c55e"};
                           line-height:1'>{pct:.0f}%</div>
-              <div style='font-size:15px; color:#64748b; margin-top:8px'>
+              <div style='font-size:17px; color:#64748b; margin-top:8px'>
                 {bench_name}({btot:+.0f}%) 초과<br>
-                <span style='font-size:14px'>{beat}/{len(sub)}개</span>
+                <span style='font-size:16px'>{beat}/{len(sub)}개</span>
               </div>
             </div>
             """,
@@ -276,9 +276,9 @@ with col1:
         <div style='background:#fff1f2; border-left:4px solid #ef4444;
                     border-radius:6px; padding:16px'>
           <div style='font-size:36px; font-weight:800; color:#ef4444'>92%</div>
-          <div style='font-size:15px; color:#555; margin-top:8px'>
+          <div style='font-size:17px; color:#555; margin-top:8px'>
             미국 액티브 펀드가<br>15년간 S&P500에 패배<br>
-            <span style='font-size:13px; color:#888'>(SPIVA 2024)</span>
+            <span style='font-size:15px; color:#888'>(SPIVA 2024)</span>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -288,7 +288,7 @@ with col2:
         <div style='background:#fff7ed; border-left:4px solid #f97316;
                     border-radius:6px; padding:16px'>
           <div style='font-size:36px; font-weight:800; color:#f97316'>Warren Buffett</div>
-          <div style='font-size:15px; color:#555; margin-top:8px'>
+          <div style='font-size:17px; color:#555; margin-top:8px'>
             "내가 죽으면 아내 재산의<br>90%를 S&P500 인덱스에,<br>10%를 국채에 투자하라"
           </div>
         </div>
@@ -299,9 +299,9 @@ with col3:
         <div style='background:#f0fdf4; border-left:4px solid #22c55e;
                     border-radius:6px; padding:16px'>
           <div style='font-size:36px; font-weight:800; color:#22c55e'>Core 63%</div>
-          <div style='font-size:15px; color:#555; margin-top:8px'>
+          <div style='font-size:17px; color:#555; margin-top:8px'>
             우리 전략에서 ETF 비중<br>시장 평균 수익은 이미 확보<br>
-            <span style='font-size:13px; color:#888'>나머지 37%로 알파 시도</span>
+            <span style='font-size:15px; color:#888'>나머지 37%로 알파 시도</span>
           </div>
         </div>
         """, unsafe_allow_html=True)
