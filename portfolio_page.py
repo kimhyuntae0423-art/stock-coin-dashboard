@@ -404,6 +404,8 @@ def _rsi_label(v):
     return f"{v:.1f} (정상)"
 display["RSI(과열)"] = display["RSI(과열)"].apply(_rsi_label)
 
+display = display.sort_values(["원금", "손익", "평가금액"], ascending=False).reset_index(drop=True)
+
 st.dataframe(
     display[["신호", "티커", "종목명", "수량", "매수가", "현재가",
              "평가금액", "수익률(%)", "손익", "사유",
