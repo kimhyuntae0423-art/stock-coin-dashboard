@@ -194,32 +194,6 @@ selected_person = st.selectbox(
 
 # ── 보유 내역 추가 / 편집 ────────────────────────────────────────
 
-# ── CSV 백업 / 복원 ─────────────────────────────────────────────
-with st.expander("💾 데이터 백업 / 복원", expanded=False):
-    st.caption("Streamlit Cloud는 앱 재배포 시 데이터가 초기화됩니다. 정기적으로 백업하세요.")
-    dl_col, ul_col = st.columns(2)
-    with dl_col:
-        csv_bytes = holdings.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 보유내역 CSV 다운로드",
-            data=csv_bytes,
-            file_name="holdings_backup.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    with ul_col:
-        uploaded = st.file_uploader("📤 CSV 복원 (업로드)", type=["csv"], key="restore_csv")
-        if uploaded is not None:
-            try:
-                restored = pd.read_csv(uploaded)
-                for col in ["qty", "buy_price"]:
-                    if col in restored.columns:
-                        restored[col] = pd.to_numeric(restored[col], errors="coerce").fillna(0.0)
-                _save_holdings(restored)
-                st.success(f"✅ {len(restored)}개 종목 복원 완료! 페이지를 새로고침하세요.")
-            except Exception as e:
-                st.error(f"복원 실패: {e}")
-
 with st.expander("📖 용어 사전", expanded=False):
     st.markdown("""
 **🚦 타이밍 라벨**
@@ -298,7 +272,7 @@ else:
 # 현황 계산용은 현재 편집 대상만
 holdings_view = edited_cur.copy()
 
-sc1, sc2 = st.columns([1, 5])
+sc1, sc2, sc3 = st.columns([1, 1, 4])
 with sc1:
     if st.button("💾 저장", type="primary", use_container_width=True):
         _save_holdings(edited)
@@ -309,7 +283,23 @@ with sc1:
             st.warning(f"로컬 저장 완료. GitHub 동기화 실패: {msg}")
         st.rerun()
 with sc2:
-    st.caption("저장 버튼 클릭 시 GitHub에도 자동 반영됩니다.")
+    csv_dl = edited.to_csv(index=False).encode("utf-8")
+    st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
+                       mime="text/csv", use_container_width=True)
+with sc3:
+    uploaded = st.file_uploader("📤 CSV 복원", type=["csv"], key="restore_csv",
+                                label_visibility="collapsed")
+    if uploaded is not None:
+        try:
+            restored = pd.read_csv(uploaded)
+            for col in ["qty", "buy_price"]:
+                if col in restored.columns:
+                    restored[col] = pd.to_numeric(restored[col], errors="coerce").fillna(0.0)
+            _save_holdings(restored)
+            _push_to_github(restored)
+            st.success(f"✅ {len(restored)}개 복원 완료!")
+        except Exception as e:
+            st.error(f"복원 실패: {e}")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
