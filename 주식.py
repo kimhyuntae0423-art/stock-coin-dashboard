@@ -8,9 +8,9 @@ st.set_page_config(
 )
 
 pages = [
-    st.Page("portfolio_page.py",    title="보유종목",       icon="💼", default=True),
+    st.Page("why_market_page.py",   title="투자 원칙",      icon="🎯", default=True),
+    st.Page("portfolio_page.py",    title="보유종목",       icon="💼"),
     st.Page("rebalancing_page.py",  title="리밸런싱",       icon="⚖️"),
-    st.Page("why_market_page.py",   title="왜 시장을?",     icon="🎯"),
     st.Page("backtest_page.py",     title="백테스트",       icon="🔬"),
     st.Page("stocks_page.py",       title="주식 (참고)",    icon="📈"),
     st.Page("coin_page.py",         title="코인 (참고)",    icon="🪙"),
