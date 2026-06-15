@@ -53,6 +53,18 @@ def build_asset_options() -> list[tuple[str, str]]:
 
 NAMES = load_names()
 ASSET_OPTIONS = build_asset_options()
+
+
+@st.cache_data(ttl=3600)
+def _get_usdkrw() -> float:
+    try:
+        import yfinance as yf
+        rate = yf.Ticker("USDKRW=X").fast_info.get("lastPrice")
+        if rate and rate > 100:
+            return float(rate)
+    except Exception:
+        pass
+    return 1380.0
 ASSET_LABEL_TO_TICKER = {label: ticker for label, ticker in ASSET_OPTIONS}
 ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
@@ -92,8 +104,26 @@ holdings = _load_holdings()
 
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"
+coin_summary_file = RESULTS / "coin_summary.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
 funda = pd.read_csv(funda_file) if funda_file.exists() else pd.DataFrame(columns=["ticker"])
+
+_MERGE_COLS = ["ticker", "close", "action", "state", "last_cross", "last_cross_date", "rsi14"]
+if coin_summary_file.exists():
+    coin_sum = pd.read_csv(coin_summary_file)
+    usdkrw = _get_usdkrw()
+    coin_sum["close"] = coin_sum["close"] * usdkrw
+    coin_sum = coin_sum.rename(columns={"regime": "state"})
+    for col in _MERGE_COLS:
+        if col not in coin_sum.columns:
+            coin_sum[col] = None
+    combined_summary = pd.concat(
+        [summary[_MERGE_COLS] if not summary.empty else pd.DataFrame(columns=_MERGE_COLS),
+         coin_sum[_MERGE_COLS]],
+        ignore_index=True,
+    )
+else:
+    combined_summary = summary
 
 if not summary.empty and not funda.empty:
     FUNDA_COLS = ["ticker", "per", "forward_per", "pbr", "roe_pct", "profit_margin_pct",
@@ -283,10 +313,8 @@ view = holdings_view.dropna(subset=["ticker"]).copy()
 view = view[view["ticker"].astype(str).str.strip() != ""].copy()
 view["ticker"] = view["ticker"].astype(str).str.strip().str.upper()
 
-if not summary.empty:
-    view = view.merge(summary[["ticker", "close", "action", "state",
-                               "last_cross", "last_cross_date", "rsi14"]],
-                      on="ticker", how="left")
+if not combined_summary.empty:
+    view = view.merge(combined_summary[_MERGE_COLS], on="ticker", how="left")
 else:
     for c in ["close", "action", "state", "last_cross", "last_cross_date", "rsi14"]:
         view[c] = None
@@ -345,12 +373,13 @@ total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
 n_sell = (view["신호"] == "🔴 매도 검토").sum()
 n_warn = (view["신호"] == "🟠 주의").sum()
 
-k1, k2, k3, k4, k5 = st.columns(5)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("보유 종목 수", f"{len(view)}")
-k2.metric("총 원금", f"{total_cost:,.0f}")
-k3.metric("총 평가금액", f"{total_value:,.0f}")
-k4.metric("총 손익", f"{total_pnl:+,.0f}", delta=f"{total_pnl_pct:+.2f}%")
+k2.metric("총 원금", f"{total_cost:,.0f}원")
+k3.metric("총 평가금액", f"{total_value:,.0f}원")
+k4.metric("총 손익", f"{total_pnl:+,.0f}원", delta=f"{total_pnl_pct:+.2f}%")
 k5.metric("🔴 매도 검토", f"{n_sell}", delta=f"🟠 주의 {n_warn}", delta_color="off")
+k6.metric("USD/KRW", f"{_get_usdkrw():,.0f}", help="코인 현재가 환산에 사용된 환율 (1시간 캐시)")
 
 if n_sell > 0:
     sell_tickers = view[view["신호"] == "🔴 매도 검토"]["ticker"].tolist()
