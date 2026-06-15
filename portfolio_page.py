@@ -290,6 +290,7 @@ with sc3:
     st.markdown("""
     <style>
     [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
+    [data-testid="stFileUploader"] { margin-top: -12px !important; }
     [data-testid="stFileUploader"] section {
         padding: 4px 8px !important;
         min-height: 0 !important;
