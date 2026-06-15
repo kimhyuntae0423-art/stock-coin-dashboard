@@ -431,11 +431,14 @@ st.dataframe(
         "손익": st.column_config.NumberColumn(format="%+,.0f"),
     },
 )
-_lg1, _lg2, _lg3, _lg4 = st.columns(4)
-_lg1.caption("🟢 **추가 매수 가능**\n단기(50일) 평균선 > 장기(200일) 평균선. 상승 추세 확인, 분할 매수 검토 가능")
-_lg2.caption("🔵 **보유**\n특이 신호 없음. 현재 추세 유지 중")
-_lg3.caption("🟠 **주의**\n하락 추세이거나 / RSI 70 이상 과열이거나 / 매수가 대비 -8% 이상 손실. 대응 준비 필요")
-_lg4.caption("🔴 **매도 검토**\n단기선이 장기선 아래로 하락 전환 / RSI 80 이상 극단 과열 / 매수가 대비 -20% 이상 손실. 매도 판단 필요")
+st.markdown("""
+<div style='display:flex; gap:24px; font-size:12px; color:#888; line-height:1.6'>
+  <div style='flex:1'><b>🟢 추가 매수 가능</b><br>단기(50일) 평균선이 장기(200일) 평균선 위.<br>상승 추세 확인, 분할 매수 검토 가능</div>
+  <div style='flex:1'><b>🔵 보유</b><br>특이 신호 없음.<br>현재 추세 유지 중</div>
+  <div style='flex:1'><b>🟠 주의</b><br>하락 추세 / RSI 70 이상 과열 /<br>매수가 대비 -8% 이상 손실. 대응 준비</div>
+  <div style='flex:1'><b>🔴 매도 검토</b><br>단기선이 장기선 아래로 하락 전환 /<br>RSI 80 이상 극단 과열 / 매수가 대비 -20% 이상 손실</div>
+</div>
+""", unsafe_allow_html=True)
 
 # 파이차트
 if total_value > 0:
