@@ -287,20 +287,30 @@ with sc2:
     st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
                        mime="text/csv", use_container_width=True)
 with sc3:
-    with st.expander("📤 CSV 복원"):
-        uploaded = st.file_uploader("CSV 파일 선택", type=["csv"], key="restore_csv",
-                                    label_visibility="collapsed")
-        if uploaded is not None:
-            try:
-                restored = pd.read_csv(uploaded)
-                for col in ["qty", "buy_price"]:
-                    if col in restored.columns:
-                        restored[col] = pd.to_numeric(restored[col], errors="coerce").fillna(0.0)
-                _save_holdings(restored)
-                _push_to_github(restored)
-                st.success(f"✅ {len(restored)}개 복원 완료!")
-            except Exception as e:
-                st.error(f"복원 실패: {e}")
+    st.markdown("""
+    <style>
+    [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
+    [data-testid="stFileUploader"] section {
+        padding: 4px 8px !important;
+        min-height: 0 !important;
+        border: 1px solid rgba(49,51,63,0.2) !important;
+        border-radius: 4px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    uploaded = st.file_uploader("📤 복원", type=["csv"], key="restore_csv",
+                                label_visibility="collapsed")
+    if uploaded is not None:
+        try:
+            restored = pd.read_csv(uploaded)
+            for col in ["qty", "buy_price"]:
+                if col in restored.columns:
+                    restored[col] = pd.to_numeric(restored[col], errors="coerce").fillna(0.0)
+            _save_holdings(restored)
+            _push_to_github(restored)
+            st.success(f"✅ {len(restored)}개 복원 완료!")
+        except Exception as e:
+            st.error(f"복원 실패: {e}")
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
