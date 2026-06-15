@@ -372,6 +372,7 @@ if n_sell > 0:
 
 display = view.rename(columns={
     "ticker": "티커", "qty": "수량", "buy_price": "매수가", "rsi14": "RSI(과열)",
+    "days_since_cross": "추세일수",
 }).copy()
 
 # 코인 여부 판별 (티커에 -USD 포함)
@@ -379,6 +380,18 @@ def _qty_fmt(row):
     return f"{row['수량']:.8f}" if "-USD" in str(row["티커"]) else f"{int(round(row['수량'])):,}"
 display["수량"] = display.apply(_qty_fmt, axis=1)
 display["action"] = display["action"].map({"매수": "상승추세", "미보유": "하락추세"}).fillna(display["action"])
+
+def _cross_date_label(row):
+    d = row.get("last_cross_date")
+    n = row.get("추세일수")
+    if pd.isna(d) or not d:
+        return "-"
+    try:
+        n = int(n) if pd.notna(n) else 0
+        return f"{d} ({n}일째)"
+    except Exception:
+        return str(d)
+display["last_cross_date"] = display.apply(_cross_date_label, axis=1)
 
 def _rsi_label(v):
     if pd.isna(v):

@@ -18,9 +18,18 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     df["state"] = "bear"
     df.loc[above, "state"] = "bull"
 
+    # MA200이 처음 유효해지는 행은 크로스가 아니라 데이터 시작점이므로 제외
+    ma200_valid = df["ma200"].notna()
+    first_valid_idx = ma200_valid.idxmax() if ma200_valid.any() else None
+
     df["signal"] = "hold"
-    df.loc[above & (~prev_above.fillna(False)), "signal"] = "golden_cross"
-    df.loc[(~above) & (prev_above.fillna(False)), "signal"] = "death_cross"
+    golden = above & (~prev_above.fillna(False))
+    death = (~above) & (prev_above.fillna(False))
+    if first_valid_idx is not None:
+        golden.loc[first_valid_idx] = False
+        death.loc[first_valid_idx] = False
+    df.loc[golden, "signal"] = "golden_cross"
+    df.loc[death, "signal"] = "death_cross"
 
     return df
 
