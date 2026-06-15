@@ -12,6 +12,7 @@ pages = [
     st.Page("coin_page.py",         title="코인",      icon="🪙"),
     st.Page("portfolio_page.py",    title="보유종목",  icon="💼"),
     st.Page("rebalancing_page.py",  title="리밸런싱",  icon="⚖️"),
+    st.Page("backtest_page.py",     title="백테스트",  icon="🔬"),
 ]
 nav = st.navigation(pages)
 nav.run()
