@@ -335,8 +335,11 @@ def holding_signal(row):
     if pd.notna(rsi) and rsi >= 70 and severity < 2:
         reasons.append(f"RSI {rsi:.0f} — 단기 과열 구간, 추가 상승 여력 제한적")
         severity = max(severity, 1)
-    if pd.notna(pnl_pct) and pnl_pct <= -8 and severity < 2:
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 근접, 추가 하락 시 대응 필요")
+    if pd.notna(pnl_pct) and pnl_pct <= -20:
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 크게 이탈, 매도 검토 필요")
+        severity = max(severity, 2)
+    elif pd.notna(pnl_pct) and pnl_pct <= -8 and severity < 2:
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈, 추가 하락 시 대응 필요")
         severity = max(severity, 1)
     if severity == 2:
         return "🔴 매도 검토", " · ".join(reasons)
