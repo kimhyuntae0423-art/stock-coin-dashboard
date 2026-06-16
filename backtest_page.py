@@ -103,7 +103,8 @@ except FileNotFoundError:
     st.stop()
 
 # ── 탭 구조 ──────────────────────────────────────────────
-tab0, tab1, tab2, tab3, tab4 = st.tabs([
+tab_sum, tab0, tab1, tab2, tab3, tab4 = st.tabs([
+    "📋 요약",
     "🏆 개별주 vs 시장", "📈 골든/데스크로스", "📊 RSI 신호", "✂️ 손절선 검증",
     "🔬 전략 백테스트"
 ])
