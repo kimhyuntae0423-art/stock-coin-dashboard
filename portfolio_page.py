@@ -236,7 +236,11 @@ edited_partial = st.data_editor(
             help="이름 선택 → 저장 시 티커 자동 입력",
             width="medium",
         ),
-        "티커": st.column_config.TextColumn("티커", width="small"),
+        "티커": st.column_config.TextColumn(
+            "티커",
+            width="small",
+            help="직접 입력 권장. 예: 005930.KS, AAPL, BTC-USD. 종목명 선택 시 저장 후 자동 채워짐.",
+        ),
         "수량": st.column_config.NumberColumn("수량", format="%.8g"),
         "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
         "이름": st.column_config.TextColumn("이름", width="small"),
