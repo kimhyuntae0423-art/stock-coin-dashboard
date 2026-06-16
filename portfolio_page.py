@@ -526,26 +526,26 @@ st.dataframe(
     },
 )
 st.markdown("""
-<div style='display:flex; gap:10px; margin-top:16px; margin-bottom:8px; flex-wrap:wrap'>
-  <div style='flex:1; min-width:160px; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:12px 14px'>
-    <div style='font-size:14px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 / 보유 양호</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>📈 개별주: 모멘텀 Q1~Q2<br>📦 ETF: 리밸런싱 적기 (Q1)<br>🪙 코인: MVRV &lt; 1.5 저평가</div>
+<div style='display:flex; gap:8px; margin-top:16px; margin-bottom:8px; flex-wrap:wrap'>
+  <div style='flex:1; min-width:148px; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:10px 12px'>
+    <div style='font-size:13px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 / 보유 양호</div>
+    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: 모멘텀 Q1~Q2<br>📦 ETF: 리밸런싱 적기 (Q1)<br>🪙 코인: MVRV &lt; 1.5 저평가</div>
   </div>
-  <div style='flex:1; min-width:160px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px 14px'>
-    <div style='font-size:14px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>특이 신호 없음<br>📦 ETF는 항상 리밸런싱으로 관리</div>
+  <div style='flex:1; min-width:148px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:10px 12px'>
+    <div style='font-size:13px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유</div>
+    <div style='font-size:11px; color:#555; line-height:1.6'>특이 신호 없음<br>📦 ETF는 리밸런싱으로 관리<br>🪙 코인: MVRV 데이터 없음</div>
   </div>
-  <div style='flex:1; min-width:160px; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:12px 14px'>
-    <div style='font-size:14px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 논거 재검토 / 비중 점검</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>📈 개별주: -8~-20% 손실 또는 Q4<br>📦 ETF: 모멘텀 Q4 (리밸런싱 점검)<br>🪙 코인: MVRV 1.5~2.5 과열 경계</div>
+  <div style='flex:1; min-width:148px; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:10px 12px'>
+    <div style='font-size:13px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 주의 / 신호 충돌</div>
+    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: -8~-20% 손실·Q4·RSI 80+<br>&nbsp;&nbsp;또는 -20% + Q1(추세 살아있음)<br>📦 ETF: Q4 비중 점검<br>🪙 코인: MVRV 1.5~2.5</div>
   </div>
-  <div style='flex:1; min-width:160px; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:12px 14px'>
-    <div style='font-size:14px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 비중 축소</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>🪙 코인 전용: MVRV &gt; 2.5<br>과열 — 백테스트 검증<br>(개별주·ETF엔 🔴 없음)</div>
+  <div style='flex:1; min-width:148px; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:10px 12px'>
+    <div style='font-size:13px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 매도 검토</div>
+    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: -20% 이상 손실<br>&nbsp;&nbsp;(Q4이면 추세도 악화)<br>🪙 코인: MVRV &gt; 2.5 과열<br>📦 ETF: 해당 없음</div>
   </div>
-  <div style='flex:1; min-width:160px; background:#faf5ff; border-left:4px solid #a855f7; border-radius:6px; padding:12px 14px'>
-    <div style='font-size:14px; font-weight:700; color:#7e22ce; margin-bottom:4px'>💎 비중 확대 기회</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>🪙 코인 전용: MVRV &lt; 0<br>역사적 바닥 근접<br>BTC 100% 구간 (백테스트 검증)</div>
+  <div style='flex:1; min-width:148px; background:#faf5ff; border-left:4px solid #a855f7; border-radius:6px; padding:10px 12px'>
+    <div style='font-size:13px; font-weight:700; color:#7e22ce; margin-bottom:4px'>💎 비중 확대 기회</div>
+    <div style='font-size:11px; color:#555; line-height:1.6'>🪙 코인 전용<br>MVRV &lt; 0 — 역사적 바닥<br>BTC 100% 구간 (백테스트)</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
