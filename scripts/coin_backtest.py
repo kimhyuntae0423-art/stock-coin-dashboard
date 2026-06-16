@@ -127,15 +127,22 @@ def run_coin_momentum(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     if cum_df.empty:
         return cum_df, stats_df
 
-    # BTC 단순보유 추가
+    # BTC 단순보유 추가 (누적 차트용)
     btc_ret = next_ret["BTC-USD"].dropna()
     btc_ret = btc_ret[btc_ret.index.isin(cum_df.index)]
     cum_df["BTC 단순보유"] = (1 + btc_ret).cumprod()
 
-    stats_df = pd.concat([
-        stats_df,
-        pd.DataFrame([{"분위": "BTC 단순보유", **_perf_stats(btc_ret), "관측월수": len(btc_ret)}]),
-    ], ignore_index=True)
+    # 컬럼 통일: 연환산수익(%)만 공통으로 사용
+    btc_ann = round(((1 + btc_ret.mean()) ** 12 - 1) * 100, 1)
+    btc_win = round((btc_ret > 0).mean() * 100, 1)
+    btc_row = pd.DataFrame([{
+        "분위": "BTC 단순보유",
+        "월평균수익(%)": round(btc_ret.mean() * 100, 2),
+        "연환산수익(%)": btc_ann,
+        "승률(%)": btc_win,
+        "관측월수": len(btc_ret),
+    }])
+    stats_df = pd.concat([stats_df, btc_row], ignore_index=True)
 
     return cum_df, stats_df
 
