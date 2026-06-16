@@ -212,12 +212,12 @@ def timing_label(row):
 
 score_disp["타이밍"] = score_disp.apply(timing_label, axis=1)
 recs = score_disp.apply(
-    lambda r: integrated_recommendation(r["composite"], r["action"]), axis=1
+    lambda r: integrated_recommendation(r["composite"], r.get("mom_rank")), axis=1
 )
 score_disp["통합 추천"] = [r[0] for r in recs]
 score_disp["추천 이유"] = [r[1] for r in recs]
 score_disp["우선순위 점수"] = score_disp.apply(
-    lambda r: round(priority_score(r["composite"], r["action"]), 2), axis=1
+    lambda r: round(priority_score(r["composite"], r.get("mom_rank")), 2), axis=1
 )
 score_disp = score_disp.sort_values("우선순위 점수", ascending=False).reset_index(drop=True)
 
