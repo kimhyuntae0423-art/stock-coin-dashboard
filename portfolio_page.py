@@ -558,7 +558,6 @@ st.caption(
 st.divider()
 st.subheader("📋 자산별 상세 리포트")
 
-_cycle_file = RESULTS / "cycle_metrics.csv"
 _cycle = pd.read_csv(_cycle_file).iloc[0] if _cycle_file.exists() else None
 
 _reports_file = ROOT / "asset_reports.json"
