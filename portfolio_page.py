@@ -331,50 +331,79 @@ view["손익"] = view["평가금액"] - view["원금"]
 view["수익률(%)"] = ((view["close"] / view["buy_price"]) - 1) * 100
 
 
+# MVRV Z-Score 로드 — 코인 보유 신호에 사용 (cycle_metrics.csv)
+_mvrv_z_now: float | None = None
+_cycle_file = RESULTS / "cycle_metrics.csv"
+if _cycle_file.exists():
+    try:
+        _raw_mvrv = pd.read_csv(_cycle_file).iloc[0].get("mvrv_z")
+        _mvrv_z_now = float(_raw_mvrv) if pd.notna(_raw_mvrv) else None
+    except Exception:
+        pass
+
+
 def holding_signal(row):
+    ticker = str(row.get("ticker", ""))
+    is_coin = "-USD" in ticker
+    is_etf = ticker in _ETF_TICKERS
     mom_rank_h = row.get("mom_rank_h")
-    action = row.get("action")  # 골든크로스 참고용 (50.8% 적중, 보조)
+    action = row.get("action")
     rsi = row.get("rsi14")
     pnl_pct = row.get("수익률(%)")
+
+    # ── ETF: 리밸런싱으로 관리 — 손실 기반 신호 없음 ──────────────
+    if is_etf:
+        if mom_rank_h == "Q1":
+            return "🟢 리밸런싱 적기", "12-1M 모멘텀 상위 25%(Q1) — ETF 비중 확대 또는 유지"
+        if mom_rank_h == "Q4":
+            return "🟠 비중 점검", "12-1M 모멘텀 하위 25%(Q4) — 리밸런싱 시 목표 비중 재확인"
+        if mom_rank_h == "Q2":
+            return "🟢 보유 양호", "ETF 추세 유지 중 — 리밸런싱 스케줄로 관리"
+        return "🔵 보유", "ETF — 리밸런싱으로 관리 (개별 매도 신호 없음)"
+
+    # ── 코인: MVRV Z-Score 구간 기반 (백테스트 검증) ──────────────
+    if is_coin:
+        if _mvrv_z_now is not None:
+            z = _mvrv_z_now
+            if z < 0:
+                return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
+            elif z < 1.5:
+                return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간)"
+            elif z < 2.5:
+                return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전 (BTC 45% 구간)"
+            else:
+                return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
+        return "🔵 보유", "MVRV 데이터 없음 — 코인 탭에서 온체인 지표 확인 권장"
+
+    # ── 개별주: 투자 논거 재검토 프레임 ──────────────────────────
     reasons = []
     severity = 0
 
-    # ── 손실 기반 신호 (절대 기준, 백테스트와 무관하게 리스크 관리) ──
     if pd.notna(pnl_pct) and pnl_pct <= -20:
-        severity = max(severity, 2)
-        if mom_rank_h == "Q1":
-            return (
-                "⚡ 신호 충돌",
-                f"📉 매수가 대비 {pnl_pct:.1f}% — 손절선 이탈. "
-                f"📈 단, 12-1M 모멘텀 Q1(상위 25%) — 추세는 살아있음. 직접 판단 필요.",
-            )
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선 크게 이탈, 매도 검토")
+        if mom_rank_h == "Q4":
+            reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 + 모멘텀 하위 25% — 투자 논거 재검토 필요")
+        else:
+            reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 — 투자 논거가 여전히 유효한지 확인 (추세는 유지 중)")
+        severity = max(severity, 1)
     elif pd.notna(pnl_pct) and pnl_pct <= -8:
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈")
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 — 손절 기준선 이탈, 논거 유지 중인지 점검")
         severity = max(severity, 1)
 
-    # ── 12-1M 모멘텀 악화 신호 (백테스트 검증) ──
     if mom_rank_h == "Q4":
         reasons.append("12-1M 모멘텀 하위 25%(Q4) — 추세 약화 (백테스트: Q4 연 +17.7%)")
         severity = max(severity, 1)
 
-    # ── 데드크로스 — 보조 참고 (적중률 50%, 추세 전환 가능성 알림) ──
     if action in ("매도", "미보유"):
-        reasons.append("데드크로스/하락추세 — 보조 참고 (단독 신호 신뢰도 낮음)")
+        reasons.append("데드크로스/하락추세 — 보조 참고 (단독 신호 신뢰도 낮음, 50.8% 적중)")
         severity = max(severity, 1)
 
-    # ── RSI 극단 과열 — 약한 경고 (코인 적중률 45%, 주식 적중률도 낮음) ──
     if pd.notna(rsi) and rsi >= 80:
-        reasons.append(f"RSI {rsi:.0f} — 극단 과매수. 단, 강한 추세에서는 계속 오를 수 있음")
+        reasons.append(f"RSI {rsi:.0f} — 극단 과매수. 강한 추세에서는 계속 오를 수 있음")
         severity = max(severity, 1)
-    # RSI 70~80 제거 — 백테스트에서 45% 적중(동전던지기 이하), 오히려 계속 오를 확률 높음
 
-    if severity == 2:
-        return "🔴 매도 검토", " · ".join(reasons)
-    if severity == 1:
-        return "🟠 주의", " · ".join(reasons)
+    if severity >= 1:
+        return "🟠 논거 재검토", " · ".join(reasons)
 
-    # ── 긍정 신호 — 12-1M 모멘텀 기준 (백테스트 검증) ──
     if mom_rank_h == "Q1":
         return "🟢 추가 매수 가능", "12-1M 모멘텀 상위 25%(Q1) — 백테스트 연 +45.9%, 분할 매수 적기"
     if mom_rank_h == "Q2":
