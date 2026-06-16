@@ -809,8 +809,22 @@ for _, row in view.iterrows():
                 else ""
             )
 
-        # ── 코인 공통: regime + 90일 수익률 ───────────────────────
+        # ── 코인 공통: MVRV + regime + 90일 수익률 ─────────────────
         elif is_coin:
+            if _mvrv_z_now is not None:
+                _z = _mvrv_z_now
+                if _z < 0:
+                    _mz_lbl = "🟢 역사적 바닥 근접 (BTC 100% 구간)"
+                elif _z < 1.5:
+                    _mz_lbl = "🟢 저평가 (BTC 75% 구간)"
+                elif _z < 2.5:
+                    _mz_lbl = "🟠 과열 경계 (BTC 45% 구간)"
+                else:
+                    _mz_lbl = "🔴 과열 (BTC 20% 구간)"
+                st.info(
+                    f"**BTC MVRV Z-Score {_z:.2f}** → {_mz_lbl}  \n"
+                    "포트폴리오 신호의 근거. 코인 탭에서 전체 온체인 지표 확인 가능."
+                )
             _cs_file = RESULTS / "coin_summary.csv"
             if _cs_file.exists():
                 _cs = pd.read_csv(_cs_file)
