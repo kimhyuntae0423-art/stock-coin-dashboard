@@ -477,7 +477,7 @@ st.markdown("""
 <div style='display:flex; gap:10px; margin-top:16px; margin-bottom:32px; flex-wrap:wrap'>
   <div style='flex:1; min-width:160px; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 가능</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>단기(50일) 평균선이 장기(200일) 위<br>상승 추세 → 분할 매수 검토</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>12-1M 모멘텀 상위 25%(Q1)<br>백테스트 연 +45.9% 검증</div>
   </div>
   <div style='flex:1; min-width:160px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유</div>
@@ -485,15 +485,15 @@ st.markdown("""
   </div>
   <div style='flex:1; min-width:160px; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 주의</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>하락 추세 / RSI 70+ 과열 /<br>매수가 대비 -8% 이상 손실</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>모멘텀 Q4(하위 25%) 또는<br>-8% 이상 손실 / RSI 80+ 극과열</div>
   </div>
   <div style='flex:1; min-width:160px; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 매도 검토</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>하락 전환 / RSI 80+ 극단 과열<br>매수가 대비 -20% 이상 손실</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>매수가 대비 -20% 이상 손실<br>모멘텀 악화 복합 신호</div>
   </div>
   <div style='flex:1; min-width:160px; background:#fefce8; border-left:4px solid #eab308; border-radius:6px; padding:12px 14px'>
     <div style='font-size:14px; font-weight:700; color:#a16207; margin-bottom:4px'>⚡ 신호 충돌</div>
-    <div style='font-size:12px; color:#555; line-height:1.6'>현재 추세는 상승(골든크로스)인데<br>내 매수가 대비 -20% 이상 손실<br>→ 직접 판단 필요</div>
+    <div style='font-size:12px; color:#555; line-height:1.6'>-20% 손실인데<br>모멘텀 Q1(상위) — 추세 살아있음<br>→ 직접 판단 필요</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
