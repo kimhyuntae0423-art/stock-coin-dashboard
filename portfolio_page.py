@@ -299,6 +299,29 @@ else:
 
 view = view.merge(scores_df[["ticker", "composite"]], on="ticker", how="left")
 view["종목명"] = view["ticker"].map(NAMES).fillna("-")
+
+# 12-1M 모멘텀 분위 — 전체 주식 유니버스 분포 기준으로 보유종목 분류
+if not summary.empty and "return_12m_pct" in summary.columns and "return_1m_pct" in summary.columns:
+    _all_r12 = pd.to_numeric(summary["return_12m_pct"], errors="coerce")
+    _all_r1  = pd.to_numeric(summary["return_1m_pct"],  errors="coerce")
+    _all_mom = (_all_r12 - _all_r1).dropna()
+    _q25, _q50, _q75 = _all_mom.quantile([0.25, 0.50, 0.75])
+    def _assign_mom_rank(m):
+        if pd.isna(m): return None
+        if m >= _q75: return "Q1"
+        if m >= _q50: return "Q2"
+        if m >= _q25: return "Q3"
+        return "Q4"
+else:
+    _q25 = _q50 = _q75 = None
+    def _assign_mom_rank(m): return None
+
+view["mom_12_1"] = (
+    pd.to_numeric(view.get("return_12m_pct", pd.Series(dtype=float)), errors="coerce") -
+    pd.to_numeric(view.get("return_1m_pct",  pd.Series(dtype=float)), errors="coerce")
+)
+view["mom_rank_h"] = view["mom_12_1"].apply(_assign_mom_rank)
+
 view["현재가"] = view["close"]
 view["평가금액"] = view["qty"] * view["close"]
 view["원금"] = view["qty"] * view["buy_price"]
