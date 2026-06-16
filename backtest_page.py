@@ -1,6 +1,7 @@
 """신호 백테스트 결과 페이지."""
 import streamlit as st
 import pandas as pd
+import numpy as np
 import yfinance as yf
 from pathlib import Path
 
