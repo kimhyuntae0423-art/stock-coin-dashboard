@@ -375,34 +375,55 @@ def holding_signal(row):
                 return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
         return "🔵 보유", "MVRV 데이터 없음 — 코인 탭에서 온체인 지표 확인 권장"
 
-    # ── 개별주: 투자 논거 재검토 프레임 ──────────────────────────
+    # ── 개별주: 매도 검토 / 주의 / 긍정 ──────────────────────────
     reasons = []
     severity = 0
+    _heavy = pd.notna(pnl_pct) and pnl_pct <= -20
+    _mild  = pd.notna(pnl_pct) and -20 < pnl_pct <= -8
 
-    if pd.notna(pnl_pct) and pnl_pct <= -20:
+    # ─ 큰 손실 (≥ -20%) ──────────────────────────────────────────
+    if _heavy:
+        if mom_rank_h == "Q1":
+            # 손실 크지만 추세 살아있음 — 즉각 판단 유예
+            return (
+                "🟠 신호 충돌",
+                f"📉 매수가 대비 {pnl_pct:.1f}% 손실. "
+                f"📈 단, 12-1M 모멘텀 Q1(상위 25%) — 추세는 살아있음. 직접 판단 필요."
+            )
         if mom_rank_h == "Q4":
-            reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 + 모멘텀 하위 25% — 투자 논거 재검토 필요")
+            reasons.append(
+                f"매수가 대비 {pnl_pct:.1f}% 손실 + 모멘텀 하위 25%(Q4) — 추세·논거 이중 훼손"
+            )
         else:
-            reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 — 투자 논거가 여전히 유효한지 확인 (추세는 유지 중)")
-        severity = max(severity, 1)
-    elif pd.notna(pnl_pct) and pnl_pct <= -8:
+            reasons.append(
+                f"매수가 대비 {pnl_pct:.1f}% 손실 — 매도 검토 (논거 재확인 후 보유 여부 판단)"
+            )
+        severity = 2
+
+    # ─ 경미한 손실 (-8 ~ -20%) ────────────────────────────────────
+    elif _mild:
         reasons.append(f"매수가 대비 {pnl_pct:.1f}% 손실 — 손절 기준선 이탈, 논거 유지 중인지 점검")
         severity = max(severity, 1)
 
-    if mom_rank_h == "Q4":
+    # ─ 모멘텀 악화 (Q4) — 큰 손실과 중복되지 않을 때만 추가 ──────
+    if mom_rank_h == "Q4" and not _heavy:
         reasons.append("12-1M 모멘텀 하위 25%(Q4) — 추세 약화 (백테스트: Q4 연 +17.7%)")
         severity = max(severity, 1)
 
+    # ─ 데드크로스 — 보조 참고 ────────────────────────────────────
     if action in ("매도", "미보유"):
-        reasons.append("데드크로스/하락추세 — 보조 참고 (단독 신호 신뢰도 낮음, 50.8% 적중)")
+        reasons.append("데드크로스/하락추세 — 보조 참고 (50.8% 적중, 단독 신뢰도 낮음)")
         severity = max(severity, 1)
 
+    # ─ RSI 극단 과매수 ────────────────────────────────────────────
     if pd.notna(rsi) and rsi >= 80:
         reasons.append(f"RSI {rsi:.0f} — 극단 과매수. 강한 추세에서는 계속 오를 수 있음")
         severity = max(severity, 1)
 
-    if severity >= 1:
-        return "🟠 논거 재검토", " · ".join(reasons)
+    if severity == 2:
+        return "🔴 매도 검토", " · ".join(reasons)
+    if severity == 1:
+        return "🟠 주의", " · ".join(reasons)
 
     if mom_rank_h == "Q1":
         return "🟢 추가 매수 가능", "12-1M 모멘텀 상위 25%(Q1) — 백테스트 연 +45.9%, 분할 매수 적기"
