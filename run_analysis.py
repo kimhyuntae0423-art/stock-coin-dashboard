@@ -172,6 +172,7 @@ def run_all():
     run_stocks(out_dir)
     run_coins(out_dir)
     run_factor_backtests()
+    run_etf_backtests()
     print("\n완료. 결과는 results/ 폴더를 확인하세요.")
 
 
