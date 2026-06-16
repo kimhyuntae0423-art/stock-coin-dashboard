@@ -453,7 +453,7 @@ k6.metric("USD/KRW", f"{_get_usdkrw():,.0f}", help="코인 현재가 환산에 �
 
 if n_sell > 0:
     sell_tickers = view[view["신호"].str.contains("🔴", na=False)]["ticker"].tolist()
-    st.error(f"⚠️ **비중 축소 신호 (코인 MVRV 과열)**: {', '.join(sell_tickers)}")
+    st.error(f"⚠️ **매도 검토 필요**: {', '.join(sell_tickers)}")
 
 display = view.rename(columns={
     "ticker": "티커", "qty": "수량", "buy_price": "매수가", "rsi14": "RSI(과열)",
