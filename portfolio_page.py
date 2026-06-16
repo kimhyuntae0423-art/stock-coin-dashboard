@@ -448,7 +448,7 @@ k1.metric("보유 종목 수", f"{len(view)}")
 k2.metric("총 원금", f"{total_cost:,.0f}원")
 k3.metric("총 손익", f"{total_pnl:+,.0f}원", delta=f"{total_pnl_pct:+.2f}%")
 k4.metric("총 평가금액", f"{total_value:,.0f}원")
-k5.metric("🔴 비중 축소 (코인)", f"{n_sell}")
+k5.metric("🔴 매도 검토", f"{n_sell}")
 k6.metric("USD/KRW", f"{_get_usdkrw():,.0f}", help="코인 현재가 환산에 사용된 환율 (1시간 캐시)")
 
 if n_sell > 0:
