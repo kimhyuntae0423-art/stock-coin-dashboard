@@ -121,7 +121,9 @@ def run_low_vol(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         f for f in RESULTS.glob("*_signals.csv")
         if not f.name.startswith("coin_") and "summary" not in f.name
     ]
-    daily = {}
+    # 종목별로 독립 계산 후 월말 스냅샷만 합산
+    # (KR/US 거래일 불일치로 concat 후 rolling 시 전부 NaN이 되는 문제 방지)
+    vol_series = {}
     for f in files:
         ticker = f.stem.replace("_signals", "")
         df = pd.read_csv(f)
@@ -130,14 +132,13 @@ def run_low_vol(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             continue
         df["Date"] = pd.to_datetime(df[dc])
         close = df.set_index("Date")["Close"].dropna()
-        daily[ticker] = close.pct_change()
+        ret = close.pct_change()
+        vol = ret.rolling(252).std() * np.sqrt(252)
+        vol_monthly = vol.resample("ME").last().dropna()
+        if len(vol_monthly) >= 12:
+            vol_series[ticker] = vol_monthly
 
-    daily_df = pd.concat(daily, axis=1, sort=True)
-
-    # 252일 롤링 연환산 변동성 → 월말 스냅샷
-    vol = daily_df.rolling(252).std() * np.sqrt(252)
-    vol_monthly = vol.resample("ME").last()
-
+    vol_monthly = pd.DataFrame(vol_series)
     next_ret = panel.pct_change().shift(-1)
     idx = vol_monthly.index.intersection(next_ret.index)
     # ascending=True → 낮은 변동성이 Q1
