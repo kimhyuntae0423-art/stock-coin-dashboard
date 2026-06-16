@@ -252,25 +252,25 @@ def run():
     if not cum.empty:
         cum.to_csv(OUT / "factor_momentum_cum.csv")
         stats.to_csv(OUT / "factor_momentum_stats.csv", index=False)
-        print("  ✓ 모멘텀")
+        print("  [OK] 모멘텀")
 
     cum, stats = run_low_vol(panel)
     if not cum.empty:
         cum.to_csv(OUT / "factor_lowvol_cum.csv")
         stats.to_csv(OUT / "factor_lowvol_stats.csv", index=False)
-        print("  ✓ 저변동성")
+        print("  [OK] 저변동성")
 
     detail, stats = run_value(panel)
     if not detail.empty:
         detail.to_csv(OUT / "factor_value_detail.csv", index=False)
         stats.to_csv(OUT / "factor_value_stats.csv", index=False)
-        print("  ✓ 가치")
+        print("  [OK] 가치")
 
     detail, stats = run_quality(panel)
     if not detail.empty:
         detail.to_csv(OUT / "factor_quality_detail.csv", index=False)
         stats.to_csv(OUT / "factor_quality_stats.csv", index=False)
-        print("  ✓ 퀄리티")
+        print("  [OK] 퀄리티")
 
     print("완료!")
 
