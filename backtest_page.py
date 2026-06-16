@@ -578,7 +578,8 @@ with tab4:
 # TAB 4 (계속) — ETF 전략 백테스트
 # ════════════════════════════════════════════════════════
 with tab4:
-    st.subheader("ETF 전략 백테스트 — 학술 검증 4대 ETF 전략 (2015-현재)")
+    st.divider()
+    st.subheader("📊 Part 2 — ETF 전략 백테스트 (2015-현재, VOO·VEU·BND·GLD·TLT)")
     st.caption(
         "개별 종목 선택 없이 시장 전체를 ETF로 사는 전략. "
         "유니버스: VOO(미국주식) · VEU(선진국) · BND(채권) · GLD(금) · TLT(장기국채) · SHY(현금)"
