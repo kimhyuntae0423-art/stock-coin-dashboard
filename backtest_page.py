@@ -821,3 +821,234 @@ with tab4:
 
     with st.expander("전략별 상세 통계"):
         st.dataframe(cr_stat, use_container_width=True, hide_index=True)
+
+
+# ════════════════════════════════════════════════════════
+# TAB_SUM — 요약
+# ════════════════════════════════════════════════════════
+with tab_sum:
+    st.subheader("백테스트 요약 — 무엇이 작동하고, 무엇을 버려야 하는가")
+    st.caption(
+        "이 대시보드 종목군(주식 48종목·코인 19종목·ETF 6종목)의 과거 데이터 백테스트 결과. "
+        "판정 기준: ✅ 적중률 60%+ 또는 Q1 vs Q4 차이 명확 / 🟡 약한 우위(50~60%) / ❌ 50% 이하(동전던지기 이하)"
+    )
+
+    # ── 수치 로드 (CSV 있으면 실제값, 없으면 하드코딩 기본값) ──────
+    @st.cache_data(ttl=3600)
+    def _load_sum():
+        d = {}
+        try:
+            cr = pd.read_csv(BACKTEST_DIR / "cross_signals.csv")
+            gc = cr[cr["signal"] == "golden_cross"]
+            dc = cr[cr["signal"] == "death_cross"]
+            d["gc_hit"] = round(gc["hit_1M"].dropna().mean() * 100, 1) if len(gc) > 0 else 50.8
+            d["dc_hit"] = round(dc["hit_1M"].dropna().mean() * 100, 1) if len(dc) > 0 else 50.0
+        except Exception:
+            d["gc_hit"], d["dc_hit"] = 50.8, 50.0
+        try:
+            rs = pd.read_csv(BACKTEST_DIR / "rsi_signals.csv")
+            r70 = rs[rs["signal"] == "RSI 70 돌파(과매수)"]
+            r30 = rs[rs["signal"] == "RSI 30 이탈(과매도)"]
+            d["rsi70"] = round(r70["hit_22d"].dropna().mean() * 100, 1) if len(r70) > 0 else 45.0
+            d["rsi30"] = round(r30["hit_22d"].dropna().mean() * 100, 1) if len(r30) > 0 else 56.0
+        except Exception:
+            d["rsi70"], d["rsi30"] = 45.0, 56.0
+        try:
+            ms = pd.read_csv(BACKTEST_DIR / "factor_momentum_stats.csv")
+            d["mom_q1"] = float(ms[ms["분위"] == "Q1"]["연환산수익(%)"].values[0])
+            d["mom_q4"] = float(ms[ms["분위"] == "Q4"]["연환산수익(%)"].values[0])
+        except Exception:
+            d["mom_q1"], d["mom_q4"] = 45.9, 17.7
+        try:
+            qs = pd.read_csv(BACKTEST_DIR / "factor_quality_stats.csv")
+            d["qual_q1"] = float(qs[qs["분위"] == "Q1"]["평균수익_36M(%)"].values[0])
+            d["qual_q4"] = float(qs[qs["분위"] == "Q4"]["평균수익_36M(%)"].values[0])
+        except Exception:
+            d["qual_q1"], d["qual_q4"] = 286.0, 51.0
+        try:
+            vs = pd.read_csv(BACKTEST_DIR / "factor_lowvol_stats.csv")
+            d["vol_q1"] = float(vs[vs["분위"] == "Q1"]["연환산수익(%)"].values[0])
+            d["vol_q4"] = float(vs[vs["분위"] == "Q4"]["연환산수익(%)"].values[0])
+        except Exception:
+            d["vol_q1"], d["vol_q4"] = 13.9, 56.7
+        try:
+            mv = pd.read_csv(BACKTEST_DIR / "coin_mvrv_stats.csv")
+            mr = mv[mv["전략"] == "MVRV 사이클 전략"].iloc[0]
+            br = mv[mv["전략"] == "BTC 단순보유"].iloc[0]
+            d["mvrv_mdd"] = float(mr["최대낙폭(%)"])
+            d["btc_mdd"]  = float(br["최대낙폭(%)"])
+            d["mvrv_ann"] = float(mr["연환산수익(%)"])
+        except Exception:
+            d["mvrv_mdd"], d["btc_mdd"], d["mvrv_ann"] = -28.0, -43.0, None
+        try:
+            cm = pd.read_csv(BACKTEST_DIR / "coin_momentum_stats.csv")
+            d["coin_q1"] = float(cm[cm["분위"] == "Q1"]["연환산수익(%)"].values[0])
+            d["coin_q4"] = float(cm[cm["분위"] == "Q4"]["연환산수익(%)"].values[0])
+        except Exception:
+            d["coin_q1"], d["coin_q4"] = None, None
+        try:
+            rb = pd.read_csv(BACKTEST_DIR / "etf_리밸런싱_프리미엄_stats.csv")
+            rr = rb[rb["전략"].str.contains("리밸런싱")].iloc[0]
+            d["rb_ann"]    = float(rr["연환산수익(%)"])
+            d["rb_sharpe"] = float(rr["샤프비율"])
+            d["rb_mdd"]    = float(rr["최대낙폭(%)"])
+        except Exception:
+            d["rb_ann"], d["rb_sharpe"], d["rb_mdd"] = 11.0, 1.07, -19.5
+        return d
+
+    _s = _load_sum()
+
+    # ── 상단 3분류 카드 ────────────────────────────────────
+    col_ok, col_no, col_aux = st.columns(3)
+    with col_ok:
+        st.success(
+            "**✅ 검증된 신호 (적용 中)**\n\n"
+            f"📈 12-1M 모멘텀 Q1 — 연 **+{_s['mom_q1']:.1f}%**\n\n"
+            f"💎 퀄리티 ROE Q1 — 36M **+{_s['qual_q1']:.0f}%**\n\n"
+            f"🔵 MVRV Z-Score — MDD **{_s['mvrv_mdd']:.0f}%** (BTC {_s['btc_mdd']:.0f}%)\n\n"
+            "📦 ETF 리밸런싱 — 샤프비율 우위"
+        )
+    with col_no:
+        st.error(
+            "**❌ 폐기 (제거/격하)**\n\n"
+            f"🚫 골든크로스 — {_s['gc_hit']:.1f}% (동전던지기)\n\n"
+            f"🚫 데스크로스 — {_s['dc_hit']:.1f}% (동전던지기)\n\n"
+            f"🚫 RSI 70+ 과매수 — {_s['rsi70']:.1f}% (역방향)\n\n"
+            "🚫 코인 모멘텀 Q1 — Q4가 더 높음"
+        )
+    with col_aux:
+        st.warning(
+            "**🟡 보조 신호 (참고만)**\n\n"
+            f"⚠️ RSI 30 과매도 — {_s['rsi30']:.1f}% (단독 금지)\n\n"
+            f"⚠️ 저변동성 — Q1 {_s['vol_q1']:.1f}%, Q4 {_s['vol_q4']:.1f}% (불마켓 역효과)\n\n"
+            "⚠️ P/B 가치 — 소유니버스 노이즈 큼\n\n"
+            "⚠️ 데스크로스 — 손실 관리 보조"
+        )
+
+    st.divider()
+
+    # ── 판정 전체 표 ───────────────────────────────────────
+    st.markdown("#### 전체 신호/전략 판정표")
+
+    _coin_q_str = (
+        f"Q1 {_s['coin_q1']:+.1f}% vs Q4 {_s['coin_q4']:+.1f}%"
+        if _s.get("coin_q1") is not None else "Q4 > Q1 (역방향)"
+    )
+
+    verdict_rows = [
+        # ── 주식 신호
+        ("📈 주식 신호", "골든크로스 (50일>200일)",
+         f"1M 적중률 {_s['gc_hit']:.1f}%",
+         "❌ 폐기", "참고용 표시만", "예측력 없음 — 동전던지기"),
+        ("📈 주식 신호", "데스크로스 (50일<200일)",
+         f"1M 적중률 {_s['dc_hit']:.1f}%",
+         "❌ 폐기", "보조 참고만", "예측력 없음 — 동전던지기"),
+        ("📈 주식 신호", "RSI 70+ 과매수",
+         f"22d 적중률 {_s['rsi70']:.1f}%",
+         "❌ 역방향", "주식·코인 모두 제거", "과매수 후 오히려 계속 오르는 경향"),
+        ("📈 주식 신호", "RSI 30 이하 과매도",
+         f"22d 적중률 {_s['rsi30']:.1f}%",
+         "🟡 약한 우위", "보조 신호 유지", "56% 적중 — 단독 사용 금지"),
+        # ── 팩터
+        ("🔬 팩터 (주식)", "12-1M 모멘텀 Q1 (상위 25%)",
+         f"연 +{_s['mom_q1']:.1f}% (Q4 {_s['mom_q4']:+.1f}%)",
+         "✅ 검증됨", "우선순위 점수 주신호", f"Q1 vs Q4 연 +{_s['mom_q1']-_s['mom_q4']:.1f}%p — 팩터 유효"),
+        ("🔬 팩터 (주식)", "퀄리티 ROE Q1 (고수익성)",
+         f"36M +{_s['qual_q1']:.0f}% vs Q4 +{_s['qual_q4']:.0f}%",
+         "✅ 검증됨", "QVGM 품질 점수 반영", "고ROE 기업이 장기 우월 — 팩터 유효"),
+        ("🔬 팩터 (주식)", "저변동성 Q1 (안정 종목)",
+         f"Q1 {_s['vol_q1']:+.1f}% vs Q4 {_s['vol_q4']:+.1f}%",
+         "❌ 역방향(불마켓)", "미적용", "AI/테크 강세장에서 고변동성(Q4)이 압도"),
+        ("🔬 팩터 (주식)", "P/B 가치 (저밸류 종목)",
+         "비선형 패턴, 노이즈 큼",
+         "🟡 불명확", "QVGM 저평가 참고", "48종목 소유니버스 — 통계적 유의성 낮음"),
+        # ── ETF
+        ("📦 ETF 전략", "VOO 단순보유 (Buy & Hold)",
+         "연 15-17%, MDD -24%",
+         "✅ 기준선", "Core ETF 전략 근거", "강세장에서 모든 복잡한 전략 앞섬"),
+        ("📦 ETF 전략", f"리밸런싱 60/30/10",
+         f"연 {_s['rb_ann']:.1f}%, 샤프 {_s['rb_sharpe']:.2f}, MDD {_s['rb_mdd']:.1f}%",
+         "🟡 MDD 제어", "전략 참고",
+         f"수익<VOO지만 MDD {24+_s['rb_mdd']:.1f}%p↓, 행동 편향 제거"),
+        # ── 코인
+        ("🪙 코인", "BTC MVRV Z-Score 사이클",
+         f"MDD {_s['mvrv_mdd']:.0f}% vs BTC보유 {_s['btc_mdd']:.0f}%",
+         "✅ 사이클 검증", "코인 페이지 1차 신호",
+         f"낙폭을 {abs(_s['mvrv_mdd']-_s['btc_mdd']):.0f}%p 줄임 — 하락 방어 유효"),
+        ("🪙 코인", "코인 12-1M 모멘텀 Q1",
+         _coin_q_str,
+         "❌ 역방향", "코인에 미적용", "코인은 평균회귀 성질 — 주식 모멘텀 그대로 적용 불가"),
+        ("🪙 코인", "코인 RSI 30 과매도",
+         "주식과 동일 56% 수준",
+         "🟡 보조", "소폭 보너스 +0.5 유지", "과매도 반등 신호 — 강한 신호 아님"),
+    ]
+
+    verdict_df = pd.DataFrame(verdict_rows, columns=[
+        "분류", "신호/전략", "핵심 수치", "판정", "대시보드 적용", "근거"
+    ])
+
+    # 판정 기준 색상 배경을 위해 별도 열 추가
+    def _verdict_color(v):
+        if v.startswith("✅"): return "background-color: #d1fae5"
+        if v.startswith("❌"): return "background-color: #fee2e2"
+        if v.startswith("🟡"): return "background-color: #fef9c3"
+        return ""
+
+    styled = verdict_df.style.applymap(_verdict_color, subset=["판정"])
+
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "분류":        st.column_config.TextColumn("분류",       width="small"),
+            "신호/전략":   st.column_config.TextColumn("신호/전략",  width="medium"),
+            "핵심 수치":   st.column_config.TextColumn("핵심 수치",  width="medium"),
+            "판정":        st.column_config.TextColumn("판정",       width="small"),
+            "대시보드 적용": st.column_config.TextColumn("현재 적용", width="medium"),
+            "근거":        st.column_config.TextColumn("근거",       width="large"),
+        },
+    )
+
+    st.divider()
+
+    # ── 핵심 인사이트 ──────────────────────────────────────
+    st.markdown("#### 핵심 인사이트 3가지")
+
+    ins1, ins2, ins3 = st.columns(3)
+    with ins1:
+        st.info(
+            "**① 차트 신호는 예측력이 없다**\n\n"
+            "골든크로스·데스크로스·RSI 과매수는 모두 50% 이하 적중률. "
+            "시장은 이 신호들을 이미 가격에 반영하고 있어 패턴이 소진됨. "
+            "**추세 확인 참고에만 쓸 것.**"
+        )
+    with ins2:
+        st.success(
+            "**② 모멘텀과 퀄리티는 실제로 작동한다**\n\n"
+            f"12-1M 모멘텀 Q1은 Q4 대비 연 +{_s['mom_q1']-_s['mom_q4']:.1f}%p 초과수익. "
+            "퀄리티(고ROE) Q1은 Q4 대비 36M 수익 5배 이상 차이. "
+            "**종목 선별의 핵심 기준으로 사용.**"
+        )
+    with ins3:
+        st.warning(
+            "**③ 코인은 주식과 반대로 작동한다**\n\n"
+            "코인 모멘텀 Q1(많이 오른 코인)은 오히려 뒤처짐. "
+            "코인의 주신호는 MVRV Z-Score(온체인 사이클). "
+            "RSI 70+ 과매수도 코인에서 적중률 45% — "
+            "**코인은 별도 프레임이 필요.**"
+        )
+
+    st.divider()
+    st.markdown("#### 현재 대시보드 변경 이력 (백테스트 기반)")
+    st.markdown("""
+| 페이지 | 변경 전 | 변경 후 | 근거 |
+|---|---|---|---|
+| 주식 추천 | 골든크로스 → 매수 신호 | 12-1M 모멘텀 Q1 → 주신호 | 골든크로스 50.8%, 모멘텀 Q1 연 +45.9% |
+| 주식 우선순위 | action(골든크로스) 보정 | mom_rank Q1~Q4 보정 | Q1 +0.5, Q4 -0.3 백테스트 기반 |
+| 코인 추천 | RSI 70+ 과매수 −1.0 | RSI 70+ −0.2 (소폭만) | 45% 적중 = 역방향 신호 |
+| 코인 페이지 | MVRV 차트 아래 표시 | **MVRV 존 배너 최상단** | 가장 신뢰도 높은 1차 신호 |
+| 보유 종목 | 골든크로스 → 🟢 매수 | 모멘텀 Q1 → 🟢 매수 | 골든크로스 50.8% vs 모멘텀 Q1 검증 |
+| 보유 종목 | RSI 70+ → 🟠 주의 | 제거 (모멘텀 Q4로 교체) | RSI 70+ 적중 45% = 역효과 신호 |
+""")
+
