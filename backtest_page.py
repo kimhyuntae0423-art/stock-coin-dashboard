@@ -994,7 +994,7 @@ with tab_sum:
         if v.startswith("🟡"): return "background-color: #fef9c3"
         return ""
 
-    styled = verdict_df.style.applymap(_verdict_color, subset=["판정"])
+    styled = verdict_df.style.map(_verdict_color, subset=["판정"])
 
     st.dataframe(
         styled,
