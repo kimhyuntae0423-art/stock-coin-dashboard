@@ -41,8 +41,31 @@ def load_signals() -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-def severity_for_holding(row, sig_row) -> tuple[int, list[str]]:
-    """단일 보유종목의 위험도(0=보유 / 1=주의 / 2=매도 검토) 와 사유 리스트."""
+def severity_for_holding(
+    row, sig_row, mvrv_z=None, is_etf: bool = False, is_coin: bool = False
+) -> tuple[int, list[str]]:
+    """단일 보유종목의 위험도(0=보유 / 1=논거 재검토 / 2=비중 축소(코인)) 와 사유 리스트.
+
+    자산 유형별 신호 기준 (백테스트 검증):
+      ETF  → 리밸런싱으로 관리, 알림 없음
+      코인 → MVRV Z-Score 구간 기반 (0/1.5/2.5)
+      개별주 → 손실(-8%/-20%) + 데드크로스 + RSI 80+ (모두 1수준, 2수준 없음)
+    """
+    # ── ETF: 리밸런싱으로 관리 — 알림 불필요 ──────────────────────
+    if is_etf:
+        return 0, []
+
+    # ── 코인: MVRV Z-Score 구간 기반 (백테스트 검증) ──────────────
+    if is_coin:
+        if mvrv_z is not None and pd.notna(mvrv_z):
+            z = float(mvrv_z)
+            if z >= 2.5:
+                return 2, [f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 비중 목표, 백테스트 검증)"]
+            elif z >= 1.5:
+                return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
+        return 0, []
+
+    # ── 개별주: 논거 재검토 프레임 ────────────────────────────────
     severity = 0
     reasons: list[str] = []
 
@@ -51,29 +74,25 @@ def severity_for_holding(row, sig_row) -> tuple[int, list[str]]:
     close = sig_row.get("close")
     buy_price = row.get("buy_price")
 
-    # 매도 검토 신호 (severity 2)
-    if action == "매도":
-        severity = 2
-        reasons.append("데드크로스 발생")
-    if pd.notna(rsi) and rsi >= 80:
-        severity = max(severity, 2)
-        reasons.append(f"RSI {rsi:.0f} 극단 과매수")
-
-    # 주의 신호 (severity 1)
-    if severity < 2:
-        if action == "미보유":
-            severity = max(severity, 1)
-            reasons.append("추세 미보유 구간")
-        if pd.notna(rsi) and 70 <= rsi < 80:
-            severity = max(severity, 1)
-            reasons.append(f"RSI {rsi:.0f} 과매수")
-
-    # 손익 기반 (severity 1) — 매수가 있을 때만
-    if severity < 2 and pd.notna(buy_price) and pd.notna(close) and buy_price > 0:
+    # 손익 기반 — 개별주는 🟠 최대 (🔴 없음, ETF와 달리 논거 훼손 가능성)
+    if pd.notna(buy_price) and pd.notna(close) and buy_price > 0:
         pnl_pct = (close / buy_price - 1) * 100
-        if pnl_pct <= -8:
+        if pnl_pct <= -20:
             severity = max(severity, 1)
-            reasons.append(f"손익 {pnl_pct:+.1f}% (-8% 손절선 근접)")
+            reasons.append(f"손익 {pnl_pct:+.1f}% — 투자 논거 재검토 필요")
+        elif pnl_pct <= -8:
+            severity = max(severity, 1)
+            reasons.append(f"손익 {pnl_pct:+.1f}% — 손절 기준선 이탈")
+
+    # 데드크로스 — 보조 참고 (적중률 50.8%, 단독 신뢰도 낮음)
+    if action in ("매도", "미보유"):
+        severity = max(severity, 1)
+        reasons.append("데드크로스/하락추세 — 보조 참고 (50.8% 적중)")
+
+    # RSI 80+ — severity 1로 낮춤 (RSI 70+ 적중률 45%, 단독 신뢰도 낮음)
+    if pd.notna(rsi) and rsi >= 80:
+        severity = max(severity, 1)
+        reasons.append(f"RSI {rsi:.0f} — 극단 과매수 (강한 추세에서는 계속 오를 수 있음)")
 
     return severity, reasons
 
