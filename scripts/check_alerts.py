@@ -230,14 +230,34 @@ def check() -> list[dict]:
     if signals.empty:
         return []
 
+    # MVRV Z-Score — 코인 신호 판정에 사용
+    _mvrv_z: float | None = None
+    if CYCLE_METRICS.exists():
+        try:
+            _raw = pd.read_csv(CYCLE_METRICS).iloc[0].get("mvrv_z")
+            _mvrv_z = float(_raw) if pd.notna(_raw) else None
+        except Exception:
+            pass
+
+    # ETF 티커 목록
+    _etf_file = ROOT / "core_etfs.csv"
+    _etf_tickers: set = (
+        set(pd.read_csv(_etf_file)["ticker"].astype(str).str.strip())
+        if _etf_file.exists() else set()
+    )
+
     alerts: list[dict] = []
     for _, row in h.dropna(subset=["ticker"]).iterrows():
         ticker = str(row["ticker"]).strip().upper()
+        is_coin = "-USD" in ticker
+        is_etf = ticker in _etf_tickers
         s = signals[signals["ticker"] == ticker]
         if s.empty:
             continue
         s = s.iloc[0]
-        severity, reasons = severity_for_holding(row, s)
+        severity, reasons = severity_for_holding(
+            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin
+        )
         if severity > 0:
             alerts.append({
                 "ticker": ticker,
