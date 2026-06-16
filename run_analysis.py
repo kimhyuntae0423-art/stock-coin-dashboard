@@ -153,12 +153,19 @@ def run_coins(out_dir):
     pd.DataFrame([metrics]).to_csv(out_dir / "cycle_metrics.csv", index=False)
 
 
+def run_factor_backtests():
+    print("\n=== 팩터 백테스트 ===")
+    from scripts.factor_backtest import run as _run_factors
+    _run_factors()
+
+
 def run_all():
     base = Path(__file__).resolve().parent
     out_dir = base / "results"
     out_dir.mkdir(exist_ok=True)
     run_stocks(out_dir)
     run_coins(out_dir)
+    run_factor_backtests()
     print("\n완료. 결과는 results/ 폴더를 확인하세요.")
 
 
