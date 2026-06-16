@@ -330,43 +330,53 @@ view["수익률(%)"] = ((view["close"] / view["buy_price"]) - 1) * 100
 
 
 def holding_signal(row):
-    action = row.get("action")
+    mom_rank_h = row.get("mom_rank_h")
+    action = row.get("action")  # 골든크로스 참고용 (50.8% 적중, 보조)
     rsi = row.get("rsi14")
     pnl_pct = row.get("수익률(%)")
-    composite = row.get("composite")
     reasons = []
     severity = 0
-    if action == "매도":
-        reasons.append("단기(50일)선이 장기(200일)선 아래로 내려옴 → 하락 추세 전환 신호")
-        severity = 2
-    if pd.notna(rsi) and rsi >= 80:
-        reasons.append(f"RSI {rsi:.0f} — 단기 급등으로 과매수 구간, 조정 가능성 높음")
-        severity = max(severity, 2)
-    if action == "미보유" and severity < 2:
-        reasons.append("단기(50일)선이 장기(200일)선 아래 — 추세 하락 구간, 반등 확인 후 매수 권장")
-        severity = max(severity, 1)
-    if pd.notna(rsi) and rsi >= 70 and severity < 2:
-        reasons.append(f"RSI {rsi:.0f} — 단기 과열 구간, 추가 상승 여력 제한적")
-        severity = max(severity, 1)
+
+    # ── 손실 기반 신호 (절대 기준, 백테스트와 무관하게 리스크 관리) ──
     if pd.notna(pnl_pct) and pnl_pct <= -20:
         severity = max(severity, 2)
-        if action == "매수":
-            # 골든크로스(상승추세)인데 손실이 큰 경우 — 충돌 신호
+        if mom_rank_h == "Q1":
             return (
                 "⚡ 신호 충돌",
-                f"📉 매수가 대비 {pnl_pct:.1f}% 손절 이탈 — 매도 검토 필요\n"
-                f"📈 단, 현재 골든크로스(50일선>200일선) — 시장 추세는 상승 중",
+                f"📉 매수가 대비 {pnl_pct:.1f}% — 손절선 이탈. "
+                f"📈 단, 12-1M 모멘텀 Q1(상위 25%) — 추세는 살아있음. 직접 판단 필요.",
             )
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 크게 이탈, 매도 검토 필요")
-    elif pd.notna(pnl_pct) and pnl_pct <= -8 and severity < 2:
-        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈, 추가 하락 시 대응 필요")
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선 크게 이탈, 매도 검토")
+    elif pd.notna(pnl_pct) and pnl_pct <= -8:
+        reasons.append(f"매수가 대비 {pnl_pct:.1f}% 하락 — 손절 기준선(-8%) 이탈")
         severity = max(severity, 1)
+
+    # ── 12-1M 모멘텀 악화 신호 (백테스트 검증) ──
+    if mom_rank_h == "Q4":
+        reasons.append("12-1M 모멘텀 하위 25%(Q4) — 추세 약화 (백테스트: Q4 연 +17.7%)")
+        severity = max(severity, 1)
+
+    # ── 데드크로스 — 보조 참고 (적중률 50%, 추세 전환 가능성 알림) ──
+    if action in ("매도", "미보유"):
+        reasons.append("데드크로스/하락추세 — 보조 참고 (단독 신호 신뢰도 낮음)")
+        severity = max(severity, 1)
+
+    # ── RSI 극단 과열 — 약한 경고 (코인 적중률 45%, 주식 적중률도 낮음) ──
+    if pd.notna(rsi) and rsi >= 80:
+        reasons.append(f"RSI {rsi:.0f} — 극단 과매수. 단, 강한 추세에서는 계속 오를 수 있음")
+        severity = max(severity, 1)
+    # RSI 70~80 제거 — 백테스트에서 45% 적중(동전던지기 이하), 오히려 계속 오를 확률 높음
+
     if severity == 2:
         return "🔴 매도 검토", " · ".join(reasons)
     if severity == 1:
         return "🟠 주의", " · ".join(reasons)
-    if action == "매수":
-        return "🟢 추가 매수 가능", "단기(50일)선이 장기(200일)선 위로 올라옴 → 상승 추세 확인, 분할 매수 적기"
+
+    # ── 긍정 신호 — 12-1M 모멘텀 기준 (백테스트 검증) ──
+    if mom_rank_h == "Q1":
+        return "🟢 추가 매수 가능", "12-1M 모멘텀 상위 25%(Q1) — 백테스트 연 +45.9%, 분할 매수 적기"
+    if mom_rank_h == "Q2":
+        return "🟢 보유 양호", "12-1M 모멘텀 중상위(Q2) — 추세 유지 중"
     return "🔵 보유", "특이사항 없음"
 
 
