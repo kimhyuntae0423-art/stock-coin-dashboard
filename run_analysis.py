@@ -165,6 +165,12 @@ def run_etf_backtests():
     _run_etf()
 
 
+def run_coin_backtests():
+    print("\n=== 코인 전략 백테스트 ===")
+    from scripts.coin_backtest import run as _run_coin
+    _run_coin()
+
+
 def run_all():
     base = Path(__file__).resolve().parent
     out_dir = base / "results"
