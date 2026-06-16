@@ -303,7 +303,7 @@ with tab_summary:
     st.caption("💡 컬럼 이름 옆 **?** 아이콘에 마우스를 올리면 설명이 나옵니다. 자세한 풀이는 위 📖 용어 사전 참고.")
     rank_table = score_disp.copy()
     rank_table["순위"] = range(1, len(rank_table) + 1)
-    # "추세"는 이미 action 매핑된 컬럼이라 momentum_score는 "1년 추세"로 구분
+    # "추세"는 골든크로스 기반 action 매핑(참고용). momentum_score=12-1M, technical_score=52주 근접도.
     rank_table = rank_table.rename(columns={
         "ticker": "티커", "close": "종가", "composite": "종합 점수",
         "value_score": "저평가", "quality_score": "품질", "growth_score": "성장",
