@@ -335,10 +335,10 @@ with tab_summary:
                 "품질", help="ROE + 영업이익률. 회사가 얼마나 잘 버는가.", format="%+d"),
             "성장": st.column_config.NumberColumn(
                 "성장", help="매출·이익 YoY 성장률. 빠르게 크는 회사일수록 높음.", format="%+d"),
-            "1년 추세": st.column_config.NumberColumn(
-                "1년 추세", help="12-1M 모멘텀 점수 (12개월 수익률 - 1개월 수익률 기반). 골든크로스는 참고용.", format="%+d"),
-            "RSI 신호": st.column_config.NumberColumn(
-                "RSI 신호", help="RSI 기반 매수 타이밍. 과매도(+2)일수록 좋음, 과매수(-2) 부담.",
+            "12-1M 모멘텀": st.column_config.NumberColumn(
+                "12-1M 모멘텀", help="12-1M 모멘텀 z-score 등급 (-2~+2). Jegadeesh-Titman 1993 팩터. 백테스트 Q1 연 +45.9% 검증.", format="%+d"),
+            "52주 근접도": st.column_config.NumberColumn(
+                "52주 근접도", help="현재가 / 52주 최고가 비율 기반 z-score 등급 (-2~+2). George-Hwang 2004. 신고가 근접일수록 강세 지속 확률↑. RSI와 무관.",
                 format="%+d"),
             "종가": st.column_config.NumberColumn(format="%,.2f"),
             "PER": st.column_config.NumberColumn(format="%.2f"),
