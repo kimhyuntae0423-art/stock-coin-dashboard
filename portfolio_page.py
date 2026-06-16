@@ -754,13 +754,20 @@ for _, row in view.iterrows():
             pi_sma350x2 = _cycle.get("pi_sma350x2")
 
             if pd.notna(mvrv):
-                mvrv_tag = "🔴 극단 과열 — 매도 구간" if mvrv>7 else ("🟠 과열 주의" if mvrv>3.7 else ("🟢 적정 수준" if mvrv>0 else "🟢 역사적 바닥권"))
+                if mvrv < 0:
+                    mvrv_tag = "🟢 역사적 바닥 근접 (BTC 100% 구간)"
+                elif mvrv < 1.5:
+                    mvrv_tag = "🟢 저평가 (BTC 75% 구간)"
+                elif mvrv < 2.5:
+                    mvrv_tag = "🟠 중립~과열 경계 (BTC 45% 구간)"
+                else:
+                    mvrv_tag = "🔴 과열 — 비중 축소 구간 (BTC 20%)"
                 oc1.metric(
                     "거품 온도계 (MVRV)",
                     f"{mvrv:.2f}",
                     delta=mvrv_tag,
                     delta_color="off",
-                    help="BTC 전체 보유자의 평균 수익률을 나타내는 지표. 0 이하=역사적 바닥, 3.7 이상=과열, 7 이상=극단 거품(역대 고점 직전 수준).",
+                    help="BTC 전체 보유자의 평균 수익률. 백테스트 검증 구간: <0=바닥(BTC 100%), 0~1.5=저평가(75%), 1.5~2.5=과열 경계(45%), >2.5=과열(20%).",
                 )
 
             if pd.notna(nupl):
