@@ -211,16 +211,37 @@ st.divider()
 # ===================== 4. 매수 추천 =====================
 st.subheader("💰 매수 우선순위 추천")
 
+
+# MVRV 존 라벨 — 백테스트 검증된 1차 신호
+_mvrv_now = M.get("mvrv_z")
+if _mvrv_now is not None:
+    if _mvrv_now < 0:
+        _mvrv_zone = "🟢 BTC 100% 구간 (역사적 바닥 근접)"
+        _mvrv_color = "success"
+    elif _mvrv_now < 1.5:
+        _mvrv_zone = "🔵 BTC 75% 구간 (저평가)"
+        _mvrv_color = "info"
+    elif _mvrv_now < 2.5:
+        _mvrv_zone = "🟠 BTC 45% 구간 (중립~과열 경계)"
+        _mvrv_color = "warning"
+    else:
+        _mvrv_zone = "🔴 BTC 20% 구간 (과열 — 비중 축소)"
+        _mvrv_color = "error"
+    getattr(st, _mvrv_color)(
+        f"**MVRV Z-Score 1차 신호 (백테스트 검증)**: {_mvrv_now:.2f} → {_mvrv_zone}  \n"
+        f"RSI>75 신호는 코인에서 적중률 45%(동전던지기), MVRV 구간이 더 신뢰할 수 있는 신호입니다."
+    )
+
 st.markdown(
     f"""
 **현재 종합 신호**: {comp['label']}
 **시장 단계**: {alt_label or '데이터 없음'}
 
 추천 로직:
-1. 종합 점수가 **+0.5 이상**이면 매수 추천 활성화 (현재 평균 **{comp['avg']:+.2f}**)
-2. **비트코인 시즌**이면 → BTC, ETH 같은 시총 상위 위주
-3. **알트시즌**이면 → 90일 수익률이 BTC를 크게 앞서는 알트 우선
-4. 개별 코인 RSI > 75 (과매수)는 추천에서 제외
+1. **MVRV Z-Score** (1차 신호, 백테스트 검증) — 현재 구간별 BTC 최적 비중
+2. 종합 점수가 **+0.5 이상**이면 매수 추천 활성화 (현재 평균 **{comp['avg']:+.2f}**)
+3. **비트코인 시즌**이면 → BTC, ETH 위주 / **알트시즌**이면 → BTC를 앞서는 알트 우선
+4. RSI < 35 과매도 +0.5 가산 (백테스트 56% 검증) / RSI > 75는 소폭 -0.2만 (코인은 역모멘텀 아님)
 """
 )
 
