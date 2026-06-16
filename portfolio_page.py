@@ -269,15 +269,28 @@ with sc1:
     if st.button("💾 저장", type="primary", use_container_width=True):
         _save_holdings(edited)
         ok, msg = _push_to_github(edited)
-        if ok:
-            st.success(msg)
-        else:
-            st.warning(f"로컬 저장 완료. GitHub 동기화 실패: {msg}")
+        # session_state에 결과 보관 → rerun 후에도 메시지 표시
+        st.session_state["_save_ok"] = ok
+        st.session_state["_save_msg"] = msg
         st.rerun()
 with sc2:
     csv_dl = edited.to_csv(index=False).encode("utf-8")
     st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
                        mime="text/csv", use_container_width=True)
+
+# 저장 결과 메시지 — rerun 후에도 유지
+if "_save_ok" in st.session_state:
+    _ok = st.session_state.pop("_save_ok")
+    _msg = st.session_state.pop("_save_msg", "")
+    if _ok:
+        st.success(f"✅ {_msg}")
+    else:
+        st.error(
+            f"⚠️ **GitHub 동기화 실패** — 데이터가 영구 저장되지 않았습니다!\n\n"
+            f"원인: {_msg}\n\n"
+            "Streamlit Cloud에서는 GitHub 저장이 필요합니다. "
+            "📥 백업 버튼으로 CSV를 다운로드하세요."
+        )
 
 if edited.empty or edited["ticker"].dropna().empty:
     st.info("보유 종목이 없습니다. 위 표에 추가해보세요.")
