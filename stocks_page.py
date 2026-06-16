@@ -159,6 +159,30 @@ def priority_score(qvm, action):
 score_disp["판정"] = score_disp["composite"].apply(composite_label)
 score_disp["추세"] = score_disp["action"].map(action_color).fillna(score_disp["action"])
 
+# ── 12-1M 모멘텀 분위 (백테스트 검증 신호) ─────────────────
+def _add_mom_quartile(df: pd.DataFrame) -> pd.DataFrame:
+    r12 = pd.to_numeric(df.get("return_12m_pct", pd.Series(dtype=float)), errors="coerce")
+    r1  = pd.to_numeric(df.get("return_1m_pct",  pd.Series(dtype=float)), errors="coerce")
+    mom = r12 - r1  # 12-1M 모멘텀
+    valid = mom.notna()
+    df = df.copy()
+    df["mom_12_1"] = mom
+    df["mom_rank"] = None
+    if valid.sum() >= 4:
+        df.loc[valid, "mom_rank"] = pd.qcut(
+            mom[valid].rank(method="first"), q=4, labels=["Q4", "Q3", "Q2", "Q1"]
+        ).astype(str)
+    return df
+
+score_disp = _add_mom_quartile(score_disp)
+_MOM_LABEL = {
+    "Q1": "📈 모멘텀 상위 25%",
+    "Q2": "🔵 모멘텀 중상위",
+    "Q3": "⚪ 모멘텀 중하위",
+    "Q4": "📉 모멘텀 하위 25%",
+}
+score_disp["모멘텀"] = score_disp["mom_rank"].map(_MOM_LABEL).fillna("⚪ -")
+
 
 def timing_label(row):
     """타이밍 라벨 — 일반인이 한눈에 이해할 수 있게 친근한 한국어로 표기.
