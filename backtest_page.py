@@ -1041,14 +1041,23 @@ with tab_sum:
 
     st.divider()
     st.markdown("#### 현재 대시보드 변경 이력 (백테스트 기반)")
-    st.markdown("""
-| 페이지 | 변경 전 | 변경 후 | 근거 |
-|---|---|---|---|
-| 주식 추천 | 골든크로스 → 매수 신호 | 12-1M 모멘텀 Q1 → 주신호 | 골든크로스 50.8%, 모멘텀 Q1 연 +45.9% |
-| 주식 우선순위 | action(골든크로스) 보정 | mom_rank Q1~Q4 보정 | Q1 +0.5, Q4 -0.3 백테스트 기반 |
-| 코인 추천 | RSI 70+ 과매수 −1.0 | RSI 70+ −0.2 (소폭만) | 45% 적중 = 역방향 신호 |
-| 코인 페이지 | MVRV 차트 아래 표시 | **MVRV 존 배너 최상단** | 가장 신뢰도 높은 1차 신호 |
-| 보유 종목 | 골든크로스 → 🟢 매수 | 모멘텀 Q1 → 🟢 매수 | 골든크로스 50.8% vs 모멘텀 Q1 검증 |
-| 보유 종목 | RSI 70+ → 🟠 주의 | 제거 (모멘텀 Q4로 교체) | RSI 70+ 적중 45% = 역효과 신호 |
-""")
+    _history = pd.DataFrame([
+        ("주식 추천",   "골든크로스 → 매수 신호",       "12-1M 모멘텀 Q1 → 주신호",      f"골든크로스 {_s['gc_hit']:.1f}%, 모멘텀 Q1 연 +{_s['mom_q1']:.1f}%"),
+        ("주식 우선순위", "action(골든크로스) 보정",     "mom_rank Q1~Q4 보정",           "Q1 +0.5, Q4 -0.3 백테스트 기반"),
+        ("코인 추천",   "RSI 70+ 과매수 -1.0 패널티",   "RSI 70+ -0.2 (소폭만)",         f"{_s['rsi70']:.0f}% 적중 = 역방향 신호"),
+        ("코인 페이지", "MVRV 차트 아래 표시",           "MVRV 존 배너 최상단",           "가장 신뢰도 높은 1차 신호"),
+        ("보유 종목",   "골든크로스 → 🟢 매수",          "모멘텀 Q1 → 🟢 매수",           f"골든크로스 {_s['gc_hit']:.1f}% vs 모멘텀 Q1 검증됨"),
+        ("보유 종목",   "RSI 70+ → 🟠 주의",            "제거 (모멘텀 Q4로 교체)",        f"RSI 70+ 적중 {_s['rsi70']:.0f}% = 역효과 신호"),
+    ], columns=["페이지", "변경 전", "변경 후", "근거"])
+    st.dataframe(
+        _history,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "페이지":  st.column_config.TextColumn("페이지",  width="small"),
+            "변경 전": st.column_config.TextColumn("변경 전", width="medium"),
+            "변경 후": st.column_config.TextColumn("변경 후", width="medium"),
+            "근거":    st.column_config.TextColumn("근거",    width="large"),
+        },
+    )
 
