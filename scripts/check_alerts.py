@@ -285,13 +285,13 @@ def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
     if high:
         if parts:
             parts.append("")
-        parts.append("🔴 매도 검토")
+        parts.append("🔴 비중 축소 (코인 MVRV 과열)")
         for a in high:
             parts.append(f"· {a['ticker']}: {', '.join(a['reasons'])}")
     if warn:
         if parts:
             parts.append("")
-        parts.append("🟠 주의")
+        parts.append("🟠 논거 재검토")
         for a in warn:
             parts.append(f"· {a['ticker']}: {', '.join(a['reasons'])}")
 
