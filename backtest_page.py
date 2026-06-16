@@ -705,3 +705,118 @@ with tab4:
         "순수 수익보다 **낙폭 제어 + 일관된 실행 가능성**에서 가치가 있음. "
         "행동 편향(공황 매도, 고점 추격)을 제거하는 것이 실질적인 알파 원천."
     )
+
+
+# ════════════════════════════════════════════════════════
+# TAB 4 (계속) — 코인 백테스트
+# ════════════════════════════════════════════════════════
+with tab4:
+    st.divider()
+    st.subheader("🪙 Part 3 — 코인 전략 백테스트 (2021-현재, 19개 코인)")
+    st.caption("코인 모멘텀 · BTC MVRV 사이클 · BTC+ETH 리밸런싱 프리미엄 검증")
+
+    _COIN_FILES = {
+        "momentum":    ("coin_momentum_cum.csv",    "coin_momentum_stats.csv"),
+        "mvrv":        ("coin_mvrv_cum.csv",        "coin_mvrv_stats.csv"),
+        "rebalancing": ("coin_rebalancing_cum.csv", "coin_rebalancing_stats.csv"),
+    }
+
+    def _coin_files_exist():
+        return all((BACKTEST_DIR / v[0]).exists() for v in _COIN_FILES.values())
+
+    @st.cache_data(ttl=3600)
+    def _compute_coin():
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from scripts.coin_backtest import _build_monthly_panel, run_coin_momentum
+        from scripts.coin_backtest import run_mvrv_cycle, run_crypto_rebalancing
+        panel = _build_monthly_panel()
+        return {
+            "mom":  run_coin_momentum(panel),
+            "mvrv": run_mvrv_cycle(),
+            "rb":   run_crypto_rebalancing(panel),
+        }
+
+    if _coin_files_exist():
+        cm_cum  = pd.read_csv(BACKTEST_DIR / "coin_momentum_cum.csv",    index_col=0, parse_dates=True)
+        cm_stat = pd.read_csv(BACKTEST_DIR / "coin_momentum_stats.csv")
+        mv_cum  = pd.read_csv(BACKTEST_DIR / "coin_mvrv_cum.csv",        index_col=0, parse_dates=True)
+        mv_stat = pd.read_csv(BACKTEST_DIR / "coin_mvrv_stats.csv")
+        cr_cum  = pd.read_csv(BACKTEST_DIR / "coin_rebalancing_cum.csv", index_col=0, parse_dates=True)
+        cr_stat = pd.read_csv(BACKTEST_DIR / "coin_rebalancing_stats.csv")
+    else:
+        with st.spinner("코인 백테스트 계산 중..."):
+            _cd = _compute_coin()
+        cm_cum, cm_stat = _cd["mom"]
+        mv_cum, mv_stat = _cd["mvrv"]
+        cr_cum, cr_stat = _cd["rb"]
+
+    # ── 1. 코인 모멘텀 ───────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 1. 코인 모멘텀 (12-1M) — 주식과 같은 방향인가?")
+    st.line_chart(cm_cum)
+
+    _mom_ret_col = "연환산수익(%)" if "연환산수익(%)" in cm_stat.columns else cm_stat.columns[2]
+    c1, c2, c3, c4, c5 = st.columns(5)
+    for col, (_, row) in zip([c1, c2, c3, c4, c5], cm_stat.iterrows()):
+        col.metric(row.iloc[0], f"{row[_mom_ret_col]:+.1f}%/년")
+
+    st.error(
+        "**역모멘텀 현상**: 코인에서는 주식과 반대로 Q4(낮은 모멘텀)가 Q1(높은 모멘텀)을 크게 앞섬. "
+        "직전에 많이 오른 코인이 더 오르는 게 아니라 오히려 더 떨어지는 경향. "
+        "평균회귀 성질이 강한 코인 시장 특성 — 모멘텀 전략을 코인에 그대로 쓰면 역효과."
+    )
+
+    with st.expander("분위별 상세 통계"):
+        st.dataframe(cm_stat, use_container_width=True, hide_index=True)
+
+    # ── 2. MVRV 사이클 ───────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 2. BTC MVRV Z-Score 사이클 전략")
+    st.caption("Z < 0 → BTC 100% / Z 0-1.5 → 75% / Z 1.5-2.5 → 45% / Z > 2.5 → 20%")
+    st.line_chart(mv_cum)
+
+    c1, c2 = st.columns(2)
+    for col, (_, row) in zip([c1, c2], mv_stat.iterrows()):
+        col.metric(
+            row["전략"],
+            f"{row['연환산수익(%)']}%/년",
+            f"MDD {row['최대낙폭(%)']}% | 샤프 {row['샤프비율']}",
+        )
+
+    st.warning(
+        "**2022-2026 MVRV 범위가 -0.4~3.4로 역대 최고치(8+)에 비해 낮음** — "
+        "이번 사이클은 MVRV 기준 극단적 과열이 없었음. "
+        "사이클 전략이 BTC 단순보유보다 수익은 낮지만 MDD를 15%p 줄임(−28% vs −43%). "
+        "폭락 구간 방어가 목적이라면 유효한 전략."
+    )
+
+    if (BACKTEST_DIR / "coin_mvrv_zones.csv").exists():
+        zones = pd.read_csv(BACKTEST_DIR / "coin_mvrv_zones.csv")
+        with st.expander("MVRV 구간별 분포 (몇 달이나 각 구간에 있었나)"):
+            st.dataframe(zones, use_container_width=True, hide_index=True)
+
+    with st.expander("전략별 상세 통계"):
+        st.dataframe(mv_stat, use_container_width=True, hide_index=True)
+
+    # ── 3. BTC+ETH 리밸런싱 ─────────────────────────────
+    st.markdown("---")
+    st.markdown("### 3. BTC+ETH 리밸런싱 프리미엄")
+    st.line_chart(cr_cum)
+
+    _ann_col = "연환산수익(%)" if "연환산수익(%)" in cr_stat.columns else cr_stat.columns[2]
+    _mdd_col = "최대낙폭(%)" if "최대낙폭(%)" in cr_stat.columns else None
+    cols = st.columns(len(cr_stat))
+    for col, (_, row) in zip(cols, cr_stat.iterrows()):
+        delta = f"MDD {row[_mdd_col]}%" if _mdd_col else None
+        col.metric(row["전략"], f"{row[_ann_col]:+.1f}%/년", delta)
+
+    st.info(
+        "**코인 리밸런싱 효과**: BTC+ETH 50/50 리밸런싱이 ETH 단순보유보다 수익 높고(+27% vs +23%) MDD 낮음. "
+        "그러나 BTC 단순보유(+31%)보다는 낮음 — 2021-2026에 BTC가 ETH를 앞섰기 때문. "
+        "변동성이 큰 코인일수록 리밸런싱으로 '변동성 수익'을 포착할 수 있지만, "
+        "개별 자산의 방향성이 중요함."
+    )
+
+    with st.expander("전략별 상세 통계"):
+        st.dataframe(cr_stat, use_container_width=True, hide_index=True)
