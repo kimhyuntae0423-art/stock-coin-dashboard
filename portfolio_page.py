@@ -60,10 +60,12 @@ ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
 # 종목명 → 티커 역방향 매핑 (테이블 첫 열 자동완성용)
 _NAME_TO_TICKER: dict[str, str] = {}
+_ETF_TICKERS: set = set()
 if CORE_ETF_FILE.exists():
     _etf_df = pd.read_csv(CORE_ETF_FILE)
     for _, _r in _etf_df.iterrows():
         _NAME_TO_TICKER[str(_r["name"])] = str(_r["ticker"])
+    _ETF_TICKERS = set(_etf_df["ticker"].astype(str).str.strip())
 _NAME_TO_TICKER.update({v: k for k, v in NAMES.items()})
 _ALL_NAMES = [""] + sorted(_NAME_TO_TICKER.keys())
 
