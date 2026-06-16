@@ -672,13 +672,19 @@ for _, row in view.iterrows():
 
             rsi = latest.get("rsi14")
             if pd.notna(rsi):
-                rsi_tag = "🔥 과열 — 단기 조정 주의" if rsi >= 70 else ("🟢 낙폭 과다 — 반등 가능" if rsi <= 30 else "✅ 정상 구간")
+                if rsi >= 70:
+                    rsi_tag = ("🔥 과열 (RSI 70+ 코인 적중률 45% — 참고만)" if is_coin
+                               else "🔥 과열 — 단기 조정 주의")
+                elif rsi <= 30:
+                    rsi_tag = "🟢 낙폭 과다 — 반등 가능"
+                else:
+                    rsi_tag = "✅ 정상 구간"
                 ind1.metric(
                     "과열 온도계 (RSI)",
                     f"{rsi:.0f} / 100",
                     delta=rsi_tag,
                     delta_color="off",
-                    help="0~100 사이 숫자. 70 이상이면 단기 과열(조정 가능), 30 이하면 낙폭 과다(반등 가능), 그 사이는 정상.",
+                    help="0~100 사이 숫자. 70 이상이면 단기 과열(조정 가능), 30 이하면 낙폭 과다(반등 가능). 코인은 RSI 70+ 적중률 45%(동전던지기 이하) — 단독 신호 신뢰도 낮음.",
                 )
 
             ma50v = latest.get("ma50")
