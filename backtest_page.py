@@ -416,3 +416,159 @@ with tab3:
         per_ticker["보유평균수익"] = per_ticker["보유평균수익"].round(1).astype(str) + "%"
         per_ticker.columns = ["종목", "진입건수", "보유 평균수익", "-8% 도달", "-8% 유리", "-20% 도달", "-20% 유리"]
         st.dataframe(per_ticker, use_container_width=True, hide_index=True)
+
+
+# ════════════════════════════════════════════════════════
+# TAB 4 — 팩터 전략 백테스트
+# ════════════════════════════════════════════════════════
+with tab4:
+    st.subheader("팩터 전략 백테스트 — 학술적으로 검증된 4대 팩터")
+    st.caption(
+        "분석 대상 48개 종목을 각 팩터 기준으로 Q1~Q4 분위로 나눠 월별 수익률을 추적합니다. "
+        "Q1이 해당 팩터의 '좋은' 구간입니다."
+    )
+
+    _FACTOR_FILES = {
+        "momentum": ("factor_momentum_cum.csv", "factor_momentum_stats.csv"),
+        "lowvol":   ("factor_lowvol_cum.csv",   "factor_lowvol_stats.csv"),
+        "value":    ("factor_value_detail.csv",  "factor_value_stats.csv"),
+        "quality":  ("factor_quality_detail.csv","factor_quality_stats.csv"),
+    }
+
+    def _files_exist(key):
+        a, b = _FACTOR_FILES[key]
+        return (BACKTEST_DIR / a).exists() and (BACKTEST_DIR / b).exists()
+
+    def _need_compute():
+        return not all(_files_exist(k) for k in _FACTOR_FILES)
+
+    @st.cache_data(ttl=3600)
+    def _compute_factors():
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from scripts.factor_backtest import build_monthly_panel, run_momentum, run_low_vol, run_value, run_quality
+        panel = build_monthly_panel()
+        results = {}
+        results["mom_cum"],  results["mom_stats"]  = run_momentum(panel)
+        results["vol_cum"],  results["vol_stats"]   = run_low_vol(panel)
+        results["val_det"],  results["val_stats"]   = run_value(panel)
+        results["qual_det"], results["qual_stats"]  = run_quality(panel)
+        return results
+
+    if _need_compute():
+        with st.spinner("팩터 계산 중... (최초 1회, 약 30초 소요)"):
+            _fd = _compute_factors()
+        mom_cum   = _fd["mom_cum"];   mom_stats   = _fd["mom_stats"]
+        vol_cum   = _fd["vol_cum"];   vol_stats   = _fd["vol_stats"]
+        val_det   = _fd["val_det"];   val_stats   = _fd["val_stats"]
+        qual_det  = _fd["qual_det"];  qual_stats  = _fd["qual_stats"]
+    else:
+        mom_cum   = pd.read_csv(BACKTEST_DIR / "factor_momentum_cum.csv",  index_col=0, parse_dates=True)
+        mom_stats = pd.read_csv(BACKTEST_DIR / "factor_momentum_stats.csv")
+        vol_cum   = pd.read_csv(BACKTEST_DIR / "factor_lowvol_cum.csv",    index_col=0, parse_dates=True)
+        vol_stats = pd.read_csv(BACKTEST_DIR / "factor_lowvol_stats.csv")
+        val_det   = pd.read_csv(BACKTEST_DIR / "factor_value_detail.csv")
+        val_stats = pd.read_csv(BACKTEST_DIR / "factor_value_stats.csv")
+        qual_det  = pd.read_csv(BACKTEST_DIR / "factor_quality_detail.csv")
+        qual_stats= pd.read_csv(BACKTEST_DIR / "factor_quality_stats.csv")
+
+    _Q_COLORS = {"Q1": "#16a34a", "Q2": "#65a30d", "Q3": "#f59e0b", "Q4": "#ef4444"}
+
+    def _render_rolling_factor(cum_df, stats_df, factor_name, q1_label, q4_label):
+        if cum_df.empty:
+            st.warning("데이터 부족으로 계산 불가")
+            return
+
+        # Q1 vs Q4 누적 수익률 라인 차트
+        chart_data = cum_df.copy()
+        chart_data.index.name = "날짜"
+        st.line_chart(chart_data, color=["#16a34a", "#65a30d", "#f59e0b", "#ef4444"])
+
+        c1, c2, c3, c4 = st.columns(4)
+        for col, q in zip([c1, c2, c3, c4], ["Q1", "Q2", "Q3", "Q4"]):
+            row = stats_df[stats_df["분위"] == q].iloc[0]
+            final = cum_df[q].dropna().iloc[-1] if q in cum_df.columns and not cum_df[q].dropna().empty else 1.0
+            col.metric(
+                label=q,
+                value=f"{row['연환산수익(%)']:+.1f}% /년",
+                delta=f"누적 {(final - 1)*100:+.0f}%",
+            )
+
+        st.caption(f"Q1 = {q1_label} / Q4 = {q4_label}")
+
+        with st.expander("분위별 통계 상세"):
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+    def _render_snapshot_factor(stats_df, detail_df, x_col, label_col, factor_label):
+        if stats_df.empty:
+            st.warning("데이터 부족으로 계산 불가")
+            return
+
+        # 분위별 평균 수익률 바 차트
+        bar_data = stats_df.set_index("분위")["평균수익_36M(%)"]
+        st.bar_chart(bar_data)
+
+        c1, c2, c3, c4 = st.columns(4)
+        for col, q in zip([c1, c2, c3, c4], ["Q1", "Q2", "Q3", "Q4"]):
+            row = stats_df[stats_df["분위"] == q].iloc[0]
+            col.metric(
+                label=q,
+                value=f"{row['평균수익_36M(%)']:+.1f}%",
+                delta=f"{label_col}: {row[x_col]}",
+            )
+
+        st.caption(
+            f"⚠️ 스냅샷 분석: 오늘의 {factor_label}로 과거 36개월 수익률을 역산. "
+            "룩어헤드 바이어스 있음 — 방향성 참고용으로만 활용."
+        )
+
+        with st.expander("종목별 상세"):
+            show_cols = [c for c in ["ticker", "sector", "q"] + [c for c in detail_df.columns if c not in ["ticker", "sector", "q", "ret_36m"]] + ["ret_36m"] if c in detail_df.columns]
+            st.dataframe(detail_df[show_cols].sort_values("q"), use_container_width=True, hide_index=True)
+
+    # ── 1. 모멘텀 ────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 1순위 — 모멘텀 (Jegadeesh & Titman, 1993)")
+    st.markdown(
+        "12개월 전 ~ 1개월 전 가격 수익률 기준. "
+        "최근 1개월을 제외해 단기 평균회귀 노이즈를 차단. "
+        "**Q1 = 직전 12-1개월 수익률 상위** → 다음 달 수익률이 더 높은지 검증."
+    )
+    _render_rolling_factor(mom_cum, mom_stats, "모멘텀", "모멘텀 최상위", "모멘텀 최하위")
+
+    # ── 2. 저변동성 ──────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 2순위 — 저변동성 (Baker, Bradley & Wurgler, 2011)")
+    st.markdown(
+        "252거래일 연환산 변동성 기준. "
+        "높은 리스크가 높은 수익으로 이어진다는 CAPM을 반박하는 대표 이상 현상. "
+        "**Q1 = 변동성 최하위** → 안정적인 종목이 더 나은 수익을 내는지 검증."
+    )
+    _render_rolling_factor(vol_cum, vol_stats, "저변동성", "변동성 최저", "변동성 최고")
+
+    # ── 3. 가치 ──────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 3순위 — 가치 P/B (Fama & French, 1992)")
+    st.markdown(
+        "낮은 P/B(주가순자산비율) = 시장이 저평가한 종목. "
+        "Fama-French 3팩터 모델의 HML(High minus Low) 팩터 근거. "
+        "**Q1 = P/B 최저** → 저밸류 종목이 고밸류 종목을 이겼는지 검증."
+    )
+    _render_snapshot_factor(val_stats, val_det, "평균P/B", "평균P/B", "P/B")
+
+    # ── 4. 퀄리티 ────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 4순위 — 퀄리티 ROE (Novy-Marx, 2013)")
+    st.markdown(
+        "ROE + 순이익률 평균으로 퀄리티 스코어 산출. "
+        "Fama-French 5팩터 모델의 RMW(Robust minus Weak) 팩터 근거. "
+        "**Q1 = 퀄리티 최상위** → 고수익성 기업이 장기적으로 더 나은지 검증."
+    )
+    _render_snapshot_factor(qual_stats, qual_det, "평균퀄리티스코어", "퀄리티스코어", "ROE+이익률")
+
+    st.markdown("---")
+    st.info(
+        "**해석 가이드** — 모멘텀·저변동성(롤링): Q1과 Q4 누적 수익 차이가 클수록 팩터 유효. "
+        "가치·퀄리티(스냅샷): 방향성만 참고, 과거 데이터로 미래를 예측하는 도구가 아닙니다. "
+        "소수 종목 유니버스(48개)이므로 학술 논문 대비 노이즈가 클 수 있습니다."
+    )
