@@ -307,7 +307,7 @@ with tab_summary:
     rank_table = rank_table.rename(columns={
         "ticker": "티커", "close": "종가", "composite": "종합 점수",
         "value_score": "저평가", "quality_score": "품질", "growth_score": "성장",
-        "momentum_score": "1년 추세", "technical_score": "RSI 신호",
+        "momentum_score": "12-1M 모멘텀", "technical_score": "52주 근접도",
         "per": "PER", "pbr": "PBR", "roe_pct": "ROE(%)",
         "revenue_growth_yoy_pct": "매출YoY(%)", "earnings_growth_yoy_pct": "EPS YoY(%)",
         "return_12m_pct": "12M 수익률(%)", "return_1m_pct": "1M 수익률(%)", "rsi14": "RSI",
