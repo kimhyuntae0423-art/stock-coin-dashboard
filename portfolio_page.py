@@ -419,8 +419,8 @@ total_cost = view["원금"].sum()
 total_value = view["평가금액"].sum()
 total_pnl = total_value - total_cost
 total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
-n_sell = (view["신호"] == "🔴 매도 검토").sum()
-n_warn = (view["신호"] == "🟠 주의").sum()
+n_sell = view["신호"].str.contains("🔴", na=False).sum()
+n_warn = view["신호"].str.contains("🟠", na=False).sum()
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("보유 종목 수", f"{len(view)}")
