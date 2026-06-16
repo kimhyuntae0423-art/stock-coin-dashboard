@@ -241,14 +241,16 @@ def recommend_score(row, comp_avg, alt_regime, btc_ret_90d):
             if coin_90d > btc_ret_90d:
                 score += 0.5  # 강한 알트 가산
 
-    # 2. RSI 보정
+    # 2. RSI 보정 — 코인은 역모멘텀(낮은 RSI가 매수 기회, 높은 RSI는 페널티 소폭만)
+    # 백테스트: RSI>75 과매수 후 22d 수익률 45% → 동전던지기 수준, 강한 페널티 제거
+    # RSI<35 과매도 후 22d 수익률 56% → 유효, 보너스 유지
     if pd.notna(rsi):
         if rsi > 75:
-            score -= 1.0          # 과매수 페널티
+            score -= 0.2          # 과매수 소폭 페널티 (기존 -1.0 → -0.2)
         elif rsi < 35:
-            score += 0.5          # 과매도 가산
+            score += 0.5          # 과매도 가산 (백테스트 검증 56%)
 
-    # 3. 90일 모멘텀(역으로): 너무 떨어진 건 추가 매수 기회, 너무 오른 건 페널티
+    # 3. 90일 모멘텀(역으로): 너무 떨어진 건 추가 매수 기회, 너무 오른 건 소폭 페널티
     if coin_90d is not None:
         if coin_90d < -30:
             score += 0.3
