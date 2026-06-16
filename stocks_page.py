@@ -133,27 +133,28 @@ def composite_label(avg):
     return "🔴 매수 자제"
 
 
-def integrated_recommendation(qvm, action):
-    """종합 점수 + 추세 상태를 결합한 사용자 친화적 추천 라벨."""
+def integrated_recommendation(qvm, mom_rank):
+    """종합 점수 + 12-1M 모멘텀 분위(백테스트 검증)를 결합한 추천 라벨."""
     if qvm is None or pd.isna(qvm):
         return "⚪ 데이터 부족", "분석 데이터 미확보"
     good_funda = qvm >= 0.5
     avg_funda = qvm > -0.5
     if good_funda:
-        if action == "매수":  return "💎 지금이 기회", "회사 좋고 + 막 상승추세 진입"
-        if action == "보유":  return "✅ 계속 모아도 좋음", "회사 좋고 + 상승추세 유지"
-        if action == "미보유": return "⏳ 매수 타이밍 대기", "회사 좋지만 아직 하락추세 — 신호 기다리기"
-        if action == "매도":  return "🟠 신중 매수", "회사 좋으나 단기 약세 — 분할매수 검토"
-        return "✅ 우수 종목", "추세 상태 불명"
+        if mom_rank == "Q1": return "💎 지금이 기회", "퀄리티 좋고 + 모멘텀 상위 25% (백테스트 검증)"
+        if mom_rank == "Q2": return "✅ 계속 모아도 좋음", "퀄리티 좋고 + 모멘텀 중상위"
+        if mom_rank == "Q3": return "⏳ 모멘텀 개선 대기", "퀄리티 좋지만 모멘텀 중하위 — 회복 확인 후 진입"
+        if mom_rank == "Q4": return "🟠 신중 매수", "퀄리티 좋으나 모멘텀 하위 25% — 분할매수"
+        return "✅ 우수 종목", "모멘텀 데이터 미확보"
     if avg_funda:
-        if action == "매수":  return "🔵 추세만 좋음", "회사는 보통 + 상승추세 — 단기 매매용"
+        if mom_rank == "Q1": return "🔵 모멘텀만 강함", "펀더 보통 + 모멘텀 상위 — 단기 매매용"
         return "⚪ 매수 보류", "특별한 매력 없음"
     return "❌ 회피 권장", "회사 펀더 약함"
 
 
-def priority_score(qvm, action):
-    bonus = {"매수": 0.5, "보유": 0.0, "미보유": -0.2, "매도": -0.5}.get(action, 0)
-    return qvm + bonus
+def priority_score(qvm, mom_rank):
+    # 골든크로스(적중률 50.8%) 대신 12-1M 모멘텀 분위(백테스트 검증) 사용
+    bonus = {"Q1": 0.5, "Q2": 0.1, "Q3": -0.1, "Q4": -0.3}.get(str(mom_rank) if mom_rank else "", 0)
+    return (qvm or 0) + bonus
 
 
 score_disp["판정"] = score_disp["composite"].apply(composite_label)
