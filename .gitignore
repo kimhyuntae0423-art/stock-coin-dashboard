@@ -34,5 +34,6 @@ scripts/data/
 
 # 카카오 토큰 (로컬 전용, 절대 커밋 금지)
 kakao_tokens.json
+new_tokens.json
 
 # 다운로드 캐시는 yfinance가 매번 새로 받으므로 git에 포함하지 않음

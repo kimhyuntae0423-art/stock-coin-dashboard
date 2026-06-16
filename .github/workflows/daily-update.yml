@@ -51,12 +51,26 @@ jobs:
           fi
 
       - name: 보유종목 매도/주의 + BTC 사이클 단계 변경 → 카카오톡 알림
+        continue-on-error: true
         env:
           KAKAO_ACCESS_TOKEN:  ${{ secrets.KAKAO_ACCESS_TOKEN }}
           KAKAO_REST_API_KEY:  ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: python scripts/check_alerts.py
+
+      - name: 카카오 토큰 갱신 시 두 레포 시크릿 동기화
+        if: hashFiles('new_tokens.json') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          NEW_ACCESS=$(python -c "import json; d=json.load(open('new_tokens.json')); print(d['access_token'])")
+          NEW_REFRESH=$(python -c "import json; d=json.load(open('new_tokens.json')); print(d.get('refresh_token',''))")
+          [ -n "$NEW_ACCESS" ]  && echo "$NEW_ACCESS"  | gh secret set KAKAO_ACCESS_TOKEN  -R kimhyuntae0423-art/stock-coin-dashboard
+          [ -n "$NEW_REFRESH" ] && echo "$NEW_REFRESH" | gh secret set KAKAO_REFRESH_TOKEN -R kimhyuntae0423-art/stock-coin-dashboard
+          [ -n "$NEW_ACCESS" ]  && echo "$NEW_ACCESS"  | gh secret set KAKAO_ACCESS_TOKEN  -R kimhyuntae0423-art/morning-briefing
+          [ -n "$NEW_REFRESH" ] && echo "$NEW_REFRESH" | gh secret set KAKAO_REFRESH_TOKEN -R kimhyuntae0423-art/morning-briefing
+          echo "두 레포 시크릿 업데이트 완료"
 
       - name: 사이클 상태 변경 시 커밋 & 푸시
         run: |

@@ -30,6 +30,8 @@ SEND_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 
 DEFAULT_DASH_URL = "https://stock-coin-dashboard-jdlrktuq3b7dzn5canhyeo.streamlit.app/"
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def _post(url: str, data: dict, headers: dict | None = None):
     body = urlencode(data).encode("utf-8")
@@ -56,6 +58,17 @@ def refresh_access_token(rest_api_key: str, refresh_token: str,
     if client_secret:
         data["client_secret"] = client_secret
     return _post(TOKEN_URL, data)   # access_token, optionally refresh_token
+
+
+def _save_new_tokens(tok: dict) -> None:
+    """갱신된 토큰을 new_tokens.json 에 저장. GitHub Actions 시크릿 업데이트 스텝이 읽음."""
+    data = {"access_token": tok["access_token"]}
+    if "refresh_token" in tok:
+        data["refresh_token"] = tok["refresh_token"]
+    path = os.path.join(_REPO_ROOT, "new_tokens.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    print("토큰 갱신 완료 → new_tokens.json 저장")
 
 
 def _load_local_tokens() -> dict | None:
@@ -120,6 +133,7 @@ def send_to_self(text: str, link_url: str | None = None,
             "KAKAO_ACCESS_TOKEN 또는 KAKAO_REST_API_KEY/KAKAO_REFRESH_TOKEN 환경변수 필요"
         )
     tok = refresh_access_token(api_key, refresh_token, client_secret)
+    _save_new_tokens(tok)
     return _send_with_token(tok["access_token"], text, url, button_title)
 
 
