@@ -572,3 +572,135 @@ with tab4:
         "가치·퀄리티(스냅샷): 방향성만 참고, 과거 데이터로 미래를 예측하는 도구가 아닙니다. "
         "소수 종목 유니버스(48개)이므로 학술 논문 대비 노이즈가 클 수 있습니다."
     )
+
+
+# ════════════════════════════════════════════════════════
+# TAB 5 — ETF 전략 백테스트
+# ════════════════════════════════════════════════════════
+with tab5:
+    st.subheader("ETF 전략 백테스트 — 학술 검증 4대 ETF 전략 (2015-현재)")
+    st.caption(
+        "개별 종목 선택 없이 시장 전체를 ETF로 사는 전략. "
+        "유니버스: VOO(미국주식) · VEU(선진국) · BND(채권) · GLD(금) · TLT(장기국채) · SHY(현금)"
+    )
+
+    _ETF_FILES = {
+        "dual_momentum":    ("etf_dual_momentum_cum.csv",    "etf_dual_momentum_stats.csv"),
+        "rebalancing":      ("etf_리밸런싱_프리미엄_cum.csv",  "etf_리밸런싱_프리미엄_stats.csv"),
+        "risk_parity":      ("etf_risk_parity_cum.csv",      "etf_risk_parity_stats.csv"),
+        "gtaa":             ("etf_gtaa_추세추종_cum.csv",      "etf_gtaa_추세추종_stats.csv"),
+    }
+
+    def _etf_files_exist():
+        return all((BACKTEST_DIR / v[0]).exists() for v in _ETF_FILES.values())
+
+    @st.cache_data(ttl=3600)
+    def _compute_etf():
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from scripts.etf_backtest import load_all, UNIVERSE, run_dual_momentum
+        from scripts.etf_backtest import run_rebalancing_premium, run_risk_parity, run_gtaa
+        panel = load_all(list(UNIVERSE.keys()))
+        return {
+            "dm":  run_dual_momentum(panel),
+            "rb":  run_rebalancing_premium(panel),
+            "rp":  run_risk_parity(panel),
+            "gtaa":run_gtaa(panel),
+        }
+
+    if _etf_files_exist():
+        dm_cum   = pd.read_csv(BACKTEST_DIR / "etf_dual_momentum_cum.csv",   index_col=0, parse_dates=True)
+        dm_stat  = pd.read_csv(BACKTEST_DIR / "etf_dual_momentum_stats.csv")
+        rb_cum   = pd.read_csv(BACKTEST_DIR / "etf_리밸런싱_프리미엄_cum.csv",  index_col=0, parse_dates=True)
+        rb_stat  = pd.read_csv(BACKTEST_DIR / "etf_리밸런싱_프리미엄_stats.csv")
+        rp_cum   = pd.read_csv(BACKTEST_DIR / "etf_risk_parity_cum.csv",     index_col=0, parse_dates=True)
+        rp_stat  = pd.read_csv(BACKTEST_DIR / "etf_risk_parity_stats.csv")
+        gt_cum   = pd.read_csv(BACKTEST_DIR / "etf_gtaa_추세추종_cum.csv",     index_col=0, parse_dates=True)
+        gt_stat  = pd.read_csv(BACKTEST_DIR / "etf_gtaa_추세추종_stats.csv")
+    else:
+        with st.spinner("ETF 데이터 수집 중... (최초 1회, 약 30초)"):
+            _d = _compute_etf()
+        dm_cum,  dm_stat  = _d["dm"]
+        rb_cum,  rb_stat  = _d["rb"]
+        rp_cum,  rp_stat  = _d["rp"]
+        gt_cum,  gt_stat  = _d["gtaa"]
+
+    def _render_etf_strategy(cum_df, stats_df, title, desc, highlight_col):
+        st.markdown(f"### {title}")
+        st.caption(desc)
+
+        # 누적 수익률 차트
+        st.line_chart(cum_df)
+
+        # 핵심 지표 비교 (최대 4개 전략)
+        cols = st.columns(min(len(stats_df), 4))
+        for col, (_, row) in zip(cols, stats_df.iterrows()):
+            is_highlight = row["전략"] == highlight_col
+            col.metric(
+                label=row["전략"],
+                value=f"{row['연환산수익(%)']}% /년",
+                delta=f"샤프 {row['샤프비율']} | MDD {row['최대낙폭(%)']}%",
+                delta_color="normal" if is_highlight else "off",
+            )
+
+        with st.expander("전략별 상세 통계"):
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+
+    # ── 1. Dual Momentum ─────────────────────────────────
+    _render_etf_strategy(
+        dm_cum, dm_stat,
+        "1. Dual Momentum (Antonacci 2014)",
+        "매달 VOO vs VEU 상대모멘텀으로 승자 선택 → 절대모멘텀 음수 시 BND로 대피. "
+        "상승장은 타고, 하락장은 채권으로 피하는 전략.",
+        "Dual Momentum",
+    )
+
+    # ── 2. 리밸런싱 프리미엄 ──────────────────────────────
+    _render_etf_strategy(
+        rb_cum, rb_stat,
+        "2. 리밸런싱 프리미엄 (Booth & Fama 1992)",
+        "VOO 60% / BND 30% / GLD 10% 매달 목표 비중으로 복귀 리밸런싱. "
+        "리밸런싱 자체가 낙폭을 줄이고 장기 위험조정 수익을 개선하는지 검증.",
+        "리밸런싱 60/30/10",
+    )
+
+    # ── 3. Risk Parity ────────────────────────────────────
+    _render_etf_strategy(
+        rp_cum, rp_stat,
+        "3. Risk Parity (Qian 2005 / Bridgewater All Weather)",
+        "VOO · BND · GLD 각 자산의 변동성에 반비례해서 비중 배분. "
+        "변동성 높은 자산일수록 비중을 줄여 리스크를 균등 분배.",
+        "Risk Parity (역변동성)",
+    )
+
+    # ── 4. GTAA 추세추종 ──────────────────────────────────
+    _render_etf_strategy(
+        gt_cum, gt_stat,
+        "4. GTAA 추세추종 (Faber 2007)",
+        "5자산(VOO·VEU·BND·GLD·TLT) 각각 10개월 이동평균 위면 보유, 아래면 SHY(현금). "
+        "Faber 2007 논문 기준 — 낙폭 최소화가 핵심 목표.",
+        "GTAA 추세추종",
+    )
+
+    # ── 핵심 메시지 ──────────────────────────────────────
+    st.markdown("### 핵심 해석 (2015-2026 기준)")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.success(
+            "**리스크 관리 관점** — GTAA(MDD -13%), Risk Parity(MDD -15%)는 "
+            "VOO 단순보유(MDD -24%) 대비 낙폭을 40~50% 줄임. "
+            "2022 금리인상 구간 같은 폭락장에서 위력 발휘."
+        )
+    with c2:
+        st.warning(
+            "**순수 수익 관점** — 2015-2026 강세장에서는 VOO 단순보유가 모든 전략을 앞섬. "
+            "전략들은 수익률이 아닌 **위험 대비 수익(샤프비율)**에서 우위. "
+            "10년 이상 강세장에서는 단순 지수가 이기는 게 정상."
+        )
+    st.info(
+        "**이 프로젝트의 결론**: Core ETF를 사고 정기 리밸런싱하는 전략은 "
+        "순수 수익보다 **낙폭 제어 + 일관된 실행 가능성**에서 가치가 있음. "
+        "행동 편향(공황 매도, 고점 추격)을 제거하는 것이 실질적인 알파 원천."
+    )
