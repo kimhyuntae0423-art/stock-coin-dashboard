@@ -151,7 +151,8 @@ coin_summary_file = RESULTS / "coin_summary.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
 funda = pd.read_csv(funda_file) if funda_file.exists() else pd.DataFrame(columns=["ticker"])
 
-_MERGE_COLS = ["ticker", "close", "action", "state", "last_cross", "last_cross_date", "rsi14"]
+_MERGE_COLS = ["ticker", "close", "action", "state", "last_cross", "last_cross_date", "rsi14",
+               "return_12m_pct", "return_1m_pct"]
 if coin_summary_file.exists():
     coin_sum = pd.read_csv(coin_summary_file)
     usdkrw = _get_usdkrw()
