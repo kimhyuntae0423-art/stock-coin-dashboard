@@ -199,7 +199,11 @@ selected_person = st.selectbox(
 
 
 st.subheader("✏️ 보유 내역 추가 / 편집")
-st.caption("새 행 맨 아래 추가, 행 삭제는 체크박스 → Delete. 종목명 선택 시 저장할 때 티커 자동 입력.")
+st.caption(
+    "새 행은 맨 아래 + 버튼으로 추가. 행 삭제는 체크박스 → Delete. "
+    "**티커를 직접 입력**하거나, 종목명 드롭다운 선택 후 💾 저장하면 티커 자동 입력. "
+    "저장 후 반드시 '✅ GitHub에 저장 완료' 메시지를 확인하세요 — 뜨지 않으면 데이터가 사라질 수 있습니다."
+)
 
 _edit_cols = ["ticker", "qty", "buy_price", "person", "notes"]
 _edit_df = holdings[_edit_cols].copy() if all(c in holdings.columns for c in _edit_cols) else holdings[["ticker", "qty", "buy_price"]].copy()
