@@ -65,7 +65,7 @@ def severity_for_holding(
                 return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
         return 0, []
 
-    # ── 개별주: 논거 재검토 프레임 ────────────────────────────────
+    # ── 개별주: 매도 검토 + 주의 ─────────────────────────────────
     severity = 0
     reasons: list[str] = []
 
@@ -74,12 +74,12 @@ def severity_for_holding(
     close = sig_row.get("close")
     buy_price = row.get("buy_price")
 
-    # 손익 기반 — 개별주는 🟠 최대 (🔴 없음, ETF와 달리 논거 훼손 가능성)
+    # 손익 기반
     if pd.notna(buy_price) and pd.notna(close) and buy_price > 0:
         pnl_pct = (close / buy_price - 1) * 100
         if pnl_pct <= -20:
-            severity = max(severity, 1)
-            reasons.append(f"손익 {pnl_pct:+.1f}% — 투자 논거 재검토 필요")
+            severity = 2  # 개별주 -20% = 🔴 (ETF와 다름 — 기업 thesis 훼손 가능)
+            reasons.append(f"손익 {pnl_pct:+.1f}% — 매도 검토 (투자 논거 재확인 필요)")
         elif pnl_pct <= -8:
             severity = max(severity, 1)
             reasons.append(f"손익 {pnl_pct:+.1f}% — 손절 기준선 이탈")
@@ -89,7 +89,7 @@ def severity_for_holding(
         severity = max(severity, 1)
         reasons.append("데드크로스/하락추세 — 보조 참고 (50.8% 적중)")
 
-    # RSI 80+ — severity 1로 낮춤 (RSI 70+ 적중률 45%, 단독 신뢰도 낮음)
+    # RSI 80+ — severity 1 (RSI 70+ 적중률 45%, 단독 신뢰도 낮음)
     if pd.notna(rsi) and rsi >= 80:
         severity = max(severity, 1)
         reasons.append(f"RSI {rsi:.0f} — 극단 과매수 (강한 추세에서는 계속 오를 수 있음)")
