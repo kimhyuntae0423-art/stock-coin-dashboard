@@ -159,6 +159,12 @@ def run_factor_backtests():
     _run_factors()
 
 
+def run_etf_backtests():
+    print("\n=== ETF 전략 백테스트 ===")
+    from scripts.etf_backtest import run as _run_etf
+    _run_etf()
+
+
 def run_all():
     base = Path(__file__).resolve().parent
     out_dir = base / "results"
