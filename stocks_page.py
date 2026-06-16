@@ -336,7 +336,7 @@ with tab_summary:
             "성장": st.column_config.NumberColumn(
                 "성장", help="매출·이익 YoY 성장률. 빠르게 크는 회사일수록 높음.", format="%+d"),
             "1년 추세": st.column_config.NumberColumn(
-                "1년 추세", help="최근 1년 수익률 + 골든크로스 상태.", format="%+d"),
+                "1년 추세", help="12-1M 모멘텀 점수 (12개월 수익률 - 1개월 수익률 기반). 골든크로스는 참고용.", format="%+d"),
             "RSI 신호": st.column_config.NumberColumn(
                 "RSI 신호", help="RSI 기반 매수 타이밍. 과매도(+2)일수록 좋음, 과매수(-2) 부담.",
                 format="%+d"),
