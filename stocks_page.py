@@ -323,7 +323,7 @@ with tab_summary:
         column_config={
             "우선순위 점수": st.column_config.NumberColumn(
                 "우선순위 점수",
-                help="종합 점수 + 추세 보정 (골든크로스 +0.5 등). 매수 의사결정 정렬용.",
+                help="종합 점수 + 모멘텀 분위 보정 (Q1 +0.5, Q2 +0.1, Q3 -0.1, Q4 -0.3). 백테스트 검증.",
                 format="%+.2f"),
             "종합 점수": st.column_config.NumberColumn(
                 "종합 점수",
