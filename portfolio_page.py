@@ -727,10 +727,12 @@ for _, row in view.iterrows():
             _live_otype = "positive"
         elif "🔴" in _sig_text:
             _live_otype = "negative"
+        elif "🔵" in _sig_text:
+            _live_otype = "info"
         else:
             _live_otype = "caution"
-        _live_bg   = {"positive": "#e8f5e9", "caution": "#fff3e0", "negative": "#ffebee"}[_live_otype]
-        _live_bd   = {"positive": "#43a047", "caution": "#fb8c00", "negative": "#e53935"}[_live_otype]
+        _live_bg = {"positive": "#e8f5e9", "caution": "#fff3e0", "negative": "#ffebee", "info": "#eff6ff"}[_live_otype]
+        _live_bd = {"positive": "#43a047", "caution": "#fb8c00", "negative": "#e53935", "info": "#3b82f6"}[_live_otype]
         st.markdown(
             f"<div style='background:{_live_bg};border-left:4px solid {_live_bd};"
             f"padding:12px 16px;border-radius:4px;margin-bottom:8px'>"
