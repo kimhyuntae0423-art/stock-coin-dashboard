@@ -350,19 +350,26 @@ _i_guide.append((
 ))
 
 # 렌더링
-st.markdown(
-    "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"
-    "padding:16px 20px;margin-bottom:4px'>"
-    "<div style='font-size:14px;font-weight:700;color:#334155;margin-bottom:10px'>"
-    "📊 포트폴리오 전반 인사이트</div>",
-    unsafe_allow_html=True,
-)
+st.subheader("📊 포트폴리오 전반 인사이트")
 
-# 전체 요약
+# 전체 요약 + 우선순위 액션 (하나의 박스)
+_guide_rows = []
+for _gi, (_gn, _gt, _gb) in enumerate(_i_guide):
+    _border = "border-bottom:1px solid #e2e8f0;" if _gi < len(_i_guide) - 1 else ""
+    _guide_rows.append(
+        f"<div style='padding:7px 0;{_border}'>"
+        f"<span style='font-weight:700;color:#1e293b'>{_gn} {_gt}</span>"
+        f"<span style='color:#4b5563'> — {_gb}</span></div>"
+    )
+_guide_html = "".join(_guide_rows)
+
 st.markdown(
-    f"<div style='background:#f1f5f9;border-radius:8px;padding:12px 15px;margin-bottom:14px'>"
-    f"<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px'>📝 전체 요약</div>"
-    f"<div style='color:#1e293b;font-size:13px;line-height:1.75'>{_i_summary_text}</div>"
+    f"<div style='background:#f1f5f9;border-radius:8px;padding:14px 16px;margin-bottom:14px'>"
+    f"<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px'>📝 전체 요약</div>"
+    f"<div style='font-size:13px;color:#1e293b;line-height:1.75;margin-bottom:14px'>{_i_summary_text}</div>"
+    f"<div style='height:1px;background:#cbd5e1;margin-bottom:10px'></div>"
+    f"<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:4px'>🎯 우선순위 액션</div>"
+    f"<div style='font-size:13px;line-height:1.7'>{_guide_html}</div>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -384,24 +391,6 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
         f"</div>",
         unsafe_allow_html=True,
     )
-
-# 전체 가이드
-st.markdown(
-    "<div style='font-size:12px;font-weight:600;color:#64748b;margin-top:6px;margin-bottom:6px'>"
-    "▸ 전체 가이드 (우선순위 순)</div>",
-    unsafe_allow_html=True,
-)
-for _gn, _gt, _gb in _i_guide:
-    st.markdown(
-        f"<div style='background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;"
-        f"padding:9px 13px;margin-bottom:6px'>"
-        f"<div style='font-weight:700;color:#1e293b;font-size:13px;margin-bottom:3px'>"
-        f"{_gn} {_gt}</div>"
-        f"<div style='color:#4b5563;font-size:13px;line-height:1.65'>{_gb}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-st.markdown("</div>", unsafe_allow_html=True)
 
 st.divider()
 
