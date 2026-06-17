@@ -1,4 +1,4 @@
-"""리밸런싱 페이지 — Core-Satellite 자산배분 + DCA 시뮬레이터 + 추천 포트폴리오."""
+"""리밸런싱 페이지 — Core-Satellite 자산배분 + 추천 포트폴리오."""
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,7 +13,6 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
-from scripts.dca_simulator import dca_simulate, dca_path
 from scripts.portfolio_builder import build_portfolio
 
 RESULTS = ROOT / "results"
@@ -58,7 +57,7 @@ NAMES = _load_names()
 # 공통 데이터 로드
 # =====================================================================
 st.title("⚖️ 리밸런싱")
-st.caption("Core-Satellite 자산배분 추적 · DCA 시뮬레이터 · 추천 분산 포트폴리오.")
+st.caption("Core-Satellite 자산배분 추적 · 추천 분산 포트폴리오.")
 
 holdings = _load_holdings()
 
@@ -580,65 +579,6 @@ with st.expander("🏛️ Core ETF 후보 목록 보기"):
         hide_index=True, use_container_width=True,
         column_config={"expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f")},
     )
-
-st.divider()
-
-# ── DCA 시뮬레이터 ───────────────────────────────────────────────
-st.subheader("📈 DCA 시뮬레이터 — 월 적립식 자산 분포")
-st.caption(
-    "매월 일정 금액을 N년 매수했을 때 미래 자산 분포 (몬테카를로 2,000회). "
-    "정규분포 가정이라 fat-tail 미반영."
-)
-
-ds1, ds2, ds3, ds4 = st.columns(4)
-with ds1:
-    dca_monthly = st.number_input("월 투자금", min_value=0, value=1_000_000, step=100_000)
-with ds2:
-    dca_years = st.slider("기간 (년)", min_value=3, max_value=40, value=20)
-with ds3:
-    dca_return = st.slider("기대 연수익률 (%)", min_value=1, max_value=15, value=8)
-with ds4:
-    dca_vol = st.slider("연환산 변동성 (%)", min_value=5, max_value=40, value=18)
-
-if dca_monthly > 0:
-    sim = dca_simulate(dca_monthly, dca_years,
-                       expected_annual_return=dca_return/100,
-                       annual_vol=dca_vol/100, n_sims=2000)
-
-    sm1, sm2, sm3, sm4 = st.columns(4)
-    sm1.metric("💰 총 투자 원금", f"{sim['total_invested']:,.0f}")
-    sm2.metric("📊 예상 자산 (중앙값)", f"{sim['p50']:,.0f}",
-               delta=f"회수배수 {sim['p50']/sim['total_invested']:.2f}x" if sim['total_invested'] > 0 else "—",
-               delta_color="off")
-    sm3.metric("🟢 운 좋을 때 (상위 25%)", f"{sim['p75']:,.0f}",
-               delta=f"{sim['p75']/sim['total_invested']:.2f}x" if sim['total_invested'] > 0 else "—",
-               delta_color="off")
-    sm4.metric("🔴 운 나쁠 때 (하위 5%)", f"{sim['p5']:,.0f}",
-               delta=f"{sim['p5']/sim['total_invested']:.2f}x" if sim['total_invested'] > 0 else "—",
-               delta_color="off")
-
-    if sim["loss_prob"] > 0.001:
-        st.warning(f"⚠️ 원금 손실 확률: {sim['loss_prob']*100:.1f}%")
-    else:
-        st.success(f"✅ {dca_years}년 보유 시 원금 손실 확률 < 0.1%")
-
-    path = dca_path(dca_monthly, dca_years,
-                    expected_annual_return=dca_return/100,
-                    annual_vol=dca_vol/100, n_sims=500)
-    fig_dca = go.Figure()
-    fig_dca.add_trace(go.Scatter(x=path["months"]/12, y=path["p95_path"],
-                                 mode="lines", line=dict(width=0), showlegend=False))
-    fig_dca.add_trace(go.Scatter(x=path["months"]/12, y=path["p5_path"],
-                                 mode="lines", line=dict(width=0), fill="tonexty",
-                                 fillcolor="rgba(76,175,80,0.2)", name="5~95% 구간"))
-    fig_dca.add_trace(go.Scatter(x=path["months"]/12, y=path["p50_path"],
-                                 mode="lines", line=dict(color="#4CAF50", width=3), name="중앙값"))
-    fig_dca.add_trace(go.Scatter(x=path["months"]/12, y=path["invested_path"],
-                                 mode="lines", line=dict(color="#888", dash="dash", width=2), name="누적 원금"))
-    fig_dca.update_layout(xaxis_title="년", yaxis_title="자산", height=380,
-                           margin=dict(t=20, b=10, l=10, r=10),
-                           legend=dict(orientation="h", yanchor="bottom", y=1.02))
-    st.plotly_chart(fig_dca, use_container_width=True)
 
 st.divider()
 
