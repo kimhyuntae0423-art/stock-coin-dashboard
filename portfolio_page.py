@@ -1196,6 +1196,96 @@ for _, row in view.iterrows():
                 st.markdown("<div style='font-size:0.9em;color:#9ca3af'>—</div>",
                             unsafe_allow_html=True)
 
+        # ── 종합 의견 (강세/약세 근거 자동 합산) ──────────────────────
+        _syn_ma50  = (float(sig_df["ma50"].iloc[-1])
+                      if not sig_df.empty and "ma50" in sig_df.columns
+                         and pd.notna(sig_df["ma50"].iloc[-1]) else None)
+        _syn_ma200 = (float(sig_df["ma200"].iloc[-1])
+                      if not sig_df.empty and "ma200" in sig_df.columns
+                         and pd.notna(sig_df["ma200"].iloc[-1]) else None)
+        _syn_rsi   = (float(sig_df["rsi14"].iloc[-1])
+                      if not sig_df.empty and "rsi14" in sig_df.columns
+                         and pd.notna(sig_df["rsi14"].iloc[-1]) else None)
+        _syn_mh    = (float(sig_df["macd_hist"].iloc[-1])
+                      if not sig_df.empty and "macd_hist" in sig_df.columns
+                         and pd.notna(sig_df["macd_hist"].iloc[-1]) else None)
+
+        _syn_parts: list[str] = []
+
+        # 1. 추세 문장
+        if _syn_ma50 and _syn_ma200 and _syn_ma200 > 0:
+            _syn_spd = (_syn_ma50 / _syn_ma200 - 1) * 100
+            if _syn_spd > 5:
+                _syn_parts.append(
+                    f"단기 평균선이 장기 평균선보다 {_syn_spd:.1f}% 높아 상승 추세가 견조합니다.")
+            elif _syn_spd > 0:
+                _syn_parts.append(
+                    f"추세는 상승이지만 단기·장기 평균선 차이가 {_syn_spd:.1f}%로 아직 초기 단계입니다.")
+            elif _syn_spd > -5:
+                _syn_parts.append(
+                    f"추세가 하락으로 전환된 초기 구간입니다(단기 평균이 {abs(_syn_spd):.1f}% 낮음).")
+            else:
+                _syn_parts.append(
+                    f"단기 평균선이 장기 평균선보다 {abs(_syn_spd):.1f}% 낮아 뚜렷한 하락 추세입니다.")
+
+        # 2. 모멘텀 + RSI 조합 문장
+        if _syn_mh is not None and _syn_rsi is not None:
+            if _syn_mh > 0 and _syn_rsi < 70:
+                _syn_parts.append(
+                    f"모멘텀이 강화되고 있고 RSI({_syn_rsi:.0f})도 과열 구간이 아니라 추세가 이어질 여지가 있습니다.")
+            elif _syn_mh > 0 and _syn_rsi >= 70:
+                _syn_parts.append(
+                    f"모멘텀은 강하지만 RSI({_syn_rsi:.0f})가 과열 구간이라 단기 숨 고르기가 올 수 있습니다.")
+            elif _syn_mh <= 0 and _syn_rsi > 30:
+                _syn_parts.append(
+                    f"RSI({_syn_rsi:.0f})는 적정 범위지만 모멘텀이 약해지고 있어 추세 지속 여부 확인이 필요합니다.")
+            else:
+                _syn_parts.append(
+                    f"RSI({_syn_rsi:.0f})가 낙폭 과다 구간이고 모멘텀도 약합니다. 반등 가능성은 있으나 추세 전환 확인이 먼저입니다.")
+        elif _syn_rsi is not None:
+            if _syn_rsi >= 70:
+                _syn_parts.append(f"RSI {_syn_rsi:.0f}으로 단기 과열 — 단기 조정 가능성이 있습니다.")
+            elif _syn_rsi <= 30:
+                _syn_parts.append(f"RSI {_syn_rsi:.0f}으로 낙폭 과다 — 기술적 반등 가능성이 있습니다.")
+
+        # 3. BB 위치 문장
+        if _pct_b_now is not None:
+            if _pct_b_now > 1.0:
+                _syn_parts.append(
+                    "현재 가격이 볼린저밴드 상단을 이탈했습니다. 알트코인 백테스트에서 이 구간 이후 평균적으로 하락했던 전례가 있어 주의가 필요합니다.")
+            elif _pct_b_now < 0:
+                _syn_parts.append(
+                    "가격이 볼린저밴드 하단 아래로 내려온 상태입니다. 과매도 반등 후보 구간이지만 추세가 하락이라면 추가 하락도 배제할 수 없습니다.")
+            elif _pct_b_now > 0.8:
+                _syn_parts.append(
+                    f"가격이 밴드 상단 근처({_pct_b_now:.0%})에 위치해 단기적으로 비싼 편입니다.")
+
+        if _bw_squeeze:
+            _syn_parts.append(
+                "밴드폭이 크게 좁아진 스퀴즈 상태로, 곧 큰 방향성 움직임이 나올 수 있습니다.")
+
+        # 4. 최종 결론 문장
+        _rpt_otype = _rpt.get("opinion_type", "") if _rpt else ""
+        _net = len(_bull_items) - len(_bear_items)
+        if _rpt_otype == "positive" or _net >= 2:
+            _syn_conclusion = "종합적으로 현재는 보유를 유지하면서 추세를 지켜볼 만한 상황입니다."
+            _syn_bg, _syn_bd = "#f0fdf4", "#22c55e"
+        elif _rpt_otype == "negative" or _net <= -2:
+            _syn_conclusion = "종합적으로 위험 요인이 더 많습니다. 비중 축소 또는 손절 기준을 점검할 시점입니다."
+            _syn_bg, _syn_bd = "#fef2f2", "#ef4444"
+        else:
+            _syn_conclusion = "종합적으로 뚜렷한 방향보다는 관망 구간입니다. 추가 매수보다 현 포지션 유지 후 확인하는 것이 적절합니다."
+            _syn_bg, _syn_bd = "#fffbeb", "#f59e0b"
+
+        _syn_parts.append(_syn_conclusion)
+
+        st.markdown(
+            f"<div style='background:{_syn_bg};border-left:4px solid {_syn_bd};"
+            f"padding:12px 16px;border-radius:6px;font-size:0.92em;margin:8px 0;color:#1e293b'>"
+            f"<b>💡 종합 의견</b><br>{'  '.join(_syn_parts)}</div>",
+            unsafe_allow_html=True,
+        )
+
         _foot: list[str] = [f"자동 신호: {_sig_text} — {row.get('사유','')}"]
         if _rpt_updated:
             _foot.append(f"리서치 노트 {_rpt_updated} 기준")
