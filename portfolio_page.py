@@ -715,9 +715,9 @@ _SIGNAL_DISPLAY = [
         "card_bg": "#faf5ff", "card_border": "#a855f7", "card_color": "#7e22ce",
         "live_bg": "#e8f5e9", "live_bd": "#43a047",
         "items_html": (
-            "🪙 코인 전용<br>"
-            "MVRV &lt; 0 — 역사적 바닥<br>"
-            "BTC 100% 구간 (백테스트)"
+            "🪙 코인에만 적용<br>"
+            "시장 평균 매수가보다 현재가가 낮은 극단적 저가 구간<br>"
+            "과거 데이터에서 수익 확률 100%였던 BTC 구간"
         ),
         "caption": None,
     },
