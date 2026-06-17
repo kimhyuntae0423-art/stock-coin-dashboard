@@ -48,10 +48,26 @@ def download_prices(tickers: list, period: str = "5y", interval: str = "1d") -> 
                     df.columns = df.columns.get_level_values(0)
                 except Exception:
                     df.columns = [c[-1] if isinstance(c, tuple) else c for c in df.columns]
+            df.dropna(how="all", inplace=True)
+
+            # 코인(-USD)이고 yfinance 데이터가 30일 이상 오래됐으면 Binance로 교체
+            if "-USD" in t:
+                yf_stale = df.empty or (pd.Timestamp.now() - df.index[-1]).days > 30
+                if yf_stale:
+                    print(f"{t}: yfinance 데이터 오래됨 → Binance fallback 시도...")
+                    try:
+                        df_b = _fetch_binance_ohlcv(t, days=1825)
+                        if not df_b.empty:
+                            df = df_b
+                            print(f"{t}: Binance 수집 완료 ({len(df)} rows)")
+                        else:
+                            print(f"{t}: Binance도 데이터 없음")
+                    except Exception as be:
+                        print(f"{t}: Binance fallback 실패 - {be}")
+
             if df.empty:
                 print(f"{t}: 데이터 없음")
                 continue
-            df.dropna(how="all", inplace=True)
             df.to_csv(out_dir / f"{t}.csv")
             all_signals[t] = df
             print(f"{t}: 다운로드 완료 ({len(df)} rows)")
