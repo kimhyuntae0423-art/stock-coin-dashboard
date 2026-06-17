@@ -477,19 +477,24 @@ if not holdings.empty:
         _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
         def _pnl_hex(pnl, clim):
-            t = max(0.0, min(1.0, (pnl + clim) / (2 * clim)))
-            if t < 0.5:
-                t2 = t * 2
-                return f"rgb({int(220*(1-t2)+100*t2)},{int(53*(1-t2)+116*t2)},{int(69*(1-t2)+139*t2)})"
+            # 순수 빨강 ↔ 밝은 회색 ↔ 순수 초록 (파랑 계열 섞지 않음)
+            if pnl >= 0:
+                t = min(1.0, pnl / clim)
+                r = int(156*(1-t) + 22*t)
+                g = int(163*(1-t) + 163*t)
+                b = int(175*(1-t) + 74*t)
             else:
-                t2 = (t - 0.5) * 2
-                return f"rgb({int(100*(1-t2)+21*t2)},{int(116*(1-t2)+128*t2)},{int(139*(1-t2)+0*t2)})"
+                t = min(1.0, -pnl / clim)
+                r = int(156*(1-t) + 220*t)
+                g = int(163*(1-t) + 38*t)
+                b = int(175*(1-t) + 38*t)
+            return f"rgb({r},{g},{b})"
 
         _tm_ids, _tm_labels, _tm_parents, _tm_values, _tm_colors, _tm_custom = [], [], [], [], [], []
 
         for _bkt in ["🏛️ 코어", "🎯 위성"]:
             _tm_ids.append(_bkt); _tm_labels.append(_bkt); _tm_parents.append("")
-            _tm_values.append(0); _tm_colors.append("#334155"); _tm_custom.append(["", 0, 0, 0])
+            _tm_values.append(0); _tm_colors.append("#94a3b8"); _tm_custom.append(["", 0, 0, 0])
 
         for _, row in _ph_view.iterrows():
             _t   = row["ticker"]
@@ -512,7 +517,7 @@ if not holdings.empty:
             marker=dict(
                 colors=_tm_colors,
                 line=dict(width=2, color="white"),
-                pad=dict(t=4, l=4, r=4, b=4),
+                pad=dict(t=22, l=2, r=2, b=2),
             ),
             texttemplate="%{label}",
             textfont=dict(color="white", size=14),
