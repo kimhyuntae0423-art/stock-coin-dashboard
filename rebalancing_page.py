@@ -424,10 +424,10 @@ with ic3:
     target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
 with ic4:
     cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
-                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
+                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", format="%,d", key="cash_amt_")
 with ic5:
     new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=1_000_000,
-                                step=100_000, key="new_money_input", format="%d")
+                                step=100_000, format="%,d", key="new_money_input")
 
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
@@ -629,7 +629,7 @@ st.caption("강제 매도 없이 신규 자금 배분만으로 목표 비중에 
 _sc1, _sc2, _sc3, _sc4 = st.columns(4)
 with _sc1:
     _sim_monthly = st.number_input("월 적립액 (원)", min_value=0, value=1_000_000,
-                                   step=100_000, key="sim_monthly")
+                                   step=100_000, format="%,d", key="sim_monthly")
 with _sc2:
     _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=15, key="sim_years")
 with _sc3:
