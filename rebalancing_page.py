@@ -508,21 +508,44 @@ if not holdings.empty:
         )
         st.plotly_chart(_fig_pie, use_container_width=True)
 
-actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
-if actions_alloc:
-    action_df = pd.DataFrame(actions_alloc)
-    action_df.columns = ["버킷", "현재%", "목표%", "편차pp", "액션", "금액"]
-    st.dataframe(
-        action_df, hide_index=True, use_container_width=True,
-        column_config={
-            "현재%": st.column_config.NumberColumn(format="%.1f"),
-            "목표%": st.column_config.NumberColumn(format="%.1f"),
-            "편차pp": st.column_config.NumberColumn(format="%+.1f"),
-            "금액": st.column_config.NumberColumn(format="%,.0f"),
-        },
-    )
-else:
-    st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
+_bkt_name = {"Core": "🏛️ 코어", "Satellite": "🎯 위성", "Cash": "💵 현금"}
+_bkt_cur  = {"Core": alloc["Core_value"], "Satellite": alloc["Satellite_value"], "Cash": alloc["Cash_value"]}
+_detail_rows = []
+for _bkt in ["Core", "Satellite", "Cash"]:
+    _cur_val = _bkt_cur[_bkt]
+    _cur_pct = alloc[f"{_bkt}_pct"]
+    _tgt_pct = {"Core": target_core, "Satellite": target_satellite, "Cash": target_cash}[_bkt]
+    _tgt_val = alloc["Total"] * _tgt_pct / 100
+    _dev_pp  = _cur_pct - _tgt_pct
+    _diff    = _tgt_val - _cur_val
+    _action  = ("✅ 목표 도달" if abs(_dev_pp) < 5 else
+                ("📈 추가매수" if _diff > 0 else "📉 일부매도"))
+    _detail_rows.append({
+        "버킷":      _bkt_name[_bkt],
+        "현재 금액": _cur_val,
+        "현재 비중": _cur_pct,
+        "목표 비중": _tgt_pct,
+        "목표 금액": _tgt_val,
+        "편차":      _dev_pp,
+        "액션":      _action,
+        "필요 금액": abs(_diff),
+    })
+_action_df = pd.DataFrame(_detail_rows)
+st.dataframe(
+    _action_df, hide_index=True, use_container_width=True,
+    column_config={
+        "버킷":      st.column_config.TextColumn("버킷"),
+        "현재 금액": st.column_config.NumberColumn("현재 금액", format="%,.0f"),
+        "현재 비중": st.column_config.NumberColumn("현재 비중", format="%.1f%%"),
+        "목표 비중": st.column_config.NumberColumn("목표 비중", format="%.1f%%"),
+        "목표 금액": st.column_config.NumberColumn("목표 금액", format="%,.0f"),
+        "편차":      st.column_config.NumberColumn("편차 (pp)", format="%+.1f"),
+        "액션":      st.column_config.TextColumn("액션"),
+        "필요 금액": st.column_config.NumberColumn("필요 금액", format="%,.0f"),
+    },
+)
+if all(abs(r["편차"]) < 5 for r in _detail_rows):
+    st.success("✅ 전 버킷 목표 배분 ±5%p 이내. 리밸런싱 불필요.")
 
 if new_money > 0 and alloc["Total"] > 0:
     total_after = alloc["Total"] + new_money
