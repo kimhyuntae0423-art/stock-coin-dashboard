@@ -102,15 +102,43 @@ def severity_for_holding(
                     return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
             return 0, []
 
-        # 알트코인: 개별 손실 기준
+        # 알트코인: BB + 손익 복합 신호
+        pct_b = bb["pct_b"] if bb else None
+        rsi_bb = bb["rsi14"] if bb else None
+        state_bb = bb["state"] if bb else None
+        cycle_ctx = f" (MVRV Z {float(mvrv_z):.2f})" if mvrv_z is not None and pd.notna(mvrv_z) else ""
+
+        # 신호1. BB 매도: %B>1 + RSI>70 (백테스트 -11.7%, 27% 승률)
+        if pct_b is not None and rsi_bb is not None and pct_b > 1.0 and rsi_bb > 70:
+            return 2, [
+                f"BB 상단 이탈(%B {pct_b:.2f}) + RSI {rsi_bb:.0f}"
+                f" — 알트 과열 매도 신호 (백테스트 -11.7%, 27%){cycle_ctx}"
+            ]
+
+        # 신호2. 추세 반전 조기 경보: bull + %B<0.2 (백테스트 -18.2%, 8%)
+        if pct_b is not None and state_bb == "bull" and pct_b < 0.2:
+            return 1, [
+                f"MA 추세 bull이나 BB 하단(%B {pct_b:.2f})"
+                f" — 추세 반전 조기 경보 (백테스트 -18.2%, 8%)"
+            ]
+
+        # 신호3. 손익 기반 — %B<0+RSI<30(반등 후보 구간)이면 등급 완화
         if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
             pnl_pct = (float(close) / float(buy_price) - 1) * 100
-            cycle_ctx = ""
-            if mvrv_z is not None and pd.notna(mvrv_z):
-                cycle_ctx = f" (사이클 MVRV Z {float(mvrv_z):.2f})"
+            is_bounce = (
+                pct_b is not None and rsi_bb is not None
+                and pct_b < 0.0 and rsi_bb < 30
+            )
             if pnl_pct <= -40:
+                if is_bounce:
+                    return 1, [
+                        f"손익 {pnl_pct:+.1f}% 심각 — 단, BB 하단+RSI 과매도"
+                        f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간{cycle_ctx}"
+                    ]
                 return 2, [f"손익 {pnl_pct:+.1f}% — 알트 개별 하락 심각{cycle_ctx}"]
             elif pnl_pct <= -20:
+                if is_bounce:
+                    return 0, []  # 완화 — 반등 후보 구간
                 return 1, [f"손익 {pnl_pct:+.1f}% — 알트 하락 주의{cycle_ctx}"]
         return 0, []
 
