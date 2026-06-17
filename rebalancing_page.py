@@ -474,60 +474,51 @@ if not holdings.empty:
         )
         _ph_total = _ph_view["평가금액"].sum()
 
-        # 코어 내림차순, 위성(개별주→코인) 내림차순
-        _cat_order = {"코어 ETF": 0, "개별주": 1, "코인": 2}
-        _ph_view["_co"] = _ph_view["카테고리"].map(_cat_order)
-        _ph_sorted = _ph_view.sort_values(["_co", "평가금액"], ascending=[True, False])
+        _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
-        # 종목마다 고유 색상 (plotly 팔레트)
-        _palette = [
-            "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
-            "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
-            "#54a24b","#88d27a","#b79a20","#439894","#83bcb6",
-        ]
+        _tm_ids, _tm_labels, _tm_parents, _tm_values, _tm_colors, _tm_custom = [], [], [], [], [], []
 
-        _y_rows = ["🏛️ 코어", "🎯 위성"]
-        _fig_stack = go.Figure()
+        # 부모 노드 (코어 / 위성)
+        for _bkt in ["🏛️ 코어", "🎯 위성"]:
+            _tm_ids.append(_bkt); _tm_labels.append(_bkt); _tm_parents.append("")
+            _tm_values.append(0); _tm_colors.append(0); _tm_custom.append(["", 0, 0, 0])
 
-        for i, (_, row) in enumerate(_ph_sorted.iterrows()):
+        for _, row in _ph_view.iterrows():
+            _t   = row["ticker"]
             _nm  = row["종목명"]
-            _pnl = row["수익률(%)"]
-            _val = row["평가금액"]
+            _val = float(row["평가금액"])
+            _pnl = float(row["수익률(%)"])
             _wt  = _val / _ph_total * 100
             _bkt = row["버킷"]
-            _col = _palette[i % len(_palette)]
+            _tm_ids.append(f"{_bkt}/{_t}")
+            _tm_labels.append(f"{_nm}<br>{_pnl:+.1f}%")
+            _tm_parents.append(_bkt)
+            _tm_values.append(_val)
+            _tm_colors.append(_pnl)
+            _tm_custom.append([_nm, _pnl, _val, _wt])
 
-            _fig_stack.add_trace(go.Bar(
-                name=f"{_nm}  {_pnl:+.1f}%",
-                y=_y_rows,
-                x=[_val if _bkt == "🏛️ 코어" else 0,
-                   0   if _bkt == "🏛️ 코어" else _val],
-                orientation="h",
-                marker=dict(color=_col, line=dict(width=1, color="white")),
-                text=["" if (_bkt == "🎯 위성") else f"{_nm}<br>{_pnl:+.1f}%",
-                      "" if (_bkt == "🏛️ 코어") else f"{_nm}<br>{_pnl:+.1f}%"],
-                textposition="inside",
-                insidetextanchor="middle",
-                textfont=dict(size=10, color="white"),
-                customdata=[[_nm, _pnl, _val, _wt]] * 2,
-                hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
-                showlegend=True,
-            ))
-
-        _fig_stack.update_layout(
-            barmode="stack",
-            height=220,
-            margin=dict(t=10, b=10, l=10, r=10),
-            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-            yaxis=dict(tickfont=dict(size=13, color="#374151")),
-            legend=dict(
-                orientation="h", x=0, y=-0.15,
-                font=dict(size=10), traceorder="normal",
+        _fig_tm = go.Figure(go.Treemap(
+            ids=_tm_ids, labels=_tm_labels, parents=_tm_parents,
+            values=_tm_values, branchvalues="remainder",
+            customdata=_tm_custom,
+            marker=dict(
+                colors=_tm_colors,
+                colorscale=[[0, "#dc2626"], [0.5, "#1e293b"], [1, "#16a34a"]],
+                cmid=0, cmin=-_pnl_max, cmax=_pnl_max,
+                showscale=True,
+                colorbar=dict(title=dict(text="수익률%"), thickness=10, len=0.6, x=1.0),
+                line=dict(width=2, color="white"),
             ),
+            texttemplate="%{label}",
+            textfont=dict(color="white", size=12),
+            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
+        ))
+        _fig_tm.update_layout(
+            height=480,
+            margin=dict(t=10, b=10, l=10, r=80),
             paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(_fig_stack, use_container_width=True)
+        st.plotly_chart(_fig_tm, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
