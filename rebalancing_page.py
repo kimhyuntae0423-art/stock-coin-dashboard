@@ -491,7 +491,8 @@ if not holdings.empty:
             customdata=_pie_custom,
             hole=0.42,
             hovertemplate="<b>%{customdata[0]}</b><br>카테고리: %{customdata[4]}<br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
-            textinfo="none",
+            textinfo="percent",
+            textfont=dict(size=11),
             showlegend=True,
         ))
         _fig_pie.update_layout(
