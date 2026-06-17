@@ -773,6 +773,7 @@ for _, row in view.iterrows():
     ticker = str(row["ticker"])
     name = row["종목명"]
     is_coin = "-USD" in ticker
+    is_etf  = ticker in _ETF_TICKERS
     pnl_pct = row["수익률(%)"]
 
     sig_filename = f"coin_{ticker}_signals.csv" if is_coin else f"{ticker}_signals.csv"
