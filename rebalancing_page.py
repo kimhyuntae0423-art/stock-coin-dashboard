@@ -630,7 +630,6 @@ _sc1, _sc2, _sc3, _sc4 = st.columns(4)
 with _sc1:
     _sim_monthly = st.number_input("월 적립액 (원)", min_value=0, value=1_000_000,
                                    step=100_000, key="sim_monthly")
-    st.caption(f"{int(_sim_monthly):,}원")
 with _sc2:
     _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=15, key="sim_years")
 with _sc3:
