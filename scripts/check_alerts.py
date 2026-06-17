@@ -29,6 +29,7 @@ SUMMARY = ROOT / "results" / "summary_signals.csv"
 COIN_SUMMARY = ROOT / "results" / "coin_summary.csv"
 CYCLE_METRICS = ROOT / "results" / "cycle_metrics.csv"
 CYCLE_STATE = ROOT / "results" / "cycle_alert_state.json"
+_RESULTS = ROOT / "results"
 
 
 def load_signals() -> pd.DataFrame:
