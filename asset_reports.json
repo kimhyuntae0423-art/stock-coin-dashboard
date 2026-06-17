@@ -78,16 +78,16 @@
     ]
   },
   "ENS-USD": {
-    "opinion": "매도 검토 / 회복 불투명",
-    "opinion_type": "negative",
-    "summary": "원화 기준 약 -70% 손실 중. RSI 51.13, 90일 -14.1%. MVRV Z 0.42 사이클 저점이나 ENS 개별 손실 극심. Web3 도메인 실사용 근거는 있으나, 원금 회복 위해 약 +230% 상승 필요. ETH 생태계 전반 성장이 전제 조건.",
-    "bull": "MVRV Z 0.42 사이클 저점. RSI 51 코인 중 상대적 양호. 이더리움 도메인 실사용 수요 존재. ETH 상승 동반 가능.",
-    "bear": "-70% 손실. 원금 회복 위해 +230% 필요. ETH 생태계 성장 전제. 경쟁 Web3 네임서비스 압박 지속.",
+    "opinion": "ETH 연동 회복 대기",
+    "opinion_type": "caution",
+    "summary": "현재 $5.42. 2026 컨센서스 $6.22~$100(보수 중간값 $12~17, Cryptopolitan). 매도 압력 완화·바닥 안정화 신호 일부 감지. Web3 도메인 실사용 수요 있으나 ETH 생태계 전반 성장이 전제. 원금 회복엔 +230% 필요.",
+    "bull": "Web3 도메인 실사용 수요 존재. 매도 압력 완화·바닥 안정화 신호. ETH 성장 시 동반 수혜.",
+    "bear": "원금 회복 +230% 필요. ETH 의존도 극단. 컨센서스 하단 $6.22로 추가 하락 가능.",
     "updated": "2026-06-17",
     "sources": [
       {"title": "Cryptopolitan: ENS Price Prediction 2026", "url": "https://www.cryptopolitan.com/ethereum-name-service-price-prediction/"},
       {"title": "CoinPedia: ENS Ethereum Name Service Price Prediction 2026", "url": "https://coinpedia.org/price-prediction/ethereum-name-service-ens-price-prediction/"},
-      {"title": "BeInCrypto: ENS Price Prediction 2026", "url": "https://beincrypto.com/price/ethereum-name-service/price-prediction/"}
+      {"title": "Changelly: ENS Price Prediction 2026-2030", "url": "https://changelly.com/blog/ethereum-name-service-ens-price-prediction/"}
     ]
   }
 }
