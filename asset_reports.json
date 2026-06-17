@@ -1,11 +1,11 @@
 {
   "360200.KS": {
-    "opinion": "보유 / 분할 추가매수 검토",
+    "opinion": "추세 양호 / 보유 유지",
     "opinion_type": "positive",
-    "summary": "ACE 미국S&P500 ETF는 S&P500 지수를 추종합니다. 골드만삭스는 2026년 말 목표를 8,000포인트로 상향했으며 Q1 실적에서 S&P500 기업의 84%가 어닝 비트를 기록했습니다. AI 인프라가 올해 이익 성장의 약 50%를 견인할 것으로 전망됩니다.\n\n다만 현재 주식 리스크 프리미엄이 역대 최저치(0.02%)에 근접해 안전마진이 거의 없는 상태이며, S&P500 내 상위 17% 종목만 시장 수익률을 상회 중입니다. 이익 성장이 밸류에이션을 뒷받침하는 한 추세는 유지될 수 있으나, 단기 조정 가능성을 열어두고 분할 접근이 적절합니다.",
-    "bull": "골드만삭스 연말 8,000 목표. S&P500 기업 EPS $354.75(2026년 전망 $337 상회). AI 인프라 투자가 이익 성장의 50% 견인. 84% 어닝 비트율.",
-    "bear": "주식 리스크 프리미엄 0.02% — 역대 최저 수준의 안전마진. P/E 역사적 고점권. 상위 17% 종목만 시장 수익률 상회. AI 밸류에이션 거품 우려.",
-    "updated": "2026-06-15",
+    "summary": "현재 +24.3% 수익 중. 12M +40.9%, 1M +2.7%, RSI 63 — 과열 없음. 골든크로스 274일 지속 중으로 추세 안정적. S&P500 강세 기조 유지 중이나 밸류에이션 부담은 점진 증가 추세.",
+    "bull": "12M +41%, RSI 63 과열 없음. 골든크로스 274일 장기 지속. AI 기업 이익 성장이 지수 상승 견인.",
+    "bear": "주식 리스크 프리미엄 역대 최저권. 상위 종목 집중 리스크. 단기 조정 시 원화 환율 이중 영향.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "Goldman Sachs: S&P 500 Forecast to Climb as Earnings Growth Powers Stocks Higher", "url": "https://www.goldmansachs.com/insights/articles/s-and-p-500-forecast-to-climb-as-earnings-growth-powers-stocks-higher"},
       {"title": "Fidelity: Stock Market Outlook Midyear 2026", "url": "https://www.fidelity.com/learning-center/trading-investing/stock-market-outlook"},
@@ -13,12 +13,12 @@
     ]
   },
   "466950.KS": {
-    "opinion": "보유 / 고점 주의 — 일부 수익 실현 고려",
-    "opinion_type": "caution",
-    "summary": "TIGER 글로벌AI액티브 ETF는 NVIDIA, Microsoft, Alphabet 등 글로벌 AI 핵심 기업에 집중 투자합니다. 수익률 +117%로 이미 큰 수익을 실현 중이며, 2026년 하이퍼스케일러 자본 지출은 $6,110억에 달할 전망입니다.\n\n그러나 AI 섹터 밸류에이션 과열 논란이 커지고 있으며, AI 투자 대비 실제 수익성 증명 단계에 진입 중입니다. 유사 AI ETF 중 일부는 올해 -8%를 기록하는 등 편차가 극심합니다. +117% 수익의 일부를 확정하고 조정 시 재진입하는 전략도 합리적입니다.",
-    "bull": "글로벌 AI 시장 2033년 $4.8조 성장 전망. BofA 반도체 시장 $1.3조 예측. 하이퍼스케일러 capex $6,110억 집행 중. 엔비디아·브로드컴 실적 호조.",
-    "bear": "AI 수익성 검증 압박 증가. 밸류에이션 스트레치. 유사 ETF 간 2026년 수익률 편차 -8%~+77%로 극심. 상위 종목 집중 리스크.",
-    "updated": "2026-06-15",
+    "opinion": "강세 / RSI 68 주의",
+    "opinion_type": "positive",
+    "summary": "현재 +121.7% 수익 중. 12M +164.0%, 1M +18.9%, RSI 68 — 강세 모멘텀 최상위이나 과매수 근접. 골든크로스 342일 지속. 글로벌 AI 투자 수요가 성과를 견인 중.",
+    "bull": "12M +164%, 1M +19% 모멘텀 최상위. 골든크로스 342일 장기 지속. 하이퍼스케일러 capex 지속 확대.",
+    "bear": "RSI 68 — 과매수 근접(기준선 70). +121% 수익 실현 압박 존재. AI 밸류에이션 과열 논란 증가.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "24/7 Wall St: 3 AI ETFs in 2026 — One Is Up 77%, One Is Down 8%", "url": "https://247wallst.com/investing/2026/03/24/3-ai-etfs-in-2026-one-is-up-77-one-is-down-8-and-the-gap-tells-you-everything/"},
       {"title": "The Motley Fool: 5 Best AI ETFs to Buy in 2026", "url": "https://www.fool.com/investing/stock-market/market-sectors/information-technology/ai-stocks/ai-etfs/"},
@@ -26,12 +26,12 @@
     ]
   },
   "0072R0.KS": {
-    "opinion": "보유 / 추가매수 긍정적",
-    "opinion_type": "positive",
-    "summary": "TIGER KRX금현물 ETF는 국내 금 현물 가격을 추종합니다. JP모건은 2026년 말 목표를 온스당 $6,300으로 제시했으며, 골드만삭스는 $5,400을 전망합니다. 글로벌 중앙은행들의 금 매입이 지속되고 있고, 미국 국채 금리 불안 속에서 금의 안전자산 수요가 강합니다.\n\n인플레이션 고착 우려, 지정학적 리스크, 달러 불확실성 등 금에 우호적인 거시 환경이 형성되어 있습니다. 현재 +1.95%로 수익이 크지 않지만, 포트폴리오 헤지 역할과 동시에 추가 상승 여력이 있습니다.",
-    "bull": "JP모건 $6,300, 골드만삭스 $5,400 목표. 중앙은행 금 매입 지속. 인플레이션 헤지 + 달러 약세 수혜. 채권 대비 안전자산 선호.",
-    "bear": "금리 인상 시 기회비용 증가로 금 매력 약화. 경기 강세 지속 시 안전자산 수요 둔화. 단기 변동성 확대 가능.",
-    "updated": "2026-06-15",
+    "opinion": "보유 / 단기 조정 중",
+    "opinion_type": "caution",
+    "summary": "현재 +2.0% 소폭 수익. RSI 43, 1M -6.6% 단기 약세. 추세 신호 데이터 부재. 금 헷지 역할 자체는 유효하나 단기 모멘텀 약화 중. 추가 매수 전 RSI 50 회복 확인 권장.",
+    "bull": "글로벌 중앙은행 금 매입 지속. 인플레·지정학 헷지 역할 유효. 장기 금 가격 목표 애널리스트 상향 지속.",
+    "bear": "RSI 43, 1M -6.6% 단기 약세. 금리 유지 시 기회비용 증가. 달러 강세 지속 시 금 약세 압력.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "J.P. Morgan: Gold Price Predictions 2026", "url": "https://www.jpmorgan.com/insights/global-research/commodities/gold-prices"},
       {"title": "Yahoo Finance: Gold Price Outlook — $6,000 in 2026?", "url": "https://finance.yahoo.com/personal-finance/investing/article/gold-price-outlook-will-we-hit-6000-in-2026-150000990.html"},
@@ -39,12 +39,12 @@
     ]
   },
   "476760.KS": {
-    "opinion": "보유 / 금리 하락 전환 전까지 추가매수 보류",
+    "opinion": "보유 / 금리 동향 주시",
     "opinion_type": "caution",
-    "summary": "ACE 미국30년국채액티브 ETF는 미국 초장기 국채에 투자합니다. 현재 30년물 국채 금리는 4.97%로 5%를 상회했으며, 시장은 2026년 금리 인하 대신 동결 또는 인상 가능성까지 반영 중입니다.\n\n30년 국채는 금리 변동에 가장 민감한 자산으로, 금리 1%p 상승 시 가격이 약 15~20% 하락할 수 있습니다. 현재 +3.49% 수익 구간이지만, 인플레이션이 고착되고 연준이 동결을 유지하는 한 추가 매수는 위험합니다. 금리 하락 전환 신호가 확인된 이후 비중 확대를 검토하세요.",
-    "bull": "금리 고점 형성 후 하락 전환 시 채권 가격 급등(가장 큰 수혜). 4.97% 쿠폰 수익 자체도 매력적. 경기 침체 시 안전자산 수요.",
-    "bear": "연준 동결 연장 또는 인상 가능성. 인플레이션 고착으로 실질 수익률 압박. 금리 1%p 추가 상승 시 -15~20% 손실 가능. 연내 금리 인하 기대 대폭 후퇴.",
-    "updated": "2026-06-15",
+    "summary": "현재 +2.9% 소폭 수익. 12M +15.2%, 1M +3.0%, RSI 56 — 회복 흐름. 골든크로스 239일 지속. 연준 금리 동결 장기화 가능성이 핵심 리스크. 금리 인하 전환 신호 확인 전 추가 매수 자제 권장.",
+    "bull": "12M +15.2%, 1M +3.0% 회복 흐름 지속. 골든크로스 239일. 금리 하락 전환 시 채권 가격 급등 잠재력.",
+    "bear": "연준 금리 동결 장기화 가능성. 인플레 재상승 시 역풍. 30년물 금리 1%p 상승 시 -15~20% 손실 가능.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "Fidelity: Bond Market Outlook June 2026", "url": "https://www.fidelity.com/learning-center/trading-investing/bond-market-outlook"},
       {"title": "Charles Schwab: Taxable Fixed Income Mid-Year Outlook 2026", "url": "https://www.schwab.com/learn/story/fixed-income-outlook"},
@@ -52,12 +52,12 @@
     ]
   },
   "BTC-USD": {
-    "opinion": "보유 / 2~3년 장기 관점에서 보유 근거 있음",
+    "opinion": "축적 구간 / 장기 보유 유지",
     "opinion_type": "positive",
-    "summary": "비트코인은 현재 약 $65,700(≈9,950만원)에 거래 중으로, 2025년 1월 고점($109,000) 대비 약 40% 하락한 상태입니다. 온체인 지표는 현재 '축적 구간'임을 시사합니다. MVRV Z-Score 0.38은 역사적 바닥권에 근접한 수준이며, NUPL 0.19는 '희망' 단계로 공포·항복 구간과 유사합니다.\n\n반감기(2024년 4월) 이후 26개월 경과로 전형적인 사이클상 조정 구간이며, 기관 ETF 자금 유입은 여전히 진행 중입니다. 단기 기술적 신호는 약하지만, 2~3년 보유 관점에서는 원금 회복 가능성이 상대적으로 높습니다.\n\n핵심 질문 — 지금 $65,700에 새로 살 것인가? 온체인 지표 기준으로는 매수 가능 구간입니다.",
-    "bull": "MVRV Z-Score 0.38 → 역사적 매수 적기 구간(7 이상이 고점). NUPL 0.19 → 공포/희망 단계(전형적 바닥권). 기관 ETF 자금 유입 지속. 반감기 공급 축소 장기 효과. 알트시즌 미도래 → 이후 상승 여력 잔존.",
-    "bear": "기술적 신호 다수 약세. MA50 < MA200(하락추세). 거시경제 악화 또는 규제 이슈 시 $40k대 재진입 가능. 알트코인 시즌 지연. 비트코인 시즌(알트 부진) 구간 지속 중.",
-    "updated": "2026-06-15",
+    "summary": "원화 기준 약 -32% 손실 중(매수가 1.34억원 vs 현재 약 9,056만원 추정). MVRV Z-Score 0.42 — 역사적 저평가 구간(0~1.5 = 매수 적기). NUPL 0.20 희망 단계, Puell 0.75 채굴자 압력 없음. RSI 41.91, 90일 -7.89% — 기술적 약세이나 온체인 신호는 축적 구간.",
+    "bull": "MVRV Z 0.42 역사적 매수 적기(백테스트 검증). NUPL 0.20 공포/희망 경계. Puell 0.75 채굴자 압력 없음. 기관 ETF 자금 유입 지속.",
+    "bear": "원화 기준 -32% 손실 중. RSI 41.91 기술적 약세. 비트코인 시즌(알트 부진) 지속. 거시 악화 시 $50k대 재진입 가능.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "Yahoo Finance: Bitcoin Price Prediction June 2026 — Institutional Exodus?", "url": "https://finance.yahoo.com/markets/crypto/articles/bitcoin-price-prediction-june-2026-070000962.html"},
       {"title": "CoinGecko: Bitcoin Price Prediction 2026", "url": "https://www.coingecko.com/en/coins/bitcoin/prediction"},
@@ -65,12 +65,12 @@
     ]
   },
   "ETC-USD": {
-    "opinion": "매도 검토 / 보유 근거 약함",
+    "opinion": "매도 검토 / 논거 약화",
     "opinion_type": "negative",
-    "summary": "이더리움 클래식(ETC)은 이더리움이 PoS로 전환한 이후 '순수 PoW 스마트컨트랙트 체인'이라는 정체성을 유지하고 있습니다. 현재 약 $7.28로 매수가($16.93) 대비 -57% 하락 상태입니다.\n\nTVL(총 예치금), 개발자 활동, 생태계 성장 지표 모두 바닥권이며, 애널리스트들의 2026년 목표가($25~45)조차 원금 회복이 불가능한 수준입니다. 원금 회복을 위해서는 현재가 대비 +132% 상승이 필요하며, 이를 뒷받침할 펀더멘털 촉매가 현재 부재합니다.\n\n핵심 질문 — 지금 $7.28에 ETC를 새로 살 것인가? 대부분의 합리적 판단은 '아니오'입니다. 시장이 이미 ETC의 관련성에 투표를 마친 상태입니다.",
-    "bull": "2026년 Olympia 하드포크에서 EIP-1559 수수료 소각 도입 예정 → 디플레이션 압력. PoW 마이닝 르네상스 시나리오 가능. 예상치 못한 촉매 발생 시 단기 급등 가능.",
-    "bear": "TVL·개발자 활동 모두 바닥. ETH PoS 전환 이후 ETC의 차별성 약화. 2026년 애널리스트 목표가 최대 $45로 원금($16.93) 회복 불가. 경쟁 PoW 체인 압박 지속.",
-    "updated": "2026-06-15",
+    "summary": "원화 기준 약 -60% 손실 중. RSI 42.27, 90일 -13.1%. 전체 사이클은 MVRV Z 0.42로 축적 구간이나, ETC 자체 TVL·개발자 활동 모두 저조. 원금 회복 위해 약 +150% 상승 필요하나 명확한 촉매 부재.",
+    "bull": "MVRV Z 0.42 BTC 사이클 저점 구간. 2026 Olympia 하드포크 토큰 소각 도입 예정. 단기 투기 수요 가능.",
+    "bear": "-60% 손실. ETC 생태계 차별성 부족. TVL·개발자 활동 바닥. 원금 회복 위해 +150% 상승 필요.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "CryptoRank: ETC Price Prediction 2026-2030 — Realistic Targets", "url": "https://cryptorank.io/news/feed/93527-ethereum-classic-price-prediction-2026-2030"},
       {"title": "BeInCrypto: Ethereum Classic Price Prediction 2026", "url": "https://beincrypto.com/price/ethereum-classic/price-prediction/"},
@@ -78,12 +78,12 @@
     ]
   },
   "ENS-USD": {
-    "opinion": "판단 보류 / 소규모 보유 유지 또는 부분 매도",
-    "opinion_type": "caution",
-    "summary": "이더리움 네임서비스(ENS)는 Web3 지갑 주소를 사람이 읽을 수 있는 도메인(.eth)으로 변환하는 서비스로, 이더리움 생태계의 신원 레이어 역할을 합니다. 현재 약 $5.13으로 매수가($16.20) 대비 -68% 하락 상태입니다.\n\nENS는 실제 사용 사례가 존재하며 ETC보다는 명확한 존재 이유가 있습니다. 그러나 토큰 가격은 이더리움 생태계 전체 성장에 완전히 종속됩니다. 2026년 예측치가 $6~$100으로 편차가 극심하며, 이는 불확실성이 매우 크다는 의미입니다.\n\n원금 회복을 위해서는 현재가 대비 +215% 상승이 필요합니다. ETC보다는 실사용 근거가 있으나, 회복 타임라인이 불투명하고 고위험 자산입니다.",
-    "bull": "Web3 신원 인프라 역할로 ETH 생태계 성장 직접 수혜. 크로스체인 확장 추진 중. ETH 상승 사이클 동반 상승 가능. 실제 도메인 등록 수요 존재.",
-    "bear": "ETH 생태계 성장 둔화 시 직격탄. 원금 회복 위해 +215% 필요. 2026년 예측 $6~$100 — 극단적 불확실성. 경쟁 Web3 네임서비스 등장 가능. 전체 Web3 채택 속도 예측 불가.",
-    "updated": "2026-06-15",
+    "opinion": "매도 검토 / 회복 불투명",
+    "opinion_type": "negative",
+    "summary": "원화 기준 약 -70% 손실 중. RSI 51.13, 90일 -14.1%. MVRV Z 0.42 사이클 저점이나 ENS 개별 손실 극심. Web3 도메인 실사용 근거는 있으나, 원금 회복 위해 약 +230% 상승 필요. ETH 생태계 전반 성장이 전제 조건.",
+    "bull": "MVRV Z 0.42 사이클 저점. RSI 51 코인 중 상대적 양호. 이더리움 도메인 실사용 수요 존재. ETH 상승 동반 가능.",
+    "bear": "-70% 손실. 원금 회복 위해 +230% 필요. ETH 생태계 성장 전제. 경쟁 Web3 네임서비스 압박 지속.",
+    "updated": "2026-06-17",
     "sources": [
       {"title": "Cryptopolitan: ENS Price Prediction 2026", "url": "https://www.cryptopolitan.com/ethereum-name-service-price-prediction/"},
       {"title": "CoinPedia: ENS Ethereum Name Service Price Prediction 2026", "url": "https://coinpedia.org/price-prediction/ethereum-name-service-ens-price-prediction/"},
