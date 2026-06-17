@@ -672,11 +672,11 @@ _SIGNAL_DISPLAY = [
         "card_bg": "#eff6ff", "card_border": "#3b82f6", "card_color": "#1d4ed8",
         "live_bg": "#eff6ff", "live_bd": "#3b82f6",
         "items_html": (
-            "특이 신호 없음 → 보유 유지<br>"
-            "📦 ETF: 리밸런싱으로 관리<br>"
-            "🪙 코인: MVRV 데이터 없음<br>"
-            "🪙 알트: BB하단+RSI과매도<br>"
-            "&nbsp;&nbsp;(%B&lt;0+RSI&lt;30, 반등 후보 57%)"
+            "특별한 경보 없음 — 현재 포지션 유지<br>"
+            "📦 ETF: 정기 리밸런싱 일정대로 관리<br>"
+            "🪙 코인: 온체인 데이터 없어 판단 보류<br>"
+            "🪙 알트: 가격이 극단적 저점에서 RSI도 바닥 —<br>"
+            "&nbsp;&nbsp;단기 반등 후보 (과거 57% 확률)"
         ),
         "caption": None,
     },
