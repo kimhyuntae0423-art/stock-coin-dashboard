@@ -442,6 +442,57 @@ aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
            delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
+# ── 보유 종목 트리맵 ──────────────────────────────────────────────
+if not holdings.empty:
+    _th_ids, _th_labels, _th_parents, _th_values, _th_colors = [], [], [], [], []
+    _th_hname, _th_hpnl, _th_hval = [], [], []
+
+    for _c in ["코어 ETF", "개별주", "코인"]:
+        _th_ids.append(_c); _th_labels.append(_c); _th_parents.append("")
+        _th_values.append(0); _th_colors.append(0)
+        _th_hname.append(_c); _th_hpnl.append(0); _th_hval.append(0)
+
+    for _, _hr in holdings.iterrows():
+        _t  = str(_hr["ticker"])
+        _q  = float(_hr.get("qty", 0))
+        _bp = float(_hr.get("buy_price", 0))
+        if "-USD" in _t:
+            _cat = "코인";    _cur = _i_cp.get(_t, 0.0)
+        elif _t in _i_etf_set:
+            _cat = "코어 ETF"; _cur = float(_i_sp.get(_t, 0.0))
+        else:
+            _cat = "개별주";  _cur = float(_i_sp.get(_t, 0.0))
+        _val = _q * _cur
+        if _val <= 0:
+            continue
+        _pnl  = (_cur / _bp - 1) * 100 if _bp > 0 and _cur > 0 else 0.0
+        _name = NAMES.get(_t, _t)
+        _th_ids.append(f"{_cat}/{_t}"); _th_labels.append(f"{_t}<br>{_pnl:+.1f}%")
+        _th_parents.append(_cat);       _th_values.append(_val)
+        _th_colors.append(_pnl)
+        _th_hname.append(_name); _th_hpnl.append(_pnl); _th_hval.append(_val)
+
+    if any(p != "" for p in _th_parents[3:]):
+        _th_custom = [[n, p, v] for n, p, v in zip(_th_hname, _th_hpnl, _th_hval)]
+        _fig_tree = go.Figure(go.Treemap(
+            ids=_th_ids, labels=_th_labels, parents=_th_parents,
+            values=_th_values, branchvalues="total",
+            customdata=_th_custom,
+            marker=dict(
+                colors=_th_colors,
+                colorscale=[[0, "#ef4444"], [0.5, "#e2e8f0"], [1, "#22c55e"]],
+                cmid=0, showscale=True,
+                colorbar=dict(title=dict(text="수익률%"), thickness=10, len=0.55, x=1.0),
+            ),
+            texttemplate="%{label}",
+            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<extra></extra>",
+        ))
+        _fig_tree.update_layout(
+            height=360, margin=dict(t=5, b=5, l=5, r=80),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(_fig_tree, use_container_width=True)
+
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
     action_df = pd.DataFrame(actions_alloc)
