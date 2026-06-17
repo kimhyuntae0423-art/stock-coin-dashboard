@@ -182,31 +182,34 @@ st.divider()
 st.subheader("미국 주식 — 종목별 수익률 vs S&P500")
 
 us   = df[df["category"] == "US"].sort_values("total_ret", ascending=True)
-b_us = benchmarks["US"]
+b_us = benchmarks.get("US")
 
-colors = ["#22c55e" if r > b_us else "#ef4444" for r in us["total_ret"]]
-fig_us = go.Figure()
-fig_us.add_trace(go.Bar(
-    x=us["ticker"], y=us["total_ret"],
-    marker_color=colors,
-    text=[f"{r:+.0f}%" for r in us["total_ret"]],
-    textposition="outside",
-    textfont=dict(size=11),
-))
-fig_us.add_hline(
-    y=b_us, line_dash="dash", line_color="#1d4ed8", line_width=2,
-    annotation_text=f"S&P500 {b_us:+.1f}%",
-    annotation_position="top right",
-    annotation_font_color="#1d4ed8",
-)
-fig_us.update_layout(
-    height=420, margin=dict(t=20, b=10),
-    yaxis_title="총 수익률 (%)",
-    plot_bgcolor="white", paper_bgcolor="white",
-    xaxis=dict(tickangle=-45),
-    showlegend=False,
-)
-st.plotly_chart(fig_us, use_container_width=True)
+if b_us is None or us.empty:
+    st.info("S&P500 벤치마크 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
+else:
+    colors = ["#22c55e" if r > b_us else "#ef4444" for r in us["total_ret"]]
+    fig_us = go.Figure()
+    fig_us.add_trace(go.Bar(
+        x=us["ticker"], y=us["total_ret"],
+        marker_color=colors,
+        text=[f"{r:+.0f}%" for r in us["total_ret"]],
+        textposition="outside",
+        textfont=dict(size=11),
+    ))
+    fig_us.add_hline(
+        y=b_us, line_dash="dash", line_color="#1d4ed8", line_width=2,
+        annotation_text=f"S&P500 {b_us:+.1f}%",
+        annotation_position="top right",
+        annotation_font_color="#1d4ed8",
+    )
+    fig_us.update_layout(
+        height=420, margin=dict(t=20, b=10),
+        yaxis_title="총 수익률 (%)",
+        plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(tickangle=-45),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_us, use_container_width=True)
 
 nvda_ret = us[us["ticker"] == "NVDA"]["total_ret"].values
 if len(nvda_ret):
