@@ -915,48 +915,57 @@ for _, row in view.iterrows():
                         textposition="bottom center",
                         textfont=dict(size=9, color="#dc2626")))
 
-            # BB 이탈 — 에피소드 첫날만 마킹
-            _ep_below = (_pct_b_series < 0) & ~(_pct_b_series < 0).shift(1).fillna(False)
-            _ep_above = (_pct_b_series > 1.0) & ~(_pct_b_series > 1.0).shift(1).fillna(False)
-            _bb_below_ev = sig_df[_ep_below]
-            _bb_above_ev = sig_df[_ep_above]
-            if not _bb_below_ev.empty:
-                fig_detail.add_trace(go.Scatter(
-                    x=_bb_below_ev["date"],
-                    y=_bb_lower_line[_bb_below_ev.index],
-                    mode="markers+text", name="BB 하단 이탈 — 반등 후보",
-                    marker=dict(symbol="circle", size=10, color="#3b82f6",
-                                line=dict(color="white", width=1.5)),
-                    text=["🔵"] * len(_bb_below_ev),
-                    textposition="bottom center",
-                    textfont=dict(size=11)))
-            if not _bb_above_ev.empty:
-                fig_detail.add_trace(go.Scatter(
-                    x=_bb_above_ev["date"],
-                    y=_bb_upper_line[_bb_above_ev.index],
-                    mode="markers+text", name="BB 상단 이탈 — 과열",
-                    marker=dict(symbol="circle", size=10, color="#ef4444",
-                                line=dict(color="white", width=1.5)),
-                    text=["🔴"] * len(_bb_above_ev),
-                    textposition="top center",
-                    textfont=dict(size=11)))
+            # BB 이탈 마커 — ETF 제외
+            if not is_etf:
+                _ep_below = (_pct_b_series < 0) & ~(_pct_b_series < 0).shift(1).fillna(False)
+                _ep_above = (_pct_b_series > 1.0) & ~(_pct_b_series > 1.0).shift(1).fillna(False)
+                _bb_below_ev = sig_df[_ep_below]
+                _bb_above_ev = sig_df[_ep_above]
+                if not _bb_below_ev.empty:
+                    fig_detail.add_trace(go.Scatter(
+                        x=_bb_below_ev["date"],
+                        y=_bb_lower_line[_bb_below_ev.index],
+                        mode="markers+text", name="BB 하단 이탈 — 반등 후보",
+                        marker=dict(symbol="circle", size=10, color="#3b82f6",
+                                    line=dict(color="white", width=1.5)),
+                        text=["🔵"] * len(_bb_below_ev),
+                        textposition="bottom center",
+                        textfont=dict(size=11)))
+                if not _bb_above_ev.empty:
+                    fig_detail.add_trace(go.Scatter(
+                        x=_bb_above_ev["date"],
+                        y=_bb_upper_line[_bb_above_ev.index],
+                        mode="markers+text", name="BB 상단 이탈 — 과열",
+                        marker=dict(symbol="circle", size=10, color="#ef4444",
+                                    line=dict(color="white", width=1.5)),
+                        text=["🔴"] * len(_bb_above_ev),
+                        textposition="top center",
+                        textfont=dict(size=11)))
 
-            # ── 6. 내 매수가 + 현재 BB 위치 annotation ───────────────
+            # ── 6. 내 매수가 + 현재 위치 annotation ──────────────────
             fig_detail.add_hline(
                 y=buy_line, line_dash="dash", line_color="#E377C2",
                 annotation_text=f"내 매수가 {buy_line:,.0f}",
                 annotation_position="bottom right")
 
-            if _pct_b_now is not None:
+            _last = sig_df.iloc[-1]
+            if not is_etf and _pct_b_now is not None:
                 _pb_label = (
                     "⬇ BB 하단 이탈" if _pct_b_now < 0 else
                     "⬆ BB 상단 이탈" if _pct_b_now > 1.0 else
                     f"BB {_pct_b_now:.0%} 위치"
                 )
-                _last = sig_df.iloc[-1]
                 fig_detail.add_annotation(
                     x=_last["date"], y=_last["close"],
                     text=f"<b>현재</b><br>{_pb_label}",
+                    showarrow=True, arrowhead=2, arrowcolor="#4C9BE8",
+                    bgcolor="white", bordercolor="#4C9BE8", borderpad=4,
+                    font=dict(size=10, color="#1e40af"),
+                    xanchor="left", yanchor="middle", ax=25, ay=0)
+            else:
+                fig_detail.add_annotation(
+                    x=_last["date"], y=_last["close"],
+                    text="<b>현재</b>",
                     showarrow=True, arrowhead=2, arrowcolor="#4C9BE8",
                     bgcolor="white", bordercolor="#4C9BE8", borderpad=4,
                     font=dict(size=10, color="#1e40af"),
