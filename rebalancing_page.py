@@ -324,7 +324,10 @@ if target_core + target_satellite + target_cash != 100:
 
 core_etfs = load_core_etfs()
 core_set = set(core_etfs["ticker"].astype(str))
-price_map_alloc = dict(zip(view_alloc["ticker"], view_alloc["close"]))
+price_map_alloc = dict(zip(view_alloc["ticker"].str.upper(), view_alloc["close"]))
+# 코인은 summary_signals에 없어 close=NaN → _i_cp(coin_summary KRW 환산)로 보완
+for _ct, _cp_val in _i_cp.items():
+    price_map_alloc[str(_ct).upper()] = _cp_val
 classified = classify_holdings(view_alloc, core_etf_tickers=core_set)
 alloc = allocation_summary(classified, price_map_alloc, cash_amount=cash_amount)
 
