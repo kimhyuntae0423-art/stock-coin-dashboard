@@ -4,6 +4,26 @@ import pandas as pd
 import yfinance as yf
 
 
+def _fetch_binance_ohlcv(ticker_usd: str, days: int = 1825) -> pd.DataFrame:
+    """yfinance가 지원 안 하는 코인을 Binance REST API로 대체 수집."""
+    import requests
+    symbol = ticker_usd.replace("-USD", "USDT")
+    url = "https://api.binance.com/api/v3/klines"
+    params = {"symbol": symbol, "interval": "1d", "limit": min(days, 1000)}
+    r = requests.get(url, params=params, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    if not data:
+        return pd.DataFrame()
+    df = pd.DataFrame(data, columns=[
+        "open_time", "Open", "High", "Low", "Close", "Volume",
+        "close_time", "quote_vol", "num_trades", "taker_base", "taker_quote", "ignore"
+    ])
+    df["Date"] = pd.to_datetime(df["open_time"], unit="ms").dt.normalize()
+    df = df.set_index("Date")[["Open", "High", "Low", "Close", "Volume"]]
+    return df.astype(float)
+
+
 def fetch_tickers(tickers_file: str = "../tickers.csv") -> list:
     p = Path(__file__).resolve().parents[0] / Path(tickers_file)
     if not p.exists():
