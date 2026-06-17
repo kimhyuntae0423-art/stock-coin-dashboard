@@ -417,10 +417,19 @@ def holding_signal(row):
             z = _mvrv_z_now
 
             if is_btc:
+                # BTC BB 모멘텀 확인 — MVRV 경보 없을 때만 추가 표시
+                btc_bb = _coin_bb("BTC-USD")
+                btc_pb = btc_bb["pct_b"] if btc_bb else None
+                btc_rsi = btc_bb["rsi14"] if btc_bb else None
+                btc_momentum = (
+                    btc_pb is not None and btc_rsi is not None
+                    and btc_pb > 1.0 and btc_rsi > 70
+                )
                 if z < 0:
                     return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
                 elif z < 1.5:
-                    return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간)"
+                    suffix = f" · BB 모멘텀 강화(%B {btc_pb:.2f}, RSI {btc_rsi:.0f}, 백테스트 +23%, 81%)" if btc_momentum else ""
+                    return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간){suffix}"
                 elif z < 2.5:
                     return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전 (BTC 45% 구간)"
                 else:
