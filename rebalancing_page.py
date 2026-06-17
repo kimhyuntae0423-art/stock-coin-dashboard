@@ -490,39 +490,41 @@ if not holdings.empty:
                 b = int(175*(1-t) + 38*t)
             return f"rgb({r},{g},{b})"
 
+        # 플랫 트리맵 — 부모 노드 없이 모든 종목이 루트에 위치 → 빈 공간 없음
+        # 코어를 맨 앞에 배치해서 시각적으로 왼쪽에 모이도록
         _tm_ids, _tm_labels, _tm_parents, _tm_values, _tm_colors, _tm_custom = [], [], [], [], [], []
 
-        for _bkt in ["🏛️ 코어", "🎯 위성"]:
-            _tm_ids.append(_bkt); _tm_labels.append(_bkt); _tm_parents.append("")
-            _tm_values.append(0); _tm_colors.append("#94a3b8"); _tm_custom.append(["", 0, 0, 0])
+        _ph_flat = pd.concat([
+            _ph_view[_ph_view["버킷"] == "🏛️ 코어"].sort_values("평가금액", ascending=False),
+            _ph_view[_ph_view["버킷"] == "🎯 위성"].sort_values("평가금액", ascending=False),
+        ])
 
-        for _, row in _ph_view.iterrows():
+        for _, row in _ph_flat.iterrows():
             _t   = row["ticker"]
             _nm  = row["종목명"]
             _val = float(row["평가금액"])
             _pnl = float(row["수익률(%)"])
             _wt  = _val / _ph_total * 100
-            _bkt = row["버킷"]
-            _tm_ids.append(f"{_bkt}/{_t}")
-            _tm_labels.append(f"{_nm}<br>{_pnl:+.1f}%")
-            _tm_parents.append(_bkt)
+            _tag = "🏛️" if row["버킷"] == "🏛️ 코어" else "🎯"
+            _tm_ids.append(_t)
+            _tm_labels.append(f"{_tag} {_nm}<br>{_pnl:+.1f}%")
+            _tm_parents.append("")
             _tm_values.append(_val)
             _tm_colors.append(_pnl_hex(_pnl, _pnl_max))
-            _tm_custom.append([_nm, _pnl, _val, _wt])
+            _tm_custom.append([_nm, _pnl, _val, _wt, row["버킷"]])
 
         _fig_tm = go.Figure(go.Treemap(
             ids=_tm_ids, labels=_tm_labels, parents=_tm_parents,
-            values=_tm_values, branchvalues="remainder",
+            values=_tm_values,
             customdata=_tm_custom,
             marker=dict(
                 colors=_tm_colors,
                 line=dict(width=2, color="white"),
-                pad=dict(t=22, l=2, r=2, b=2),
+                pad=dict(t=4, l=4, r=4, b=4),
             ),
             texttemplate="%{label}",
-            textfont=dict(color="white", size=14),
-            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
-            root_color="rgba(0,0,0,0)",
+            textfont=dict(color="white", size=13),
+            hovertemplate="<b>%{customdata[0]}</b><br>카테고리: %{customdata[4]}<br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
         ))
         _fig_tm.update_layout(
             height=480,
