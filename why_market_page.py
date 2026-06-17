@@ -230,32 +230,35 @@ st.subheader("코인 — BTC를 이긴 알트코인은 몇 개?")
 st.markdown("BTC는 코인 시장의 '시장 지수'입니다. 알트코인을 고르는 것은 개별 주식을 고르는 것과 같습니다.")
 
 coin  = df[df["category"] == "Coin"].sort_values("total_ret", ascending=True)
-b_btc = benchmarks["Coin"]
+b_btc = benchmarks.get("Coin")
 
-colors_c = ["#22c55e" if r > b_btc else "#ef4444" for r in coin["total_ret"]]
-fig_c = go.Figure()
-fig_c.add_trace(go.Bar(
-    x=coin["ticker"].str.replace("-USD",""),
-    y=coin["total_ret"],
-    marker_color=colors_c,
-    text=[f"{r:+.0f}%" for r in coin["total_ret"]],
-    textposition="outside",
-    textfont=dict(size=11),
-))
-fig_c.add_hline(
-    y=b_btc, line_dash="dash", line_color="#f59e0b", line_width=2,
-    annotation_text=f"BTC {b_btc:+.1f}%",
-    annotation_position="top right",
-    annotation_font_color="#f59e0b",
-)
-fig_c.update_layout(
-    height=420, margin=dict(t=20, b=10),
-    yaxis_title="총 수익률 (%)",
-    plot_bgcolor="white", paper_bgcolor="white",
-    xaxis=dict(tickangle=-45),
-    showlegend=False,
-)
-st.plotly_chart(fig_c, use_container_width=True)
+if b_btc is None or coin.empty:
+    st.info("BTC 벤치마크 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
+else:
+    colors_c = ["#22c55e" if r > b_btc else "#ef4444" for r in coin["total_ret"]]
+    fig_c = go.Figure()
+    fig_c.add_trace(go.Bar(
+        x=coin["ticker"].str.replace("-USD",""),
+        y=coin["total_ret"],
+        marker_color=colors_c,
+        text=[f"{r:+.0f}%" for r in coin["total_ret"]],
+        textposition="outside",
+        textfont=dict(size=11),
+    ))
+    fig_c.add_hline(
+        y=b_btc, line_dash="dash", line_color="#f59e0b", line_width=2,
+        annotation_text=f"BTC {b_btc:+.1f}%",
+        annotation_position="top right",
+        annotation_font_color="#f59e0b",
+    )
+    fig_c.update_layout(
+        height=420, margin=dict(t=20, b=10),
+        yaxis_title="총 수익률 (%)",
+        plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(tickangle=-45),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_c, use_container_width=True)
 
 median_coin = coin["total_ret"].median()
 worst3 = coin.head(3)[["ticker","total_ret"]].values
