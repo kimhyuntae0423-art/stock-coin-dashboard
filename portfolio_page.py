@@ -1108,42 +1108,73 @@ for _, row in view.iterrows():
             if _ma50_v and _ma200_v and _ma200_v > 0:
                 _spd = (_ma50_v / _ma200_v - 1) * 100
                 if _spd > 0:
-                    _bull_items.append(("📊", f"상승 추세 — 단기평균이 장기평균보다 {_spd:.1f}% 높음"))
+                    _bull_items.append(("📊",
+                        f"최근 50일 평균이 200일 평균보다 {_spd:.1f}% 높습니다. "
+                        f"단기 흐름이 장기 흐름 위에 있어 전반적으로 상승 구간입니다."))
                 else:
-                    _bear_items.append(("📊", f"하락 추세 — 단기평균이 장기평균보다 {abs(_spd):.1f}% 낮음"))
+                    _bear_items.append(("📊",
+                        f"최근 50일 평균이 200일 평균보다 {abs(_spd):.1f}% 낮습니다. "
+                        f"단기 흐름이 장기 흐름 아래로 내려온 상태로, 하락 추세가 지속 중입니다."))
 
             _rsi_v = _latest.get("rsi14")
             if pd.notna(_rsi_v):
                 _rsi_v = float(_rsi_v)
                 if _rsi_v >= 70:
-                    _bear_items.append(("📊", f"RSI {_rsi_v:.0f} — 과열 구간 (70+)"))
+                    _bear_items.append(("📊",
+                        f"RSI가 {_rsi_v:.0f}으로 과열 구간(70+)에 진입했습니다. "
+                        f"단기간에 너무 많이 올랐다는 신호로, 숨 고르기(조정)가 올 수 있습니다."))
                 elif _rsi_v <= 30:
-                    _bull_items.append(("📊", f"RSI {_rsi_v:.0f} — 낙폭 과다, 반등 후보"))
+                    _bull_items.append(("📊",
+                        f"RSI가 {_rsi_v:.0f}으로 낙폭 과다 구간(30 이하)입니다. "
+                        f"단기간에 너무 많이 내렸다는 신호로, 기술적 반등이 나올 수 있습니다."))
+                elif _rsi_v >= 50:
+                    _bull_items.append(("📊",
+                        f"RSI {_rsi_v:.0f} — 과열도 과매도도 아닌 적정 구간입니다. "
+                        f"현재 매수 세력이 매도 세력보다 조금 우세한 상태입니다."))
                 else:
-                    _bull_items.append(("📊", f"RSI {_rsi_v:.0f} — 정상 구간"))
+                    _bear_items.append(("📊",
+                        f"RSI {_rsi_v:.0f} — 중립 구간이지만 50 아래입니다. "
+                        f"매도 세력이 소폭 우세한 상태로, 방향 확인이 필요합니다."))
 
             if "macd_hist" in sig_df.columns:
                 _mh_v = _latest.get("macd_hist")
                 if pd.notna(_mh_v):
                     if float(_mh_v) > 0:
-                        _bull_items.append(("📊", "MACD 양수 — 모멘텀 상승 중"))
+                        _bull_items.append(("📊",
+                            "오르는 속도가 점점 빨라지고 있습니다(MACD 양수). "
+                            "지금 당장 팔기보다 조금 더 추세를 지켜볼 만한 상황입니다."))
                     else:
-                        _bear_items.append(("📊", "MACD 음수 — 모멘텀 감속 중"))
+                        _bear_items.append(("📊",
+                            "오르는 속도가 둔화되거나 내리는 힘이 강해지고 있습니다(MACD 음수). "
+                            "추세가 꺾이기 시작할 수 있어 주의가 필요합니다."))
 
         if _pct_b_now is not None:
             if _pct_b_now > 1.0:
-                _bear_items.append(("📊", f"BB %B {_pct_b_now:+.2f} — 상단 이탈 (알트 백테스트 평균 -11.7%)"))
+                _bear_items.append(("📊",
+                    f"가격이 볼린저밴드 상단을 뚫고 올라간 상태입니다(BB %B {_pct_b_now:+.2f}). "
+                    f"알트코인 백테스트 기준 이 구간 이후 90일 평균 -11.7% — 단기 고점 가능성 있습니다."))
             elif _pct_b_now > 0.8:
-                _bear_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 상단 근접, 단기 비쌈"))
+                _bear_items.append(("📊",
+                    f"가격이 볼린저밴드 상단 근처({_pct_b_now:.0%})에 있습니다. "
+                    f"정상 변동 범위의 꼭대기에 가까워졌다는 의미로, 단기 조정이 올 수 있습니다."))
             elif _pct_b_now < 0:
-                _bull_items.append(("📊", f"BB %B {_pct_b_now:+.2f} — 하단 이탈 (반등 후보 57%)"))
+                _bull_items.append(("📊",
+                    f"가격이 볼린저밴드 하단을 이탈한 상태입니다(BB %B {_pct_b_now:+.2f}). "
+                    f"정상 범위를 아래로 벗어날 만큼 많이 내렸다는 뜻으로, 백테스트 기준 반등 확률 57%입니다."))
             elif _pct_b_now < 0.2:
-                _bull_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 하단 근접, 저렴 구간"))
+                _bull_items.append(("📊",
+                    f"가격이 볼린저밴드 하단 근처({_pct_b_now:.0%})에 있습니다. "
+                    f"정상 변동 범위의 바닥 쪽에 위치한 상태로, 상대적으로 저렴한 구간입니다."))
             else:
-                _bull_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 밴드 중간 (정상)"))
+                _bull_items.append(("📊",
+                    f"가격이 볼린저밴드 중간({_pct_b_now:.0%})에 있습니다. "
+                    f"너무 과열되지도, 과매도되지도 않은 안정적인 위치입니다."))
 
         if _bw_squeeze:
-            _bear_items.append(("📊", "BB 스퀴즈 — 변동성 폭발 전조 (방향 미확정)"))
+            _bear_items.append(("📊",
+                "볼린저밴드 폭이 최근 들어 매우 좁아졌습니다(스퀴즈). "
+                "변동성이 크게 수축된 상태로, 곧 위아래 한 방향으로 큰 움직임이 나올 수 있습니다. "
+                "방향은 예측하기 어려우므로 주시가 필요합니다."))
 
         _rc1, _rc2 = st.columns(2)
         with _rc1:
