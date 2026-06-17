@@ -789,6 +789,21 @@ for _, row in view.iterrows():
             else:
                 buy_line = row["buy_price"]
 
+            # BB 계산 (차트 + 핵심 지표 공통 사용)
+            _bb_mid_line  = sig_df["close"].rolling(20).mean()
+            _bb_std_line  = sig_df["close"].rolling(20).std()
+            _bb_upper_line = _bb_mid_line + 2 * _bb_std_line
+            _bb_lower_line = _bb_mid_line - 2 * _bb_std_line
+            _bb_range_line = (_bb_upper_line - _bb_lower_line).replace(0, float("nan"))
+            _pct_b_series  = (sig_df["close"] - _bb_lower_line) / _bb_range_line
+            _pct_b_now = float(_pct_b_series.iloc[-1]) if pd.notna(_pct_b_series.iloc[-1]) else None
+            _bw_series = (_bb_range_line / _bb_mid_line.replace(0, float("nan"))).dropna()
+            _bw_now = float(_bw_series.iloc[-1]) if len(_bw_series) > 0 else None
+            _bw_squeeze = (
+                _bw_now is not None and len(_bw_series) >= 20
+                and _bw_now <= float(_bw_series.quantile(0.20))
+            )
+
             fig_detail = go.Figure()
             fig_detail.add_trace(go.Scatter(
                 x=sig_df["date"], y=sig_df["close"], name="현재가격",
