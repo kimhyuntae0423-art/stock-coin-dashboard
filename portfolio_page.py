@@ -659,12 +659,12 @@ _SIGNAL_DISPLAY = [
         "card_bg": "#f0fdf4", "card_border": "#22c55e", "card_color": "#15803d",
         "live_bg": "#e8f5e9", "live_bd": "#43a047",
         "items_html": (
-            "📈 개별주: 모멘텀 Q1~Q2<br>"
-            "📦 ETF: 리밸런싱 적기 (Q1)<br>"
-            "🪙 BTC: MVRV &lt; 1.5 저평가<br>"
-            "🪙 BTC: BB 모멘텀 강화(%B&gt;1+RSI70)"
+            "📈 개별주: 최근 1년 수익률 상위 50% 이내 — 추세 유지 중<br>"
+            "📦 ETF: 수익률 상위 25% — 비중 늘릴 시점<br>"
+            "🪙 BTC: 현재가가 역사적 평균 대비 저렴한 구간<br>"
+            "🪙 BTC: 과열 없이 가격이 강하게 상승하는 흐름"
         ),
-        "caption": "모멘텀 Q1 시 🟢",
+        "caption": "모멘텀 상위권일 때 🟢",
     },
     {
         "emoji": "🔵",
