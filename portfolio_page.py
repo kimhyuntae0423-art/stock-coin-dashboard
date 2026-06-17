@@ -701,12 +701,11 @@ _SIGNAL_DISPLAY = [
         "card_bg": "#fff1f2", "card_border": "#ef4444", "card_color": "#b91c1c",
         "live_bg": "#ffebee", "live_bd": "#e53935",
         "items_html": (
-            "📈 개별주: -20% 이상 손실<br>"
-            "&nbsp;&nbsp;(Q4이면 추세도 악화)<br>"
-            "🪙 BTC: MVRV &gt; 2.5 과열<br>"
-            "🪙 알트: BB상단이탈(%B&gt;1+RSI70)<br>"
-            "&nbsp;&nbsp;또는 -40% 손실<br>"
-            "📦 ETF: 해당 없음"
+            "📈 개별주: 매수가 대비 -20% 이상 손실<br>"
+            "&nbsp;&nbsp;수익률 하위 25%이면 추세도 무너진 상태<br>"
+            "🪙 BTC: 역사적 고점 근처 — 과열 구간 진입<br>"
+            "🪙 알트: 단기 과열로 급등 후 꺾임, 또는 -40% 손실<br>"
+            "📦 ETF: 해당 없음 (리밸런싱으로만 관리)"
         ),
         "caption": "-20% 이상 손실 시 🔴 매도 검토",
     },
