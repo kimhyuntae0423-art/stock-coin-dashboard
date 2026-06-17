@@ -296,8 +296,8 @@ st.divider()
 # ── Core-Satellite 자산 배분 추적기 ─────────────────────────────
 st.subheader("🏛️ Core-Satellite 자산 배분 추적")
 st.caption(
-    "**Core (시장 ETF)** + **Satellite (개별주)** + **Cash** 비중을 목표 대비 추적. "
-    "현금 비중은 직접 입력합니다."
+    "**Core (시장 ETF)** + **Satellite (개별주 + 코인)** + **Cash** 비중을 목표 대비 추적. "
+    "코인은 Satellite에 합산됩니다. 현금 비중은 직접 입력합니다."
 )
 
 view_alloc = holdings.copy()
