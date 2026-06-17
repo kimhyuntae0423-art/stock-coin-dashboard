@@ -414,6 +414,127 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 
+# ── 신규자금 리밸런싱 계획 ────────────────────────────────────────
+st.subheader("💰 신규자금으로 리밸런싱")
+st.caption(
+    "현재 보유 포트폴리오 + 신규 투자금을 합산해, 목표 배분에 가장 빠르게 근접하는 "
+    "**매수 전용** 계획입니다. 기존 종목은 그대로 유지합니다."
+)
+
+new_money = st.number_input(
+    "추가 투자할 금액 (원)", min_value=0, value=1_000_000, step=100_000,
+    key="new_money_input", format="%d",
+)
+if new_money > 0:
+    st.caption(f"입력 금액: **{new_money:,.0f}원**")
+
+if new_money > 0 and alloc["Total"] > 0:
+    total_after = alloc["Total"] + new_money
+
+    core_deficit  = max(0.0, total_after * target_core       / 100 - alloc["Core_value"])
+    sat_deficit   = max(0.0, total_after * target_satellite  / 100 - alloc["Satellite_value"])
+    cash_deficit  = max(0.0, total_after * target_cash       / 100 - cash_amount)
+
+    total_deficit = core_deficit + sat_deficit + cash_deficit
+    if total_deficit > 0:
+        scale    = min(1.0, new_money / total_deficit)
+        core_buy = round(core_deficit * scale)
+        sat_buy  = round(sat_deficit  * scale)
+        cash_res = new_money - core_buy - sat_buy
+    else:
+        core_buy = sat_buy = 0
+        cash_res = new_money
+
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("🏛️ Core 매수", f"{core_buy:,.0f}원")
+    mc2.metric("🎯 Satellite 매수", f"{sat_buy:,.0f}원")
+    mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
+
+    new_core_pct = (alloc["Core_value"] + core_buy) / total_after * 100
+    new_sat_pct  = (alloc["Satellite_value"] + sat_buy) / total_after * 100
+    new_cash_pct = (cash_amount + cash_res) / total_after * 100
+    st.caption(
+        f"매수 후 예상 배분: Core **{new_core_pct:.1f}%** / Satellite **{new_sat_pct:.1f}%** / Cash **{new_cash_pct:.1f}%** "
+        f"(목표: {target_core}% / {target_satellite}% / {target_cash}%)"
+    )
+
+    # Core 매수 후보
+    if core_buy > 0:
+        st.markdown("##### 🏛️ Core ETF 매수 후보")
+        _core_show = core_etfs.copy()
+        _price_map_c = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
+        _core_show["현재가"] = _core_show["ticker"].astype(str).str.upper().map(_price_map_c)
+        _core_show = _core_show[_core_show["현재가"].notna()].copy()
+        if not _core_show.empty:
+            _core_show["균등배분"] = round(core_buy / len(_core_show))
+            _core_show["수량(균등)"] = (_core_show["균등배분"] / _core_show["현재가"]).apply(
+                lambda x: int(x) if pd.notna(x) and x > 0 else 0
+            )
+            st.dataframe(
+                _core_show[["ticker", "name", "category", "expense_ratio", "currency", "현재가", "균등배분", "수량(균등)"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
+                    "현재가": st.column_config.NumberColumn(format="%,.0f"),
+                    "균등배분": st.column_config.NumberColumn(format="%,.0f"),
+                },
+            )
+        else:
+            st.info("분석 데이터(summary_signals.csv)에 Core ETF 현재가 없음. GitHub Actions 갱신 후 확인하세요.")
+
+    # Satellite 매수 후보
+    if sat_buy > 0:
+        st.markdown("##### 🎯 Satellite 매수 후보")
+        _STOCK_THRESHOLD = 1.5
+        _sat_stocks = pd.DataFrame()
+        if not scores_df.empty:
+            _sat_pool = scores_df.copy()
+            if not summary.empty:
+                _sat_pool = _sat_pool.merge(summary[["ticker", "close"]], on="ticker", how="left")
+            _mask = _sat_pool["composite"] >= _STOCK_THRESHOLD
+            if "z_quality" in _sat_pool.columns:
+                _mask &= _sat_pool["z_quality"] > 0
+            _sat_stocks = _sat_pool[_mask].head(10).copy()
+
+        if not _sat_stocks.empty:
+            st.caption(f"QVGM ≥ +{_STOCK_THRESHOLD} & 수익성 평균 이상 — 장기 시장 초과수익 기대 종목입니다.")
+            _sat_stocks["종목명"] = _sat_stocks["ticker"].map(NAMES).fillna("-")
+            n_sat = max(len(_sat_stocks), 1)
+            _sat_stocks["균등배분"] = round(sat_buy / n_sat)
+            st.dataframe(
+                _sat_stocks[["ticker", "종목명", "composite", "균등배분"]].rename(
+                    columns={"ticker": "티커", "composite": "QVGM점수", "균등배분": "배분금액(원)"}
+                ),
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "QVGM점수": st.column_config.NumberColumn(format="%+.2f"),
+                    "배분금액(원)": st.column_config.NumberColumn(format="%,.0f"),
+                },
+            )
+        else:
+            st.caption(f"QVGM +{_STOCK_THRESHOLD} 이상 개별주 없음 → 섹터/테마 ETF를 추천합니다.")
+            _sector_etfs = core_etfs[core_etfs["category"].str.contains("섹터|테마", na=False)].copy()
+            if not summary.empty:
+                _pm = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"]))
+                _sector_etfs["현재가"] = _sector_etfs["ticker"].astype(str).str.upper().map(_pm)
+            if not _sector_etfs.empty:
+                n_etf = max(len(_sector_etfs), 1)
+                _sector_etfs["균등배분"] = round(sat_buy / n_etf)
+                st.dataframe(
+                    _sector_etfs[["ticker", "name", "category", "expense_ratio", "currency", "균등배분"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
+                        "균등배분": st.column_config.NumberColumn(format="%,.0f"),
+                    },
+                )
+            else:
+                st.info("섹터/테마 ETF 데이터 없음. core_etfs.csv를 확인하세요.")
+elif new_money > 0:
+    st.info("현재 보유 포트폴리오가 없습니다. 보유종목 페이지에서 먼저 종목을 추가하세요.")
+
+st.divider()
+
 # ── Core-Satellite 자산 배분 추적기 ─────────────────────────────
 st.subheader("🏛️ Core-Satellite 자산 배분 추적")
 st.caption(
