@@ -1010,8 +1010,12 @@ for _, row in view.iterrows():
             rsi = latest.get("rsi14")
             if pd.notna(rsi):
                 if rsi >= 70:
-                    rsi_tag = ("🔥 과열 (RSI 70+ 코인 적중률 45% — 참고만)" if is_coin
-                               else "🔥 과열 — 단기 조정 주의")
+                    if is_btc:
+                        rsi_tag = "🟢 강세 구간 — BTC는 RSI 70+에서 상승 지속 경향"
+                    elif is_alt:
+                        rsi_tag = "🔥 과열 — 알트 RSI 70+ 적중률 45% (참고만)"
+                    else:
+                        rsi_tag = "🔥 과열 — 단기 조정 주의"
                 elif rsi <= 30:
                     rsi_tag = "🟢 낙폭 과다 — 반등 가능"
                 else:
