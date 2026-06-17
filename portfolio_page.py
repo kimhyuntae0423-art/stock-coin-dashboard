@@ -808,25 +808,7 @@ for _, row in view.iterrows():
             unsafe_allow_html=True,
         )
 
-        # ── 리서치 노트 (작성 시점 기준) ──────────────────────────
         _rpt = _reports.get(ticker)
-        if _rpt:
-            _updated = _rpt.get("updated", "")
-            with st.expander(f"📝 리서치 노트 ({_updated} 기준)", expanded=False):
-                st.markdown(_rpt.get("summary", ""))
-                _bc, _brc = st.columns(2)
-                with _bc:
-                    st.markdown("**📈 강세 근거**")
-                    st.success(_rpt.get("bull", "-"))
-                with _brc:
-                    st.markdown("**📉 약세 근거 (틀릴 조건)**")
-                    st.error(_rpt.get("bear", "-"))
-                _src = _rpt.get("sources", [])
-                if _src:
-                    st.markdown("**출처**:  " + "  ·  ".join(
-                        f"[{s['title']}]({s['url']})" for s in _src
-                    ))
-                st.caption("리서치 노트는 작성 시점 기준입니다. 위 신호가 매일 자동 갱신되는 최신 판단입니다.")
         st.divider()
 
         # ── 수익률 메트릭 ──────────────────────────────────────────
