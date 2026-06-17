@@ -860,18 +860,19 @@ for _, row in view.iterrows():
                     fig_detail.add_vrect(x0=_zstart, x1=_dates_zone[-1],
                                          fillcolor=_zcolor, layer="below", line_width=0)
 
-            # ── 2. BB 밴드 (먼저 그려야 가격선이 위에 표시됨) ──────────
-            fig_detail.add_trace(go.Scatter(
-                x=sig_df["date"], y=_bb_upper_line,
-                name="BB 상단(2σ)",
-                line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
-                showlegend=True))
-            fig_detail.add_trace(go.Scatter(
-                x=sig_df["date"], y=_bb_lower_line,
-                name="BB 하단(2σ)",
-                line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
-                fill="tonexty", fillcolor="rgba(120,120,200,0.05)",
-                showlegend=True))
+            # ── 2. BB 밴드 — ETF는 신호 유효성 낮아 숨김 ───────────────
+            if not is_etf:
+                fig_detail.add_trace(go.Scatter(
+                    x=sig_df["date"], y=_bb_upper_line,
+                    name="BB 상단(2σ)",
+                    line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
+                    showlegend=True))
+                fig_detail.add_trace(go.Scatter(
+                    x=sig_df["date"], y=_bb_lower_line,
+                    name="BB 하단(2σ)",
+                    line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
+                    fill="tonexty", fillcolor="rgba(120,120,200,0.05)",
+                    showlegend=True))
 
             # ── 3. MA50 / MA200 (핵심 2선만 유지, 주간 평균 제거) ──────
             for _mc, _mn, _mcol in [
