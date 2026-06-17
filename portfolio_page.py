@@ -1044,8 +1044,8 @@ for _, row in view.iterrows():
                         delta_color="normal" if mh > 0 else "inverse",
                         help="양수(+)면 현재 오르는 속도가 빨라지고 있다는 뜻, 음수(-)면 내리는 속도가 빨라지고 있다는 뜻.",
                     )
-            elif _bw_now is not None:
-                # MACD 없을 때(코인 등) — BB 밴드폭(스퀴즈) 표시
+            elif not is_etf and _bw_now is not None:
+                # MACD 없을 때(코인) — BB 밴드폭(스퀴즈) 표시 / ETF 제외
                 if _bw_squeeze:
                     bw_tag, bw_dc = "🔔 스퀴즈 — 큰 움직임 전조", "off"
                 else:
@@ -1055,14 +1055,13 @@ for _, row in view.iterrows():
                     f"{_bw_now:.1%}",
                     delta=bw_tag,
                     delta_color=bw_dc,
-                    help="볼린저밴드 폭이 좁아지면 '스퀴즈' — 곧 큰 움직임(상승 또는 하락) 가능. 방향은 알 수 없음. "
-                         "백테스트: 스퀴즈 후 90일 ENS +20%, BTC +16%.",
+                    help="볼린저밴드 폭이 좁아지면 '스퀴즈' — 곧 큰 움직임(상승 또는 하락) 가능. 방향은 알 수 없음.",
                 )
 
-            # BB %B — 항상 직접 계산 (bb_pct 컬럼 불필요)
-            if _pct_b_now is not None:
+            # BB %B — ETF 제외
+            if not is_etf and _pct_b_now is not None:
                 if _pct_b_now > 1.0:
-                    bb_tag = "🔴 상단 이탈 — 알트 매도 신호"
+                    bb_tag = "🔴 상단 이탈" + (" — 알트 매도 신호" if is_coin else "")
                     bb_dc = "inverse"
                 elif _pct_b_now > 0.8:
                     bb_tag = "🟠 상단 근접 — 단기 비쌈"
