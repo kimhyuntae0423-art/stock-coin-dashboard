@@ -90,6 +90,148 @@ else:
     score_input = pd.DataFrame()
     scores_df = pd.DataFrame(columns=["ticker", "composite"])
 
+# ── 포트폴리오 전반 인사이트 ─────────────────────────────────────
+_i_cycle  = pd.read_csv(RESULTS / "cycle_metrics.csv").iloc[0].to_dict() \
+            if (RESULTS / "cycle_metrics.csv").exists() else {}
+_i_csumf  = RESULTS / "coin_summary.csv"
+_i_csum   = pd.read_csv(_i_csumf) if _i_csumf.exists() else pd.DataFrame()
+
+try:
+    import urllib.request as _iu, json as _ij
+    with _iu.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=3) as _ir:
+        _i_fx = float(_ij.loads(_ir.read())["rates"]["KRW"])
+except Exception:
+    _i_fx = 1380.0
+
+_i_etf_set = set(load_core_etfs()["ticker"].astype(str))
+_i_cp = {str(r["ticker"]): float(r["close"]) * _i_fx for _, r in _i_csum.iterrows()} \
+        if not _i_csum.empty else {}
+_i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
+        if not summary.empty else {}
+
+_i_val = {"ETF": 0.0, "주식": 0.0, "코인": 0.0}
+for _, _hr in holdings.iterrows():
+    _t, _q = str(_hr["ticker"]), float(_hr["qty"])
+    if "-USD" in _t:
+        _i_val["코인"] += _q * _i_cp.get(_t, 0.0)
+    elif _t in _i_etf_set:
+        _i_val["ETF"] += _q * float(_i_sp.get(_t, 0.0))
+    else:
+        _i_val["주식"] += _q * float(_i_sp.get(_t, 0.0))
+
+_i_total = sum(_i_val.values()) or 1.0
+_i_pct   = {k: v / _i_total * 100 for k, v in _i_val.items()}
+
+_i_mvrv  = float(_i_cycle.get("mvrv_z", 0.0))
+_i_alt   = float(_i_cycle.get("alt_season_score", 0.0))
+
+# 인사이트 카드 데이터 생성
+_i_cards = []
+
+# 1. 코인 비중
+_coin_over = _i_pct["코인"] - 15
+if _coin_over > 20:
+    _i_cards.append((
+        "🔴", "코인 비중 과다", "#fff1f2", "#ef4444",
+        f"현재 {_i_pct['코인']:.0f}% — 목표(10~15%)의 {_i_pct['코인']/15:.1f}배입니다. "
+        "지금 당장 팔기보다 다음 MVRV 상승 구간에서 아래 로드맵에 따라 단계적으로 줄이세요.",
+    ))
+elif _coin_over > 0:
+    _i_cards.append((
+        "🟠", "코인 비중 초과", "#fff7ed", "#f97316",
+        f"현재 {_i_pct['코인']:.0f}% — 목표(15%) 대비 {_coin_over:.0f}%p 초과. "
+        "아래 로드맵의 트리거를 확인하세요.",
+    ))
+else:
+    _i_cards.append((
+        "🟢", "코인 비중 양호", "#f0fdf4", "#22c55e",
+        f"현재 {_i_pct['코인']:.0f}% — 목표 범위(10~15%) 이내입니다.",
+    ))
+
+# 2. ETF 코어 비중
+if _i_pct["ETF"] < 20:
+    _i_cards.append((
+        "🟠", "ETF 코어 비중 낮음", "#fff7ed", "#f97316",
+        f"현재 {_i_pct['ETF']:.0f}% — 전체 자산의 약 10분의 1 수준입니다. "
+        "월급을 코인이나 개별주에 넣지 말고 S&P500 ETF(360200.KS 등) 적립에만 써야 "
+        "코인 비중이 자연스럽게 희석됩니다.",
+    ))
+elif _i_pct["ETF"] < 40:
+    _i_cards.append((
+        "🔵", "ETF 코어 확대 중", "#eff6ff", "#3b82f6",
+        f"현재 {_i_pct['ETF']:.0f}% — 적립 지속으로 코어 비중을 키워가는 단계입니다. "
+        "목표는 전체 자산의 40~50%.",
+    ))
+else:
+    _i_cards.append((
+        "🟢", "ETF 코어 양호", "#f0fdf4", "#22c55e",
+        f"현재 {_i_pct['ETF']:.0f}% — 안정적인 코어 비중이 확보된 상태입니다.",
+    ))
+
+# 3. 코인 사이클 (MVRV)
+if _i_mvrv < 0:
+    _i_cards.append((
+        "💎", "코인 사이클: 극단 바닥", "#faf5ff", "#7e22ce",
+        f"MVRV Z {_i_mvrv:.2f} — 시장 평균 매수가보다 현재가가 낮은 극단 구간입니다. "
+        "코인을 팔기보다 BTC 소량 적립을 고려할 만한 타이밍입니다.",
+    ))
+elif _i_mvrv < 1.5:
+    _i_cards.append((
+        "🟢", "코인 사이클: 저평가 구간", "#f0fdf4", "#22c55e",
+        f"MVRV Z {_i_mvrv:.2f} — 매도 트리거 미도달. 손실 확정을 서두를 필요 없습니다. "
+        "다음 상승 구간에서 아래 로드맵대로 단계적으로 정리하는 게 유리합니다.",
+    ))
+elif _i_mvrv < 2.5:
+    _i_cards.append((
+        "🟠", "코인 사이클: 과열 경계 진입", "#fff7ed", "#f97316",
+        f"MVRV Z {_i_mvrv:.2f} — 매도 트리거 구간입니다. "
+        "아래 로드맵에 따라 Group 1·2부터 단계적 매도를 시작하세요.",
+    ))
+else:
+    _i_cards.append((
+        "🔴", "코인 사이클: 과열", "#fff1f2", "#ef4444",
+        f"MVRV Z {_i_mvrv:.2f} — 역사적 고점 경계 구간입니다. 코인 비중 적극 축소 시점.",
+    ))
+
+# 4. 알트 시즌 지수
+if _i_alt < 25:
+    _i_cards.append((
+        "🟠", "비트코인 시즌 — 알트 불리", "#fff7ed", "#f97316",
+        f"알트 시즌 점수 {_i_alt:.0f}/100 — 지금은 BTC가 상승을 주도하는 장입니다. "
+        "알트를 추가 매수하기보다 BTC·ETF에 집중하는 게 유리한 환경입니다.",
+    ))
+elif _i_alt > 75:
+    _i_cards.append((
+        "💎", "알트코인 시즌 — 알트 강세", "#faf5ff", "#7e22ce",
+        f"알트 시즌 점수 {_i_alt:.0f}/100 — 알트가 BTC보다 강한 장입니다. "
+        "보유 알트의 반등 기회를 활용해 계획된 비중 축소를 실행할 수 있습니다.",
+    ))
+else:
+    _i_cards.append((
+        "🔵", "혼조 시즌", "#eff6ff", "#3b82f6",
+        f"알트 시즌 점수 {_i_alt:.0f}/100 — BTC·알트 혼조세. 종목 선별이 중요한 구간입니다.",
+    ))
+
+# 렌더링
+st.markdown(
+    "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"
+    "padding:16px 20px;margin-bottom:4px'>"
+    "<div style='font-size:14px;font-weight:700;color:#334155;margin-bottom:10px'>"
+    "📊 포트폴리오 전반 인사이트</div>",
+    unsafe_allow_html=True,
+)
+for _emoji, _title, _bg, _bd, _body in _i_cards:
+    st.markdown(
+        f"<div style='background:{_bg};border-left:3px solid {_bd};"
+        f"border-radius:6px;padding:8px 13px;margin-bottom:6px'>"
+        f"<span style='font-weight:700;color:{_bd}'>{_emoji} {_title}</span>"
+        f"<span style='color:#374151;font-size:13px'> — {_body}</span></div>",
+        unsafe_allow_html=True,
+    )
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.divider()
+
 # ── Core-Satellite 자산 배분 추적기 ─────────────────────────────
 st.subheader("🏛️ Core-Satellite 자산 배분 추적")
 st.caption(
