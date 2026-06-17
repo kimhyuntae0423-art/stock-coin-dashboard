@@ -620,6 +620,109 @@ if new_money > 0 and alloc["Total"] > 0:
 elif new_money > 0:
     st.info("현재 보유 포트폴리오가 없습니다. 보유종목 페이지에서 먼저 종목을 추가하세요.")
 
+st.divider()
+
+# ── 적립 & 리밸런싱 시뮬레이션 ──────────────────────────────────
+st.subheader("📈 적립 시뮬레이션")
+st.caption("현재 포트폴리오에서 매월 적립·리밸런싱했을 때 자산 성장 추이. 확정 수익률 모형(세금·보수 미반영).")
+
+_sc1, _sc2, _sc3, _sc4, _sc5 = st.columns(5)
+with _sc1:
+    _sim_monthly = st.number_input("월 적립액 (원)", min_value=0, value=1_000_000,
+                                   step=100_000, key="sim_monthly")
+with _sc2:
+    _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=10, key="sim_years")
+with _sc3:
+    _sim_r_core = st.slider("코어 연수익률 (%)", min_value=0, max_value=15, value=8, key="sim_r_core")
+with _sc4:
+    _sim_r_sat = st.slider("위성 연수익률 (%)", min_value=0, max_value=20, value=10, key="sim_r_sat")
+with _sc5:
+    _sim_freq = st.selectbox("리밸런싱 주기", ["매월", "분기", "반기", "매년"], index=3, key="sim_freq")
+
+_freq_map   = {"매월": 1, "분기": 3, "반기": 6, "매년": 12}
+_sim_freq_m = _freq_map[_sim_freq]
+
+_sv_core       = float(alloc["Core_value"])
+_sv_sat        = float(alloc["Satellite_value"])
+_sv_cash       = float(cash_amount)
+_r_c_m         = _sim_r_core / 100 / 12
+_r_s_m         = _sim_r_sat  / 100 / 12
+_r_x_m         = 0.02 / 12          # 현금 2% 고정
+_months_total  = _sim_years * 12
+_initial_total = _sv_core + _sv_sat + _sv_cash
+
+_xs, _cores, _sats, _cashs = [], [], [], []
+for _m in range(_months_total + 1):
+    _xs.append(_m / 12)
+    _cores.append(_sv_core)
+    _sats.append(_sv_sat)
+    _cashs.append(_sv_cash)
+    if _m == _months_total:
+        break
+    # 성장
+    _sv_core *= (1 + _r_c_m)
+    _sv_sat  *= (1 + _r_s_m)
+    _sv_cash *= (1 + _r_x_m)
+    # 적립
+    _sv_core += _sim_monthly * target_core      / 100
+    _sv_sat  += _sim_monthly * target_satellite / 100
+    _sv_cash += _sim_monthly * target_cash      / 100
+    # 리밸런싱
+    if (_m + 1) % _sim_freq_m == 0:
+        _st = _sv_core + _sv_sat + _sv_cash
+        _sv_core = _st * target_core      / 100
+        _sv_sat  = _st * target_satellite / 100
+        _sv_cash = _st * target_cash      / 100
+
+_final_total    = _sv_core + _sv_sat + _sv_cash
+_invested_total = _initial_total + _sim_monthly * _months_total
+_invested_line  = [_initial_total + _sim_monthly * _m for _m in range(_months_total + 1)]
+
+_fig_sim = go.Figure()
+_fig_sim.add_trace(go.Scatter(
+    x=_xs, y=_cashs, name="현금",
+    stackgroup="one", fillcolor="rgba(34,197,94,0.45)",
+    line=dict(width=0), mode="none",
+))
+_fig_sim.add_trace(go.Scatter(
+    x=_xs, y=_sats, name="위성",
+    stackgroup="one", fillcolor="rgba(249,115,22,0.45)",
+    line=dict(width=0), mode="none",
+))
+_fig_sim.add_trace(go.Scatter(
+    x=_xs, y=_cores, name="코어",
+    stackgroup="one", fillcolor="rgba(59,130,246,0.45)",
+    line=dict(width=0), mode="none",
+))
+_fig_sim.add_trace(go.Scatter(
+    x=_xs, y=_invested_line, name="누적 원금",
+    line=dict(color="#94a3b8", width=2, dash="dash"),
+    mode="lines",
+))
+_fig_sim.update_layout(
+    height=420,
+    margin=dict(t=20, b=20, l=10, r=10),
+    xaxis=dict(title="년", showgrid=True, gridcolor="rgba(0,0,0,0.06)", dtick=1),
+    yaxis=dict(title="자산 (원)", tickformat=",d", showgrid=True,
+               gridcolor="rgba(0,0,0,0.06)"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    hovermode="x unified",
+)
+st.plotly_chart(_fig_sim, use_container_width=True)
+
+_multiple = _final_total / _invested_total if _invested_total > 0 else 0
+_net_gain = _final_total - _invested_total
+_cagr     = (_final_total / max(_initial_total, 1)) ** (1 / _sim_years) - 1 if _sim_years > 0 else 0
+
+_sm1, _sm2, _sm3, _sm4 = st.columns(4)
+_sm1.metric("💰 누적 투자 원금",   f"{_invested_total:,.0f}원")
+_sm2.metric("📈 최종 예상 자산",   f"{_final_total:,.0f}원",
+            delta=f"+{_net_gain:,.0f}원", delta_color="normal")
+_sm3.metric("✖️ 원금 회수 배수",   f"{_multiple:.2f}x")
+_sm4.metric("📊 포트폴리오 CAGR",  f"{_cagr*100:.1f}%",
+            help="초기 자산 기준 연평균 복합 수익률")
 
 st.divider()
 
