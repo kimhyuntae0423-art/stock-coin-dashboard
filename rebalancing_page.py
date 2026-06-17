@@ -469,20 +469,16 @@ if not holdings.empty:
         _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
         def _pnl_to_color(pnl, clim):
-            t = (pnl + clim) / (2 * clim)
-            t = max(0.0, min(1.0, t))
-            r = int(220 * (1 - t) + 22 * t)
-            g = int(38  * (1 - t) + 163 * t)
-            b = int(38  * (1 - t) + 74  * t)
-            return f"rgb({r},{g},{b})"
+            t = max(0.0, min(1.0, (pnl + clim) / (2 * clim)))
+            return f"rgb({int(220*(1-t)+22*t)},{int(38*(1-t)+163*t)},{int(38*(1-t)+74*t)})"
 
         _sb_ids, _sb_labels, _sb_parents, _sb_values, _sb_colors, _sb_custom = [], [], [], [], [], []
+        _core_upper = {x.upper() for x in core_set}
 
         for _c, _cc in _cat_colors.items():
             _sb_ids.append(_c); _sb_labels.append(_c); _sb_parents.append("")
             _sb_values.append(0); _sb_colors.append(_cc); _sb_custom.append([_c, 0, 0])
 
-        _core_upper = {x.upper() for x in core_set}
         for _, _hr in _ph_view.iterrows():
             _t   = str(_hr["ticker"])
             _nm  = str(_hr["종목명"])
@@ -490,7 +486,7 @@ if not holdings.empty:
             _pnl = float(_hr["수익률(%)"])
             _cat = "코인" if "-USD" in _t else ("코어 ETF" if _t in _core_upper else "개별주")
             _sb_ids.append(f"{_cat}/{_t}")
-            _sb_labels.append(f"{_nm}\n{_pnl:+.1f}%")
+            _sb_labels.append("")          # 외부 링 텍스트 제거 — 호버로 확인
             _sb_parents.append(_cat)
             _sb_values.append(_val)
             _sb_colors.append(_pnl_to_color(_pnl, _pnl_max))
@@ -503,14 +499,31 @@ if not holdings.empty:
             marker=dict(colors=_sb_colors, line=dict(width=1.5, color="white")),
             hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{percentRoot:.1%}<extra></extra>",
             textinfo="label",
-            insidetextorientation="radial",
+            insidetextorientation="horizontal",
         ))
         _fig_sb.update_layout(
-            height=500,
+            height=480,
             margin=dict(t=10, b=10, l=10, r=10),
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(_fig_sb, use_container_width=True)
+
+        # 종목 테이블 (카테고리별 정렬, 평가금액 내림차순)
+        _ph_view["카테고리"] = _ph_view["ticker"].apply(
+            lambda t: "코인" if "-USD" in t else ("코어 ETF" if t in _core_upper else "개별주")
+        )
+        _ph_tbl = _ph_view[["카테고리", "종목명", "ticker", "평가금액", "수익률(%)"]].copy()
+        _ph_tbl = _ph_tbl.sort_values(["카테고리", "평가금액"], ascending=[True, False])
+        st.dataframe(
+            _ph_tbl, hide_index=True, use_container_width=True,
+            column_config={
+                "카테고리":  st.column_config.TextColumn("카테고리"),
+                "종목명":    st.column_config.TextColumn("종목명"),
+                "ticker":    st.column_config.TextColumn("티커"),
+                "평가금액":  st.column_config.NumberColumn("평가금액", format="%,.0f"),
+                "수익률(%)": st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
+            },
+        )
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
