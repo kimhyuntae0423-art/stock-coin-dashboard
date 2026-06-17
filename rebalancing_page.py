@@ -414,23 +414,66 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 
-# ── 신규자금 리밸런싱 계획 ────────────────────────────────────────
-st.subheader("💰 신규자금으로 리밸런싱")
+# ── Core-Satellite 배분 추적 & 신규자금 리밸런싱 ─────────────────
+st.subheader("🏛️ Core-Satellite 배분 추적 & 신규자금 리밸런싱")
 st.caption(
-    "현재 보유 포트폴리오 + 신규 투자금을 합산해, 목표 배분에 가장 빠르게 근접하는 "
-    "**매수 전용** 계획입니다. 기존 종목은 그대로 유지합니다."
+    "**Core (시장 ETF)** + **Satellite (개별주 + 코인)** + **Cash** 비중을 목표 대비 추적하고, "
+    "신규 투자금 배분 계획을 함께 확인합니다. 코인은 Satellite에 합산됩니다."
 )
 
-new_money = st.number_input(
-    "추가 투자할 금액 (원)", min_value=0, value=1_000_000, step=100_000,
-    key="new_money_input", format="%d",
-)
-if new_money > 0:
-    st.caption(f"입력 금액: **{new_money:,.0f}원**")
+ic1, ic2, ic3, ic4, ic5 = st.columns(5)
+with ic1:
+    target_core = st.number_input("🏛️ Core 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
+with ic2:
+    target_satellite = st.number_input("🎯 Satellite 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
+with ic3:
+    target_cash = st.number_input("💵 Cash 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
+with ic4:
+    cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
+                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
+with ic5:
+    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=1_000_000,
+                                step=100_000, key="new_money_input", format="%d")
 
+if target_core + target_satellite + target_cash != 100:
+    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
+
+# 현재 배분 상태
+st.markdown("**현재 배분 상태**")
+aa1, aa2, aa3, aa4 = st.columns(4)
+aa1.metric("🏛️ Core 비중", f"{alloc['Core_pct']:.1f}%",
+           delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
+aa2.metric("🎯 Satellite 비중", f"{alloc['Satellite_pct']:.1f}%",
+           delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
+aa3.metric("💵 Cash 비중", f"{alloc['Cash_pct']:.1f}%",
+           delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
+aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원",
+           delta=f"Core {alloc['Core_value']:,.0f} · Sat {alloc['Satellite_value']:,.0f}", delta_color="off")
+
+actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
+if actions_alloc:
+    st.markdown("##### ⚖️ 리밸런싱 권장 액션 (±5%p 초과)")
+    action_df = pd.DataFrame(actions_alloc)
+    action_df.columns = ["버킷", "현재%", "목표%", "편차pp", "액션", "금액"]
+    st.dataframe(
+        action_df, hide_index=True, use_container_width=True,
+        column_config={
+            "현재%": st.column_config.NumberColumn(format="%.1f"),
+            "목표%": st.column_config.NumberColumn(format="%.1f"),
+            "편차pp": st.column_config.NumberColumn(format="%+.1f"),
+            "금액": st.column_config.NumberColumn(format="%,.0f"),
+        },
+    )
+    st.caption("💡 단순 리밸런싱만으로 연 0.5~1% 추가 수익 (Vanguard 30년 연구).")
+else:
+    st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
+
+# 신규자금 배분 계획
 if new_money > 0 and alloc["Total"] > 0:
-    total_after = alloc["Total"] + new_money
+    st.markdown("**신규자금 배분 계획**")
+    st.caption("현재 포트폴리오 + 신규 투자금을 합산해 목표 배분에 근접하는 **매수 전용** 계획입니다.")
 
+    total_after = alloc["Total"] + new_money
     core_deficit  = max(0.0, total_after * target_core       / 100 - alloc["Core_value"])
     sat_deficit   = max(0.0, total_after * target_satellite  / 100 - alloc["Satellite_value"])
     cash_deficit  = max(0.0, total_after * target_cash       / 100 - cash_amount)
@@ -458,7 +501,6 @@ if new_money > 0 and alloc["Total"] > 0:
         f"(목표: {target_core}% / {target_satellite}% / {target_cash}%)"
     )
 
-    # Core 매수 후보
     if core_buy > 0:
         st.markdown("##### 🏛️ Core ETF 매수 후보")
         _core_show = core_etfs.copy()
@@ -482,7 +524,6 @@ if new_money > 0 and alloc["Total"] > 0:
         else:
             st.info("분석 데이터(summary_signals.csv)에 Core ETF 현재가 없음. GitHub Actions 갱신 후 확인하세요.")
 
-    # Satellite 매수 후보
     if sat_buy > 0:
         st.markdown("##### 🎯 Satellite 매수 후보")
         _STOCK_THRESHOLD = 1.5
@@ -532,57 +573,6 @@ if new_money > 0 and alloc["Total"] > 0:
                 st.info("섹터/테마 ETF 데이터 없음. core_etfs.csv를 확인하세요.")
 elif new_money > 0:
     st.info("현재 보유 포트폴리오가 없습니다. 보유종목 페이지에서 먼저 종목을 추가하세요.")
-
-st.divider()
-
-# ── Core-Satellite 자산 배분 추적기 ─────────────────────────────
-st.subheader("🏛️ Core-Satellite 자산 배분 추적")
-st.caption(
-    "**Core (시장 ETF)** + **Satellite (개별주 + 코인)** + **Cash** 비중을 목표 대비 추적. "
-    "코인은 Satellite에 합산됩니다. 현금 비중은 직접 입력합니다."
-)
-
-ca1, ca2, ca3, ca4 = st.columns(4)
-with ca1:
-    target_core = st.number_input("🏛️ Core 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
-with ca2:
-    target_satellite = st.number_input("🎯 Satellite 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
-with ca3:
-    target_cash = st.number_input("💵 Cash 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
-with ca4:
-    cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
-                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
-
-if target_core + target_satellite + target_cash != 100:
-    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
-
-aa1, aa2, aa3, aa4 = st.columns(4)
-aa1.metric("🏛️ Core 비중", f"{alloc['Core_pct']:.1f}%",
-           delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-aa2.metric("🎯 Satellite 비중", f"{alloc['Satellite_pct']:.1f}%",
-           delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-aa3.metric("💵 Cash 비중", f"{alloc['Cash_pct']:.1f}%",
-           delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}",
-           delta=f"Core {alloc['Core_value']:,.0f} · Sat {alloc['Satellite_value']:,.0f}", delta_color="off")
-
-actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
-if actions_alloc:
-    st.markdown("##### ⚖️ 리밸런싱 권장 액션 (±5%p 초과)")
-    action_df = pd.DataFrame(actions_alloc)
-    action_df.columns = ["버킷", "현재%", "목표%", "편차pp", "액션", "금액"]
-    st.dataframe(
-        action_df, hide_index=True, use_container_width=True,
-        column_config={
-            "현재%": st.column_config.NumberColumn(format="%.1f"),
-            "목표%": st.column_config.NumberColumn(format="%.1f"),
-            "편차pp": st.column_config.NumberColumn(format="%+.1f"),
-            "금액": st.column_config.NumberColumn(format="%,.0f"),
-        },
-    )
-    st.caption("💡 단순 리밸런싱만으로 연 0.5~1% 추가 수익 (Vanguard 30년 연구).")
-else:
-    st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
 
 with st.expander("🏛️ Core ETF 후보 목록 보기"):
     st.dataframe(
