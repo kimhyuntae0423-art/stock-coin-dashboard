@@ -109,6 +109,26 @@ _i_cp = {str(r["ticker"]): float(r["close"]) * _i_fx for _, r in _i_csum.iterrow
 _i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
         if not summary.empty else {}
 
+# alloc 사전 계산 — Core-Satellite 슬라이더 세션 상태로 읽기 (첫 렌더 시 기본값 사용)
+target_core      = int(st.session_state.get("tgt_core_", 70))
+target_satellite = int(st.session_state.get("tgt_sat_",  20))
+target_cash      = int(st.session_state.get("tgt_cash_", 10))
+cash_amount      = float(st.session_state.get("cash_amt_", 0))
+
+view_alloc = holdings.copy()
+if not summary.empty:
+    view_alloc = view_alloc.merge(summary[["ticker", "close"]], on="ticker", how="left")
+else:
+    view_alloc["close"] = None
+
+core_etfs = load_core_etfs()
+core_set  = set(core_etfs["ticker"].astype(str))
+price_map_alloc = dict(zip(view_alloc["ticker"].str.upper(), view_alloc["close"]))
+for _ct, _cp_val in _i_cp.items():
+    price_map_alloc[str(_ct).upper()] = _cp_val
+classified = classify_holdings(view_alloc, core_etf_tickers=core_set)
+alloc = allocation_summary(classified, price_map_alloc, cash_amount=cash_amount)
+
 _i_val = {"ETF": 0.0, "주식": 0.0, "코인": 0.0}
 for _, _hr in holdings.iterrows():
     _t, _q = str(_hr["ticker"]), float(_hr["qty"])
