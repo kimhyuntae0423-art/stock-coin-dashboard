@@ -795,16 +795,12 @@ for _, row in view.iterrows():
 
         # ── 현재 신호 (매일 자동 갱신) ────────────────────────────
         _sig_text = str(row.get("신호", ""))
-        if any(x in _sig_text for x in ["🟢", "💎"]):
-            _live_otype = "positive"
-        elif "🔴" in _sig_text:
-            _live_otype = "negative"
-        elif "🔵" in _sig_text:
-            _live_otype = "info"
-        else:
-            _live_otype = "caution"
-        _live_bg = {"positive": "#e8f5e9", "caution": "#fff3e0", "negative": "#ffebee", "info": "#eff6ff"}[_live_otype]
-        _live_bd = {"positive": "#43a047", "caution": "#fb8c00", "negative": "#e53935", "info": "#3b82f6"}[_live_otype]
+        # _SIGNAL_LIVE에서 배경색 자동 조회 — 신호 추가 시 _SIGNAL_DISPLAY만 수정하면 됨
+        _live_bg, _live_bd = "#fff3e0", "#fb8c00"  # default: 주의(주황)
+        for _emoji, (_bg, _bd) in _SIGNAL_LIVE.items():
+            if _emoji in _sig_text:
+                _live_bg, _live_bd = _bg, _bd
+                break
         st.markdown(
             f"<div style='background:{_live_bg};border-left:4px solid {_live_bd};"
             f"padding:12px 16px;border-radius:4px;margin-bottom:8px'>"
