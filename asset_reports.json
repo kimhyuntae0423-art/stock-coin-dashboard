@@ -65,16 +65,16 @@
     ]
   },
   "ETC-USD": {
-    "opinion": "매도 검토 / 논거 약화",
+    "opinion": "보유 논거 취약 / 혼조",
     "opinion_type": "negative",
-    "summary": "원화 기준 약 -60% 손실 중. RSI 42.27, 90일 -13.1%. 전체 사이클은 MVRV Z 0.42로 축적 구간이나, ETC 자체 TVL·개발자 활동 모두 저조. 원금 회복 위해 약 +150% 상승 필요하나 명확한 촉매 부재.",
-    "bull": "MVRV Z 0.42 BTC 사이클 저점 구간. 2026 Olympia 하드포크 토큰 소각 도입 예정. 단기 투기 수요 가능.",
-    "bear": "-60% 손실. ETC 생태계 차별성 부족. TVL·개발자 활동 바닥. 원금 회복 위해 +150% 상승 필요.",
+    "summary": "현재 $7.39. 2026 컨센서스 $7~22(Coinbase 보수 목표 $8.66) — 원금($18) 회복 범위 밖. RSI 42, 90일 -13%. Olympia 포크(EIP-1559 소각)가 유일한 카탈리스트이나 TVL·개발자 활동 저조. 원금 회복엔 +150% 필요.",
+    "bull": "Olympia 포크 EIP-1559 소각 예정. BTC 사이클 회복 시 동반 가능. 극단 바닥 반등 여지.",
+    "bear": "컨센서스 목표 $7~22로 원금($18) 회복 어려움. TVL·개발자 저조. ETH 대비 차별성 약화 지속.",
     "updated": "2026-06-17",
     "sources": [
-      {"title": "CryptoRank: ETC Price Prediction 2026-2030 — Realistic Targets", "url": "https://cryptorank.io/news/feed/93527-ethereum-classic-price-prediction-2026-2030"},
-      {"title": "BeInCrypto: Ethereum Classic Price Prediction 2026", "url": "https://beincrypto.com/price/ethereum-classic/price-prediction/"},
-      {"title": "CoinPedia: Ethereum Classic ETC Price Prediction 2026", "url": "https://coinpedia.org/price-prediction/etc-ethereum-classic-price-prediction/"}
+      {"title": "CoinPedia: Ethereum Classic ETC Price Prediction 2026", "url": "https://coinpedia.org/price-prediction/etc-ethereum-classic-price-prediction/"},
+      {"title": "CryptoRank: ETC Price Prediction 2026 Forecast", "url": "https://cryptorank.io/news/feed/b5e4f-ethereum-classic-etc-price-prediction-forecast"},
+      {"title": "Coinbase: Ethereum Classic Price Prediction 2026", "url": "https://www.coinbase.com/price-prediction/ethereum-classic"}
     ]
   },
   "ENS-USD": {
