@@ -36,12 +36,6 @@ jobs:
       - name: 분석 실행
         run: python run_analysis.py
 
-      - name: 리서치 노트 자동 갱신
-        continue-on-error: true
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python scripts/update_reports.py
-
       - name: 변경사항 커밋 & 푸시
         run: |
           git config user.name "github-actions[bot]"
