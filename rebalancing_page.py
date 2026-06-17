@@ -630,6 +630,7 @@ _sc1, _sc2, _sc3, _sc4 = st.columns(4)
 with _sc1:
     _sim_monthly = st.number_input("월 적립액 (원)", min_value=0, value=1_000_000,
                                    step=100_000, key="sim_monthly")
+    st.caption(f"{int(_sim_monthly):,}원")
 with _sc2:
     _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=15, key="sim_years")
 with _sc3:
@@ -637,23 +638,32 @@ with _sc3:
 with _sc4:
     _sim_r_sat = st.slider("위성 연수익률 (%)", min_value=-10, max_value=20, value=5, key="sim_r_sat")
 
-_sc5, _sc6 = st.columns(2)
+_sc5, _sc6, _sc7 = st.columns(3)
 with _sc5:
     _contrib_core_pct = st.slider(
-        "신규 자금 → 코어 비중 (%)",
-        min_value=0, max_value=100, value=100, step=5, key="sim_contrib_core",
-        help="100%이면 월 적립액 전액을 코어(S&P ETF)에만 넣습니다. 위성을 강제 매도하지 않고 신규 자금으로만 비중을 조정합니다.",
+        "신규 자금 → 코어 (%)", 0, 100, 100, 5, key="sim_contrib_core",
+        help="월 적립액 중 코어(S&P ETF)에 넣는 비중",
     )
 with _sc6:
+    _contrib_cash_pct = st.slider(
+        "신규 자금 → 현금 (%)", 0, 100, 0, 5, key="sim_contrib_cash",
+        help="월 적립액 중 현금(MMF·CMA)으로 유보하는 비중",
+    )
+with _sc7:
     _sim_freq = st.selectbox(
         "강제 리밸런싱 주기",
-        ["없음 (매도 안 함)", "반기", "매년"], index=0, key="sim_freq",
-        help="'없음' 선택 시 신규 자금 배분만으로 비중을 조정합니다. 위성 손실 구간에서는 '없음'을 권장합니다.",
+        ["없음 (매도 안 함)", "매월", "분기", "반기", "매년"], index=0, key="sim_freq",
+        help="'없음' 선택 시 신규 자금 배분만으로 비중을 조정합니다.",
     )
 
-_freq_map        = {"없음 (매도 안 함)": 0, "반기": 6, "매년": 12}
-_sim_freq_m      = _freq_map[_sim_freq]
-_contrib_sat_pct = 100 - _contrib_core_pct
+_contrib_sat_pct = max(0, 100 - _contrib_core_pct - _contrib_cash_pct)
+if _contrib_core_pct + _contrib_cash_pct > 100:
+    st.warning("코어 + 현금 합계가 100%를 초과합니다. 위성은 0%로 처리됩니다.")
+else:
+    st.caption(f"위성 자동 배분: {_contrib_sat_pct}%  (코어 {_contrib_core_pct}% + 현금 {_contrib_cash_pct}% + 위성 {_contrib_sat_pct}% = 100%)")
+
+_freq_map   = {"없음 (매도 안 함)": 0, "매월": 1, "분기": 3, "반기": 6, "매년": 12}
+_sim_freq_m = _freq_map[_sim_freq]
 
 _sv_core       = float(alloc["Core_value"])
 _sv_sat        = float(alloc["Satellite_value"])
@@ -682,6 +692,7 @@ for _m in range(_months_total + 1):
     _sv_cash *= (1 + _r_x_m)
     _sv_core += _sim_monthly * _contrib_core_pct / 100
     _sv_sat  += _sim_monthly * _contrib_sat_pct  / 100
+    _sv_cash += _sim_monthly * _contrib_cash_pct / 100
     if _sim_freq_m > 0 and (_m + 1) % _sim_freq_m == 0:
         _st = _sv_core + _sv_sat + _sv_cash
         _sv_core = _st * target_core      / 100
