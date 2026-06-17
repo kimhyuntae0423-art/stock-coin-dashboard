@@ -542,36 +542,19 @@ st.caption(
     "코인은 Satellite에 합산됩니다. 현금 비중은 직접 입력합니다."
 )
 
-view_alloc = holdings.copy()
-if not summary.empty:
-    view_alloc = view_alloc.merge(
-        summary[["ticker", "close"]], on="ticker", how="left"
-    )
-else:
-    view_alloc["close"] = None
-
 ca1, ca2, ca3, ca4 = st.columns(4)
 with ca1:
-    target_core = st.number_input("🏛️ Core 목표 (%)", min_value=0, max_value=100, value=70, step=5)
+    target_core = st.number_input("🏛️ Core 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
 with ca2:
-    target_satellite = st.number_input("🎯 Satellite 목표 (%)", min_value=0, max_value=100, value=20, step=5)
+    target_satellite = st.number_input("🎯 Satellite 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
 with ca3:
-    target_cash = st.number_input("💵 Cash 목표 (%)", min_value=0, max_value=100, value=10, step=5)
+    target_cash = st.number_input("💵 Cash 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
 with ca4:
     cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
-                                  help="MMF, CMA 등 즉시 사용 가능한 현금.")
+                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
 
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
-
-core_etfs = load_core_etfs()
-core_set = set(core_etfs["ticker"].astype(str))
-price_map_alloc = dict(zip(view_alloc["ticker"].str.upper(), view_alloc["close"]))
-# 코인은 summary_signals에 없어 close=NaN → _i_cp(coin_summary KRW 환산)로 보완
-for _ct, _cp_val in _i_cp.items():
-    price_map_alloc[str(_ct).upper()] = _cp_val
-classified = classify_holdings(view_alloc, core_etf_tickers=core_set)
-alloc = allocation_summary(classified, price_map_alloc, cash_amount=cash_amount)
 
 aa1, aa2, aa3, aa4 = st.columns(4)
 aa1.metric("🏛️ Core 비중", f"{alloc['Core_pct']:.1f}%",
