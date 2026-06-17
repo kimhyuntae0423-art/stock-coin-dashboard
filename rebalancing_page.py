@@ -477,14 +477,13 @@ if not holdings.empty:
         _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
         def _pnl_hex(pnl, clim):
-            # 순수 빨강 ↔ 밝은 회색 ↔ 순수 초록 (파랑 계열 섞지 않음)
+            # 감마 보정(0.55): 작은 손익도 색이 빠르게 채워짐 — Finviz 스타일
+            t = min(1.0, abs(pnl) / clim) ** 0.55
             if pnl >= 0:
-                t = min(1.0, pnl / clim)
                 r = int(156*(1-t) + 22*t)
                 g = int(163*(1-t) + 163*t)
                 b = int(175*(1-t) + 74*t)
             else:
-                t = min(1.0, -pnl / clim)
                 r = int(156*(1-t) + 220*t)
                 g = int(163*(1-t) + 38*t)
                 b = int(175*(1-t) + 38*t)
@@ -529,6 +528,7 @@ if not holdings.empty:
         _fig_tm.update_layout(
             height=480,
             margin=dict(t=10, b=10, l=10, r=10),
+            uniformtext=dict(minsize=9, mode="hide"),
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.caption("🔴 손실 &nbsp;&nbsp; ⬛ 중립 &nbsp;&nbsp; 🟢 수익 &nbsp;|&nbsp; 크기 = 평가금액 비중")
