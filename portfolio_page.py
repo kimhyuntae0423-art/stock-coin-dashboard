@@ -870,50 +870,143 @@ for _, row in view.iterrows():
             )
 
             fig_detail = go.Figure()
-            fig_detail.add_trace(go.Scatter(
-                x=sig_df["date"], y=sig_df["close"], name="현재가격",
-                line=dict(color="#4C9BE8", width=1.5)))
 
-            ma_styles = [
-                ("ma20",  "20일 평균선 (단기)",  "#FFA500"),
-                ("ma50",  "50일 평균선 (중기)",  "#2CA02C"),
-                ("ma200", "200일 평균선 (장기)", "#D62728"),
-                ("sma20w","20주 평균선",         "#9467BD"),
-                ("ema21w","21주 가중평균선",      "#8C564B"),
-            ]
-            for ma_col, ma_name, ma_color in ma_styles:
-                if ma_col in sig_df.columns:
-                    fig_detail.add_trace(go.Scatter(
-                        x=sig_df["date"], y=sig_df[ma_col], name=ma_name,
-                        line=dict(color=ma_color, width=1), opacity=0.75))
+            # ── 1. 배경 구역: MA50>MA200=초록(상승), MA50<MA200=연빨강(하락) ──
+            if "ma50" in sig_df.columns and "ma200" in sig_df.columns:
+                _ma_ok = sig_df["ma50"].notna() & sig_df["ma200"].notna()
+                _df_ma = sig_df[_ma_ok].reset_index(drop=True)
+                if not _df_ma.empty:
+                    _is_bull_zone = (_df_ma["ma50"] > _df_ma["ma200"]).tolist()
+                    _dates_zone   = _df_ma["date"].tolist()
+                    _prev, _zstart = _is_bull_zone[0], _dates_zone[0]
+                    for _zi in range(1, len(_is_bull_zone)):
+                        if _is_bull_zone[_zi] != _prev:
+                            _zcolor = "rgba(34,197,94,0.08)" if _prev else "rgba(239,68,68,0.06)"
+                            fig_detail.add_vrect(x0=_zstart, x1=_dates_zone[_zi],
+                                                 fillcolor=_zcolor, layer="below", line_width=0)
+                            _prev, _zstart = _is_bull_zone[_zi], _dates_zone[_zi]
+                    _zcolor = "rgba(34,197,94,0.08)" if _prev else "rgba(239,68,68,0.06)"
+                    fig_detail.add_vrect(x0=_zstart, x1=_dates_zone[-1],
+                                         fillcolor=_zcolor, layer="below", line_width=0)
 
-            # BB 밴드 오버레이 — 상단 먼저, 하단에 fill="tonexty"
+            # ── 2. BB 밴드 (먼저 그려야 가격선이 위에 표시됨) ──────────
             fig_detail.add_trace(go.Scatter(
                 x=sig_df["date"], y=_bb_upper_line,
                 name="BB 상단(2σ)",
-                line=dict(color="rgba(120,120,200,0.55)", width=1, dash="dot"),
+                line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
                 showlegend=True))
             fig_detail.add_trace(go.Scatter(
                 x=sig_df["date"], y=_bb_lower_line,
                 name="BB 하단(2σ)",
-                line=dict(color="rgba(120,120,200,0.55)", width=1, dash="dot"),
+                line=dict(color="rgba(120,120,200,0.5)", width=1, dash="dot"),
                 fill="tonexty", fillcolor="rgba(120,120,200,0.05)",
                 showlegend=True))
 
+            # ── 3. MA50 / MA200 (핵심 2선만 유지, 주간 평균 제거) ──────
+            for _mc, _mn, _mcol in [
+                ("ma50",  "50일선 (중기추세)",  "#2CA02C"),
+                ("ma200", "200일선 (장기추세)", "#D62728"),
+            ]:
+                if _mc in sig_df.columns:
+                    fig_detail.add_trace(go.Scatter(
+                        x=sig_df["date"], y=sig_df[_mc], name=_mn,
+                        line=dict(color=_mcol, width=1.2), opacity=0.8))
+
+            # ── 4. 가격선 (맨 위에) ──────────────────────────────────
+            fig_detail.add_trace(go.Scatter(
+                x=sig_df["date"], y=sig_df["close"], name="현재가격",
+                line=dict(color="#4C9BE8", width=2)))
+
+            # ── 5. 이벤트 마커 ────────────────────────────────────────
+            # 골든크로스 / 데드크로스
+            if "ma50" in sig_df.columns and "ma200" in sig_df.columns:
+                _cross_diff = (sig_df["ma50"] - sig_df["ma200"]).fillna(0)
+                _cross_ev   = (_cross_diff > 0).astype(int).diff().fillna(0)
+                _golden_df  = sig_df[_cross_ev > 0]
+                _dead_df    = sig_df[_cross_ev < 0]
+                if not _golden_df.empty:
+                    fig_detail.add_trace(go.Scatter(
+                        x=_golden_df["date"], y=_golden_df["close"],
+                        mode="markers+text", name="상승 전환 (골든크로스)",
+                        marker=dict(symbol="triangle-up", size=14, color="#16a34a",
+                                    line=dict(color="white", width=1.5)),
+                        text=["📈 상승전환"] * len(_golden_df),
+                        textposition="top center",
+                        textfont=dict(size=9, color="#16a34a")))
+                if not _dead_df.empty:
+                    fig_detail.add_trace(go.Scatter(
+                        x=_dead_df["date"], y=_dead_df["close"],
+                        mode="markers+text", name="하락 전환 (데드크로스)",
+                        marker=dict(symbol="triangle-down", size=14, color="#dc2626",
+                                    line=dict(color="white", width=1.5)),
+                        text=["📉 하락전환"] * len(_dead_df),
+                        textposition="bottom center",
+                        textfont=dict(size=9, color="#dc2626")))
+
+            # BB 이탈 — 에피소드 첫날만 마킹
+            _ep_below = (_pct_b_series < 0) & ~(_pct_b_series < 0).shift(1).fillna(False)
+            _ep_above = (_pct_b_series > 1.0) & ~(_pct_b_series > 1.0).shift(1).fillna(False)
+            _bb_below_ev = sig_df[_ep_below]
+            _bb_above_ev = sig_df[_ep_above]
+            if not _bb_below_ev.empty:
+                fig_detail.add_trace(go.Scatter(
+                    x=_bb_below_ev["date"],
+                    y=_bb_lower_line[_bb_below_ev.index],
+                    mode="markers+text", name="BB 하단 이탈 — 반등 후보",
+                    marker=dict(symbol="circle", size=10, color="#3b82f6",
+                                line=dict(color="white", width=1.5)),
+                    text=["🔵"] * len(_bb_below_ev),
+                    textposition="bottom center",
+                    textfont=dict(size=11)))
+            if not _bb_above_ev.empty:
+                fig_detail.add_trace(go.Scatter(
+                    x=_bb_above_ev["date"],
+                    y=_bb_upper_line[_bb_above_ev.index],
+                    mode="markers+text", name="BB 상단 이탈 — 과열",
+                    marker=dict(symbol="circle", size=10, color="#ef4444",
+                                line=dict(color="white", width=1.5)),
+                    text=["🔴"] * len(_bb_above_ev),
+                    textposition="top center",
+                    textfont=dict(size=11)))
+
+            # ── 6. 내 매수가 + 현재 BB 위치 annotation ───────────────
             fig_detail.add_hline(
                 y=buy_line, line_dash="dash", line_color="#E377C2",
                 annotation_text=f"내 매수가 {buy_line:,.0f}",
                 annotation_position="bottom right")
+
+            if _pct_b_now is not None:
+                _pb_label = (
+                    "⬇ BB 하단 이탈" if _pct_b_now < 0 else
+                    "⬆ BB 상단 이탈" if _pct_b_now > 1.0 else
+                    f"BB {_pct_b_now:.0%} 위치"
+                )
+                _last = sig_df.iloc[-1]
+                fig_detail.add_annotation(
+                    x=_last["date"], y=_last["close"],
+                    text=f"<b>현재</b><br>{_pb_label}",
+                    showarrow=True, arrowhead=2, arrowcolor="#4C9BE8",
+                    bgcolor="white", bordercolor="#4C9BE8", borderpad=4,
+                    font=dict(size=10, color="#1e40af"),
+                    xanchor="left", yanchor="middle", ax=25, ay=0)
+
             fig_detail.update_layout(
-                height=300, margin=dict(t=10, b=30, l=10, r=10),
-                legend=dict(orientation="h", y=-0.25),
+                height=340, margin=dict(t=10, b=30, l=10, r=10),
+                legend=dict(orientation="h", y=-0.3, font=dict(size=11)),
                 xaxis_rangeslider_visible=False,
-                yaxis_tickformat=",")
+                yaxis_tickformat=",",
+                plot_bgcolor="white",
+                xaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
+                yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)"),
+            )
             st.plotly_chart(fig_detail, use_container_width=True)
             st.caption(
-                "📌 **차트 보는 법**: 파란선=실제 가격 / 주황·초록·빨간선=기간별 평균 가격(평균선이 우상향이면 상승 추세) / "
-                "보라 점선=내가 산 가격 / **초록선(50일)이 빨간선(200일) 위**면 상승 추세, 아래면 하락 추세 / "
-                "**파란 점선 띠=볼린저밴드(BB)** — 가격이 하단 이탈 시 반등 후보, 상단 이탈 시 알트는 매도 경고"
+                "📌 **차트 보는 법**: "
+                "🟦 파란선=내 주식 현재 가격 / "
+                "🟢 초록선=50일 평균(중기) · 🔴 빨간선=200일 평균(장기) — **초록이 빨간 위**면 상승추세, 아래면 하락추세 / "
+                "🔵 점선 띠=볼린저밴드(BB) — 가격 변동 정상 범위 / "
+                "🟩 초록 배경=상승 추세 구간 · 🟥 분홍 배경=하락 추세 구간 / "
+                "📈▲=상승 전환 시점 · 📉▼=하락 전환 시점 · 🔵●=BB 하단 이탈(반등 후보) · 🔴●=BB 상단 이탈(과열)"
             )
 
             # ── 핵심 지표 (쉬운 설명) ──────────────────────────────
