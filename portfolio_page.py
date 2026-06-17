@@ -1259,11 +1259,13 @@ for _, row in view.iterrows():
             elif _syn_rsi <= 30:
                 _syn_parts.append(f"RSI {_syn_rsi:.0f}으로 낙폭 과다 — 기술적 반등 가능성이 있습니다.")
 
-        # 3. BB 위치 문장
-        if _pct_b_now is not None:
+        # 3. BB 위치 문장 — ETF 제외
+        if not is_etf and _pct_b_now is not None:
             if _pct_b_now > 1.0:
                 _syn_parts.append(
-                    "현재 가격이 볼린저밴드 상단을 이탈했습니다. 알트코인 백테스트에서 이 구간 이후 평균적으로 하락했던 전례가 있어 주의가 필요합니다.")
+                    "현재 가격이 볼린저밴드 상단을 이탈했습니다. "
+                    + ("알트코인 백테스트에서 이 구간 이후 평균적으로 하락했던 전례가 있어 주의가 필요합니다."
+                       if is_coin else "단기 과열 구간에 진입했습니다."))
             elif _pct_b_now < 0:
                 _syn_parts.append(
                     "가격이 볼린저밴드 하단 아래로 내려온 상태입니다. 과매도 반등 후보 구간이지만 추세가 하락이라면 추가 하락도 배제할 수 없습니다.")
@@ -1271,7 +1273,7 @@ for _, row in view.iterrows():
                 _syn_parts.append(
                     f"가격이 밴드 상단 근처({_pct_b_now:.0%})에 위치해 단기적으로 비싼 편입니다.")
 
-        if _bw_squeeze:
+        if not is_etf and _bw_squeeze:
             _syn_parts.append(
                 "밴드폭이 크게 좁아진 스퀴즈 상태로, 곧 큰 방향성 움직임이 나올 수 있습니다.")
 
