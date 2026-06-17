@@ -332,8 +332,9 @@ def check() -> list[dict]:
         if s.empty:
             continue
         s = s.iloc[0]
+        bb = _coin_bb(ticker) if (is_coin and not (ticker == "BTC-USD")) else None
         severity, reasons = severity_for_holding(
-            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin
+            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, bb=bb
         )
         if severity > 0:
             alerts.append({
