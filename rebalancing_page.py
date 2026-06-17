@@ -485,3 +485,205 @@ else:
         "최종 매수·매도 결정은 공식 공시, 최신 실적, 본인의 투자 기간과 "
         "위험 감내 범위를 확인한 뒤 내려야 합니다."
     )
+
+st.divider()
+
+# ── 코인 비중 축소 로드맵 ─────────────────────────────────────────
+st.subheader("🚪 코인 비중 축소 로드맵")
+st.caption(
+    "코인 비중을 목표(10~15%)까지 단계적으로 줄이는 계획입니다. "
+    "MVRV Z-Score 트리거 구간에 진입하면 아래 기준대로 매도를 검토하세요."
+)
+
+# 추가 데이터 로드
+_coin_sum_f = RESULTS / "coin_summary.csv"
+_cycle_f    = RESULTS / "cycle_metrics.csv"
+_coin_sum2  = pd.read_csv(_coin_sum_f) if _coin_sum_f.exists() else pd.DataFrame()
+_cycle_row2 = pd.read_csv(_cycle_f).iloc[0].to_dict() if _cycle_f.exists() else {}
+
+# USD/KRW 환율
+try:
+    import urllib.request as _ur, json as _jj
+    with _ur.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=4) as _rr:
+        _usdkrw2 = float(_jj.loads(_rr.read())["rates"]["KRW"])
+except Exception:
+    _usdkrw2 = 1380.0
+
+# 코인 현재가 (KRW)
+_cprice2: dict = {}
+if not _coin_sum2.empty:
+    for _, _cr in _coin_sum2.iterrows():
+        _cprice2[str(_cr["ticker"])] = float(_cr["close"]) * _usdkrw2
+
+# MVRV
+_mvrv2 = float(_cycle_row2.get("mvrv_z", 0.0))
+
+# 포트폴리오 평가
+_h_coin  = holdings[holdings["ticker"].str.contains("-USD", na=False)].copy()
+_h_stock = holdings[~holdings["ticker"].str.contains("-USD", na=False)].copy()
+
+_val_coin = sum(
+    float(r["qty"]) * _cprice2.get(str(r["ticker"]), 0.0)
+    for _, r in _h_coin.iterrows()
+)
+_pmap2 = dict(zip(summary["ticker"].astype(str), summary["close"])) if not summary.empty else {}
+_val_stock = sum(
+    float(r["qty"]) * float(_pmap2.get(str(r["ticker"]), 0.0))
+    for _, r in _h_stock.iterrows()
+)
+_val_total  = _val_coin + _val_stock
+_coin_ratio = _val_coin / _val_total * 100 if _val_total > 0 else 0.0
+
+# MVRV 트리거 레벨 (0=대기 / 1=1단계 / 2=2단계 / 3=과열)
+if _mvrv2 >= 2.5:
+    _trigger = 3
+    _mvrv_label = "🔴🔴 과열 — Group 1·2·3 전면 정리 구간"
+    _mvrv_col   = "#991b1b"
+elif _mvrv2 >= 2.0:
+    _trigger = 2
+    _mvrv_label = "🔴 2단계 트리거 — Group 1·2 잔량 전량 매도 구간"
+    _mvrv_col   = "#dc2626"
+elif _mvrv2 >= 1.5:
+    _trigger = 1
+    _mvrv_label = "🟠 1단계 트리거 — Group 1·2 50% 매도 검토 구간"
+    _mvrv_col   = "#ea580c"
+else:
+    _trigger = 0
+    _mvrv_label = "🟢 저평가 구간 — 매도 트리거 미도달, 현 포지션 유지"
+    _mvrv_col   = "#16a34a"
+
+# 상단 지표
+_rc1, _rc2, _rc3, _rc4 = st.columns(4)
+_rc1.metric("📡 MVRV Z-Score", f"{_mvrv2:.2f}",
+            help="0~1.5: 저평가 / 1.5~2.0: 1단계 / 2.0~2.5: 2단계 / 2.5+: 과열")
+_over15 = max(0.0, _coin_ratio - 15.0)
+_rc2.metric("🪙 현재 코인 비중", f"{_coin_ratio:.1f}%",
+            delta=f"목표 대비 +{_over15:.1f}%p 초과" if _over15 > 0 else "목표 범위 내",
+            delta_color="inverse" if _over15 > 0 else "off")
+_rc3.metric("🪙 코인 평가금액", f"{_val_coin:,.0f}원")
+_rc4.metric("📊 전체 포트폴리오", f"{_val_total:,.0f}원")
+
+st.markdown(
+    f"<div style='background:{_mvrv_col}18;border-left:4px solid {_mvrv_col};"
+    f"border-radius:6px;padding:10px 14px;margin:8px 0'>"
+    f"<b style='color:{_mvrv_col}'>{_mvrv_label}</b></div>",
+    unsafe_allow_html=True,
+)
+
+st.markdown("---")
+
+# 그룹 정의 및 출구 규칙 (trigger_level, 조건, 액션)
+_G1 = ["TRUMP-USD", "MASK-USD", "ZETA-USD", "SAND-USD", "ID-USD"]
+_G2 = ["GAS-USD", "DOGE-USD", "ETC-USD", "ENS-USD"]
+_G3 = ["BTC-USD", "ETH-USD", "SOL-USD"]
+
+_G1_RULES = [
+    (1, "MVRV Z ≥ 1.5 도달",       "50% 매도"),
+    (2, "MVRV Z ≥ 2.0 도달",       "나머지 전량 매도"),
+    (0, "개별 손실 -60% 이내 회복", "전량 매도 (조건 먼저 도달 시)"),
+    (0, "2027년 말 데드라인",       "조건 미충족 시 전량 매도"),
+]
+_G2_RULES = [
+    (1, "MVRV Z ≥ 1.5 도달", "GAS·ETC·DOGE 30% 매도 시작"),
+    (2, "MVRV Z ≥ 2.0 도달", "GAS·ETC·DOGE 나머지 50% 매도"),
+    (2, "MVRV Z ≥ 2.0 도달", "ENS 정리 시작 (ETH 타이밍에 맞춤)"),
+]
+_G3_RULES = [
+    (3, "MVRV Z ≥ 2.5 도달",   "BTC 일부 차익 실현 고려"),
+    (0, "BTC 신고점 경신 후",   "ETH·SOL 갭 메울 때 일부 정리"),
+]
+
+
+def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigger):
+    group_rows, group_val = [], 0.0
+    for t in tickers:
+        sub = h_coin[h_coin["ticker"] == t]
+        if sub.empty:
+            continue
+        qty     = sub["qty"].astype(float).sum()
+        avg_buy = (sub["qty"].astype(float) * sub["buy_price"].astype(float)).sum() / qty
+        cur     = cprice.get(t, 0.0)
+        val     = qty * cur
+        pnl     = (cur / avg_buy - 1) * 100 if avg_buy > 0 else 0.0
+        group_rows.append({"name": t.replace("-USD", ""), "val": val, "pnl": pnl})
+        group_val += val
+
+    if not group_rows:
+        return
+
+    st.markdown(
+        f"<div style='background:{bg};border-left:4px solid {border};"
+        f"border-radius:6px;padding:8px 14px;margin-bottom:8px'>"
+        f"<b style='color:{border}'>{title}</b>"
+        f"&nbsp;&nbsp;합산 평가 <b>{group_val:,.0f}원</b></div>",
+        unsafe_allow_html=True,
+    )
+
+    gcols = st.columns(len(group_rows))
+    for i, row in enumerate(group_rows):
+        gcols[i].metric(row["name"], f"{row['val']:,.0f}원",
+                        delta=f"{row['pnl']:+.1f}%", delta_color="normal")
+
+    for lvl, cond, action in rules:
+        active = (trigger >= lvl) and (lvl > 0)
+        icon   = "🔔" if active else "⏳"
+        bg2    = "#fef2f2" if active else "#f9fafb"
+        tc     = "#b91c1c" if active else "#374151"
+        st.markdown(
+            f"<div style='background:{bg2};border-radius:4px;padding:5px 12px;"
+            f"margin:3px 0;font-size:13px'>"
+            f"{icon} <span style='color:{tc}'><b>{cond}</b> → {action}</span></div>",
+            unsafe_allow_html=True,
+        )
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+
+_coin_roadmap_group(
+    "🔴 Group 1 — 출구 전략 (TRUMP · MASK · ZETA · SAND · ID)",
+    "#fff1f2", "#ef4444", _G1, _G1_RULES, _h_coin, _cprice2, _trigger,
+)
+_coin_roadmap_group(
+    "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS)",
+    "#fff7ed", "#f97316", _G2, _G2_RULES, _h_coin, _cprice2, _trigger,
+)
+_coin_roadmap_group(
+    "🟢 Group 3 — 코어 코인 유지 (BTC · ETH · SOL)",
+    "#f0fdf4", "#22c55e", _G3, _G3_RULES, _h_coin, _cprice2, _trigger,
+)
+
+# 비중 축소 시뮬레이션
+st.markdown("---")
+st.markdown("##### 📊 비중 축소 시뮬레이션")
+
+_g12_val = sum(
+    _h_coin[_h_coin["ticker"] == t]["qty"].astype(float).sum() * _cprice2.get(t, 0.0)
+    for t in _G1 + _G2
+    if not _h_coin[_h_coin["ticker"] == t].empty
+)
+_after_g12     = _val_coin - _g12_val
+_after_g12_pct = _after_g12 / _val_total * 100 if _val_total > 0 else 0.0
+_tgt_high_val  = _val_total * 0.15
+
+_sc1, _sc2, _sc3 = st.columns(3)
+_sc1.metric("현재 코인 금액", f"{_val_coin:,.0f}원",
+            delta=f"{_coin_ratio:.1f}%", delta_color="off")
+_sc2.metric("G1+G2 정리 후", f"{_after_g12:,.0f}원",
+            delta=f"비중 {_after_g12_pct:.1f}%", delta_color="off")
+_sc3.metric("추가 감소 필요", f"{max(0.0, _after_g12 - _tgt_high_val):,.0f}원",
+            delta="ETH·SOL 일부 정리", delta_color="off")
+
+if _coin_ratio <= 15:
+    st.success("✅ 코인 비중이 이미 목표 범위(15%) 이내입니다.")
+elif _after_g12_pct <= 15:
+    st.info(f"💡 Group 1·2만 정리해도 코인 비중 {_after_g12_pct:.1f}% — 목표 범위에 들어옵니다.")
+else:
+    st.warning(
+        f"⚠️ Group 1·2 정리 후에도 코인 비중 {_after_g12_pct:.1f}% — "
+        f"목표(15%) 대비 {_after_g12_pct - 15:.1f}%p 초과. ETH·SOL 일부 정리가 추가로 필요합니다."
+    )
+
+st.caption(
+    "이 분석은 투자 판단을 돕기 위한 의사결정 보조 자료이며, "
+    "최종 매수·매도 결정은 공식 공시, 최신 실적, 본인의 투자 기간과 "
+    "위험 감내 범위를 확인한 뒤 내려야 합니다."
+)
