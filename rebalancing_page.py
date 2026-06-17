@@ -442,64 +442,50 @@ aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
            delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
-# ── 보유 종목 트리맵 ──────────────────────────────────────────────
-if not holdings.empty and not classified.empty:
-    _th_ids, _th_labels, _th_parents, _th_values, _th_colors = [], [], [], [], []
-    _th_hname, _th_hpnl, _th_hval = [], [], []
+# ── 보유 종목 파이차트 ───────────────────────────────────────────
+if not holdings.empty:
+    # portfolio_page.py와 동일한 방식으로 가격 합산 (주식 + 코인 KRW 변환)
+    _ph_parts = []
+    if not summary.empty:
+        _ph_parts.append(summary[["ticker", "close"]].copy())
+    if not _i_csum.empty:
+        _ph_coin = _i_csum[["ticker", "close"]].copy()
+        _ph_coin["close"] = _ph_coin["close"] * _i_fx
+        _ph_parts.append(_ph_coin)
+    _ph_prices = pd.concat(_ph_parts, ignore_index=True) if _ph_parts else pd.DataFrame(columns=["ticker", "close"])
+    _ph_prices["ticker"] = _ph_prices["ticker"].astype(str).str.upper()
 
-    for _c in ["코어 ETF", "개별주", "코인"]:
-        _th_ids.append(_c); _th_labels.append(_c); _th_parents.append("")
-        _th_values.append(0); _th_colors.append(0)
-        _th_hname.append(_c); _th_hpnl.append(0); _th_hval.append(0)
+    _ph_view = holdings.copy()
+    _ph_view["ticker"] = _ph_view["ticker"].astype(str).str.strip().str.upper()
+    _ph_view = _ph_view.merge(_ph_prices, on="ticker", how="left")
+    _ph_view["종목명"] = _ph_view["ticker"].map(NAMES).fillna(_ph_view["ticker"])
+    _ph_view["평가금액"] = pd.to_numeric(_ph_view["qty"], errors="coerce") * pd.to_numeric(_ph_view["close"], errors="coerce")
+    _ph_view["수익률(%)"] = (pd.to_numeric(_ph_view["close"], errors="coerce") / pd.to_numeric(_ph_view["buy_price"], errors="coerce") - 1) * 100
+    _ph_view = _ph_view.dropna(subset=["평가금액"])
+    _ph_view = _ph_view[_ph_view["평가금액"] > 0].copy()
 
-    # classified는 ticker가 이미 upper(), bucket이 Core/Satellite로 분류됨
-    # price_map_alloc은 alloc 계산에 실제 사용된 upper() 키 가격 맵
-    for _, _hr in classified.iterrows():
-        _t  = str(_hr["ticker"])   # upper
-        _q  = float(_hr.get("qty", 0) or 0)
-        _bp = float(_hr.get("buy_price", 0) or 0)
-        _cur = float(price_map_alloc.get(_t, 0.0) or 0.0)
-        if "-USD" in _t:
-            _cat = "코인"
-        elif str(_hr.get("bucket", "")) == "Core":
-            _cat = "코어 ETF"
-        else:
-            _cat = "개별주"
-        _val = _q * _cur
-        if _val <= 0:
-            continue
-        _pnl  = (_cur / _bp - 1) * 100 if _bp > 0 and _cur > 0 else 0.0
-        _name = NAMES.get(_t, _t)
-        _th_ids.append(f"{_cat}/{_t}"); _th_labels.append(f"{_t}<br>{_pnl:+.1f}%")
-        _th_parents.append(_cat);       _th_values.append(_val)
-        _th_colors.append(_pnl)
-        _th_hname.append(_name); _th_hpnl.append(_pnl); _th_hval.append(_val)
-
-    if any(p != "" for p in _th_parents[3:]):
-        _th_custom = [[n, p, v] for n, p, v in zip(_th_hname, _th_hpnl, _th_hval)]
-        _pnl_abs  = max((abs(v) for v in _th_colors if v != 0), default=20)
-        _clim     = max(_pnl_abs, 10)
-        _fig_tree = go.Figure(go.Treemap(
-            ids=_th_ids, labels=_th_labels, parents=_th_parents,
-            values=_th_values, branchvalues="total",
-            customdata=_th_custom,
-            marker=dict(
-                colors=_th_colors,
-                colorscale=[[0, "#dc2626"], [0.5, "#64748b"], [1, "#16a34a"]],
-                cmid=0, cmin=-_clim, cmax=_clim,
-                showscale=True,
-                colorbar=dict(title=dict(text="수익률%"), thickness=10, len=0.55, x=1.0),
-                line=dict(width=1, color="white"),
-            ),
-            texttemplate="%{label}",
-            textfont=dict(color="white", size=12),
-            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<extra></extra>",
+    if not _ph_view.empty:
+        _ph_total = _ph_view["평가금액"].sum()
+        _ph_labels = [
+            f"{r['종목명']} ({r['ticker']})<br>{r['수익률(%)']:+.1f}%"
+            for _, r in _ph_view.iterrows()
+        ]
+        _fig_pie = go.Figure(go.Pie(
+            labels=_ph_labels,
+            values=_ph_view["평가금액"],
+            customdata=list(zip(_ph_view["종목명"], _ph_view["수익률(%)"], _ph_view["평가금액"])),
+            hole=0.45,
+            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{percent}<extra></extra>",
+            textinfo="label+percent",
+            textfont=dict(size=11),
         ))
-        _fig_tree.update_layout(
-            height=360, margin=dict(t=5, b=5, l=5, r=80),
+        _fig_pie.update_layout(
+            height=480,
+            margin=dict(t=10, b=10, l=10, r=260),
+            legend=dict(font=dict(size=12), x=1.02, y=0.5, xanchor="left", yanchor="middle"),
             paper_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(_fig_tree, use_container_width=True)
+        st.plotly_chart(_fig_pie, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
