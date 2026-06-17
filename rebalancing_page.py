@@ -270,22 +270,134 @@ else:
         f"포트폴리오 전반보다 개별 자산의 신호를 더 세밀하게 확인해야 합니다.",
     ))
 
+# 전체 요약 문단
+_s_coin = (
+    f"코인이 포트폴리오의 {_i_pct['코인']:.0f}%를 차지해 목표(10~15%)의 {_i_pct['코인']/15:.1f}배에 달하는 불균형 상태입니다."
+    if _coin_over > 20 else
+    f"코인이 목표(15%)를 {_coin_over:.0f}%p 초과한 {_i_pct['코인']:.0f}%입니다."
+    if _coin_over > 0 else
+    f"코인 비중({_i_pct['코인']:.0f}%)이 목표 범위(10~15%) 안에 있습니다."
+)
+_s_mvrv = (
+    f"다만 코인 시장 온도 지수({_i_mvrv:.2f})가 아직 저온 구간이라 지금 파는 것은 저점 매도가 될 수 있습니다."
+    if _i_mvrv < 1.5 else
+    f"코인 시장 온도 지수({_i_mvrv:.2f})가 과열 경계에 진입했으니 단계적 매도를 시작할 타이밍입니다."
+    if _i_mvrv < 2.5 else
+    f"코인 시장 온도 지수({_i_mvrv:.2f})가 과열 구간으로 적극적인 코인 축소가 필요합니다."
+)
+_s_etf = (
+    f"ETF 코어({_i_pct['ETF']:.0f}%)가 아직 낮아 월급을 ETF에 꾸준히 적립하는 것이 가장 효과적인 비중 조정 수단입니다."
+    if _i_pct["ETF"] < 20 else
+    f"ETF 코어({_i_pct['ETF']:.0f}%)는 목표(40%)에 근접 중이며 ETF 적립을 이어가야 합니다."
+    if _i_pct["ETF"] < 40 else
+    f"ETF 코어({_i_pct['ETF']:.0f}%)는 안정적으로 확보된 상태입니다."
+)
+_s_alt = (
+    f"알트 시즌 점수 {_i_alt:.0f}/100으로 BTC 주도 장세가 이어지고 있어 알트 추가 매수는 당분간 불리합니다."
+    if _i_alt < 25 else
+    f"알트 시즌 점수 {_i_alt:.0f}/100으로 알트 강세장이 진행 중이니 보유 알트 반등을 출구로 활용하세요."
+    if _i_alt > 75 else
+    f"알트 시즌 점수 {_i_alt:.0f}/100으로 BTC·알트 혼조세입니다."
+)
+_i_summary_text = f"{_s_coin} {_s_mvrv} {_s_etf} {_s_alt}"
+
+# 전체 가이드 (우선순위 순)
+_i_guide = [
+    (
+        "①", "신규 자금은 ETF 적립에만",
+        f"월급이 들어올 때마다 S&P500 ETF(360200.KS)에만 넣으세요. "
+        f"지금 코인·개별주에 추가 투입하면 불균형이 더 깊어집니다.",
+    ),
+]
+if _i_mvrv < 1.5:
+    _i_guide.append((
+        "②", "코인 매도 — 온도 지수 1.5까지 대기",
+        f"현재 온도 지수 {_i_mvrv:.2f}는 저평가 구간입니다. "
+        f"손실이 크더라도 지금 파는 건 최악의 타이밍입니다. "
+        f"지수가 1.5를 넘을 때 아래 로드맵의 Group 1(소형 알트)부터 정리를 시작하세요.",
+    ))
+elif _i_mvrv < 2.5:
+    _i_guide.append((
+        "②", "코인 매도 — Group 1·2 단계적 매도 시작",
+        f"온도 지수 {_i_mvrv:.2f}로 1단계 트리거 활성화. "
+        f"아래 로드맵에서 TRUMP·MASK·ZETA·SAND·ID부터 정리를 시작하세요.",
+    ))
+else:
+    _i_guide.append((
+        "②", "코인 비중 즉시 축소",
+        f"온도 지수 {_i_mvrv:.2f}로 과열 구간입니다. 모든 그룹 매도를 지금 실행하세요.",
+    ))
+if _i_alt < 25:
+    _i_guide.append((
+        "③", "알트 추가 매수 금지",
+        f"BTC 주도 장세({_i_alt:.0f}/100)에서 알트를 사면 BTC 대비 손실을 보기 쉽습니다. "
+        f"알트 시즌 점수가 50을 넘을 때까지 추가 매수를 참으세요.",
+    ))
+elif _i_alt > 75:
+    _i_guide.append((
+        "③", "알트 강세장 — 출구 기회 활용",
+        f"알트 강세({_i_alt:.0f}/100) 구간입니다. Group 1·2 보유 알트 반등을 출구로 활용하세요.",
+    ))
+else:
+    _i_guide.append((
+        "③", "알트 신규 매수 자제",
+        f"혼조 장세({_i_alt:.0f}/100). 신규 매수는 자제하고 기존 보유분을 유지하세요.",
+    ))
+_i_guide.append((
+    "④", "월 1회 이 탭에서 점검",
+    "온도 지수와 코인 비중이 바뀌면 위 가이드도 자동으로 바뀝니다. "
+    "너무 자주 확인하면 감정 매매로 이어지니 월 1회만 점검하세요.",
+))
+
 # 렌더링
 st.markdown(
     "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"
     "padding:16px 20px;margin-bottom:4px'>"
-    "<div style='font-size:14px;font-weight:700;color:#334155;margin-bottom:12px'>"
+    "<div style='font-size:14px;font-weight:700;color:#334155;margin-bottom:10px'>"
     "📊 포트폴리오 전반 인사이트</div>",
+    unsafe_allow_html=True,
+)
+
+# 전체 요약
+st.markdown(
+    f"<div style='background:#f1f5f9;border-radius:8px;padding:12px 15px;margin-bottom:14px'>"
+    f"<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px'>📝 전체 요약</div>"
+    f"<div style='color:#1e293b;font-size:13px;line-height:1.75'>{_i_summary_text}</div>"
+    f"</div>",
+    unsafe_allow_html=True,
+)
+
+# 신호 상세
+st.markdown(
+    "<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px'>"
+    "▸ 신호 상세</div>",
     unsafe_allow_html=True,
 )
 for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
     st.markdown(
         f"<div style='background:{_bg};border-left:3px solid {_bd};"
-        f"border-radius:6px;padding:10px 14px;margin-bottom:8px'>"
-        f"<div style='margin-bottom:5px'>"
+        f"border-radius:6px;padding:10px 14px;margin-bottom:7px'>"
+        f"<div style='margin-bottom:4px'>"
         f"<span style='font-weight:700;color:{_bd}'>{_emoji} {_title}</span>"
         f"<span style='color:#6b7280;font-size:12px;margin-left:8px'>| {_badge}</span></div>"
         f"<div style='color:#374151;font-size:13px;line-height:1.65'>{_detail}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+# 전체 가이드
+st.markdown(
+    "<div style='font-size:12px;font-weight:600;color:#64748b;margin-top:6px;margin-bottom:6px'>"
+    "▸ 전체 가이드 (우선순위 순)</div>",
+    unsafe_allow_html=True,
+)
+for _gn, _gt, _gb in _i_guide:
+    st.markdown(
+        f"<div style='background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;"
+        f"padding:9px 13px;margin-bottom:6px'>"
+        f"<div style='font-weight:700;color:#1e293b;font-size:13px;margin-bottom:3px'>"
+        f"{_gn} {_gt}</div>"
+        f"<div style='color:#4b5563;font-size:13px;line-height:1.65'>{_gb}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
