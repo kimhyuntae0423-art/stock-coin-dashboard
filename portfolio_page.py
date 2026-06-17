@@ -755,18 +755,6 @@ if total_value > 0:
     )
     st.plotly_chart(fig_pie, use_container_width=True)
 
-# 캡션 — _SIGNAL_DISPLAY caption 필드에서 자동 생성
-_caption_parts = [
-    f"{_sd['emoji']} {_sd['caption']}"
-    for _sd in _SIGNAL_DISPLAY if _sd.get("caption")
-]
-st.caption(
-    "**신호 기준**: " + " · ".join(_caption_parts) + " | "
-    "📦 ETF — 손실 신호 없음, 리밸런싱으로 관리 | "
-    "🪙 BTC — MVRV Z-Score 구간 기반 (0/1.5/2.5) | "
-    "🪙 알트 — BB(%B) 복합 신호 (범례 참고). "
-    "골든크로스(50.8%)·RSI70+(45%)는 주신호 제외."
-)
 
 # =====================================================================
 # 자산별 상세 리포트
