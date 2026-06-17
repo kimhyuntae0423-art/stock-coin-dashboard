@@ -55,14 +55,32 @@ def severity_for_holding(
     if is_etf:
         return 0, []
 
-    # ── 코인: MVRV Z-Score 구간 기반 (백테스트 검증) ──────────────
+    # ── 코인: BTC는 MVRV 순수 적용, 알트는 MVRV + 개별 손실 병행 ──
     if is_coin:
-        if mvrv_z is not None and pd.notna(mvrv_z):
-            z = float(mvrv_z)
-            if z >= 2.5:
-                return 2, [f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 비중 목표, 백테스트 검증)"]
-            elif z >= 1.5:
-                return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
+        ticker_str = str(row.get("ticker", ""))
+        is_btc = ticker_str == "BTC-USD"
+        buy_price = row.get("buy_price")
+        close = sig_row.get("close")
+
+        if is_btc:
+            if mvrv_z is not None and pd.notna(mvrv_z):
+                z = float(mvrv_z)
+                if z >= 2.5:
+                    return 2, [f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 비중 목표, 백테스트 검증)"]
+                elif z >= 1.5:
+                    return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
+            return 0, []
+
+        # 알트코인: 개별 손실 기준
+        if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
+            pnl_pct = (float(close) / float(buy_price) - 1) * 100
+            cycle_ctx = ""
+            if mvrv_z is not None and pd.notna(mvrv_z):
+                cycle_ctx = f" (사이클 MVRV Z {float(mvrv_z):.2f})"
+            if pnl_pct <= -40:
+                return 2, [f"손익 {pnl_pct:+.1f}% — 알트 개별 하락 심각{cycle_ctx}"]
+            elif pnl_pct <= -20:
+                return 1, [f"손익 {pnl_pct:+.1f}% — 알트 하락 주의{cycle_ctx}"]
         return 0, []
 
     # ── 개별주: 매도 검토 + 주의 ─────────────────────────────────
