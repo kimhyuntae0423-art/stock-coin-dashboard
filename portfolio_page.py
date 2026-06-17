@@ -924,23 +924,29 @@ for _, row in view.iterrows():
                 _bb_below_ev = sig_df[_ep_below]
                 _bb_above_ev = sig_df[_ep_above]
                 if not _bb_below_ev.empty:
+                    _below_color = "#f97316" if is_btc else "#3b82f6"
+                    _below_emoji = "🟠" if is_btc else "🔵"
+                    _below_name  = "BB 하단 이탈 — 약세 주의" if is_btc else "BB 하단 이탈 — 반등 후보"
                     fig_detail.add_trace(go.Scatter(
                         x=_bb_below_ev["date"],
                         y=_bb_lower_line[_bb_below_ev.index],
-                        mode="markers+text", name="BB 하단 이탈 — 반등 후보",
-                        marker=dict(symbol="circle", size=10, color="#3b82f6",
+                        mode="markers+text", name=_below_name,
+                        marker=dict(symbol="circle", size=10, color=_below_color,
                                     line=dict(color="white", width=1.5)),
-                        text=["🔵"] * len(_bb_below_ev),
+                        text=[_below_emoji] * len(_bb_below_ev),
                         textposition="bottom center",
                         textfont=dict(size=11)))
                 if not _bb_above_ev.empty:
+                    _above_color = "#16a34a" if is_btc else "#ef4444"
+                    _above_emoji = "🟢" if is_btc else "🔴"
+                    _above_name  = "BB 상단 이탈 — 모멘텀 확인" if is_btc else "BB 상단 이탈 — 과열"
                     fig_detail.add_trace(go.Scatter(
                         x=_bb_above_ev["date"],
                         y=_bb_upper_line[_bb_above_ev.index],
-                        mode="markers+text", name="BB 상단 이탈 — 과열",
-                        marker=dict(symbol="circle", size=10, color="#ef4444",
+                        mode="markers+text", name=_above_name,
+                        marker=dict(symbol="circle", size=10, color=_above_color,
                                     line=dict(color="white", width=1.5)),
-                        text=["🔴"] * len(_bb_above_ev),
+                        text=[_above_emoji] * len(_bb_above_ev),
                         textposition="top center",
                         textfont=dict(size=11)))
 
