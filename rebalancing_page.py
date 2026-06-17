@@ -1,6 +1,7 @@
 """리밸런싱 페이지 — 코어-위성 자산배분 + 추천 포트폴리오."""
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from pathlib import Path
 import sys
 
@@ -411,8 +412,8 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 
-# ── 코어-위성 배분 추적 & 신규자금 리밸런싱 ─────────────────────
-st.subheader("🏛️ 코어-위성 배분 추적 & 신규자금 리밸런싱")
+# ── 배분 현황 & 리밸런싱 ─────────────────────────────────────────
+st.subheader("📊 배분 현황 & 리밸런싱")
 
 ic1, ic2, ic3, ic4, ic5 = st.columns(5)
 with ic1:
@@ -430,6 +431,60 @@ with ic5:
 
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
+
+# ── 배분 시각화 (현재 / 목표 / 신규자금 후) ──────────────────────
+_viz_labels = ["현재", "목표"]
+_viz_core   = [alloc["Core_pct"],       float(target_core)]
+_viz_sat    = [alloc["Satellite_pct"],  float(target_satellite)]
+_viz_cash   = [alloc["Cash_pct"],       float(target_cash)]
+
+if new_money > 0 and alloc["Total"] > 0:
+    _ta = alloc["Total"] + new_money
+    _cd = max(0.0, _ta * target_core      / 100 - alloc["Core_value"])
+    _sd = max(0.0, _ta * target_satellite / 100 - alloc["Satellite_value"])
+    _xd = max(0.0, _ta * target_cash      / 100 - cash_amount)
+    _td = _cd + _sd + _xd
+    if _td > 0:
+        _sc = min(1.0, new_money / _td)
+        _cb, _sb = round(_cd * _sc), round(_sd * _sc)
+        _cr = new_money - _cb - _sb
+    else:
+        _cb = _sb = 0; _cr = new_money
+    _viz_labels.append("신규자금 후")
+    _viz_core.append((alloc["Core_value"]      + _cb) / _ta * 100)
+    _viz_sat.append( (alloc["Satellite_value"] + _sb) / _ta * 100)
+    _viz_cash.append((cash_amount              + _cr) / _ta * 100)
+
+_fig_alloc = go.Figure()
+_fig_alloc.add_trace(go.Bar(
+    name="코어", y=_viz_labels, x=_viz_core, orientation="h",
+    marker_color="#3b82f6",
+    text=[f"{v:.1f}%" for v in _viz_core], textposition="inside",
+    insidetextanchor="middle", textfont=dict(color="white", size=12),
+))
+_fig_alloc.add_trace(go.Bar(
+    name="위성", y=_viz_labels, x=_viz_sat, orientation="h",
+    marker_color="#f97316",
+    text=[f"{v:.1f}%" for v in _viz_sat], textposition="inside",
+    insidetextanchor="middle", textfont=dict(color="white", size=12),
+))
+_fig_alloc.add_trace(go.Bar(
+    name="현금", y=_viz_labels, x=_viz_cash, orientation="h",
+    marker_color="#22c55e",
+    text=[f"{v:.1f}%" for v in _viz_cash], textposition="inside",
+    insidetextanchor="middle", textfont=dict(color="white", size=12),
+))
+_fig_alloc.update_layout(
+    barmode="stack",
+    height=55 * len(_viz_labels) + 60,
+    margin=dict(t=10, b=10, l=10, r=10),
+    xaxis=dict(range=[0, 100], showticklabels=False, showgrid=False),
+    yaxis=dict(showgrid=False),
+    legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+)
+st.plotly_chart(_fig_alloc, use_container_width=True)
 
 aa1, aa2, aa3, aa4 = st.columns(4)
 aa1.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
