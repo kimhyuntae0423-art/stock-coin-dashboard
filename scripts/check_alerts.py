@@ -71,13 +71,15 @@ def load_signals() -> pd.DataFrame:
 
 
 def severity_for_holding(
-    row, sig_row, mvrv_z=None, is_etf: bool = False, is_coin: bool = False
+    row, sig_row, mvrv_z=None, is_etf: bool = False, is_coin: bool = False,
+    bb: dict | None = None,
 ) -> tuple[int, list[str]]:
     """단일 보유종목의 위험도(0=보유 / 1=논거 재검토 / 2=비중 축소(코인)) 와 사유 리스트.
 
     자산 유형별 신호 기준 (백테스트 검증):
       ETF  → 리밸런싱으로 관리, 알림 없음
-      코인 → MVRV Z-Score 구간 기반 (0/1.5/2.5)
+      BTC  → MVRV Z-Score 구간 기반 (0/1.5/2.5)
+      알트 → BB(%B) + 손익 복합 신호
       개별주 → 손실(-8%/-20%) + 데드크로스 + RSI 80+ (모두 1수준, 2수준 없음)
     """
     # ── ETF: 리밸런싱으로 관리 — 알림 불필요 ──────────────────────
