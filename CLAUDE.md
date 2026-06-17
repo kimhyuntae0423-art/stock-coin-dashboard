@@ -93,3 +93,53 @@ Streamlit 대시보드(QVGM 점수, 골든크로스, 코인 온체인 지표, �
 
 대시보드 코드 수정은 가능하지만, **에이전트의 주 임무는 리서치·분석·기록**이지
 대시보드 개발이 아니다. 대시보드 변경 요청 시에만 코드 수정.
+
+---
+
+## 리서치 노트 수동 업데이트 명령
+
+사용자가 **"리서치 노트 업데이트"**, **"리서치 노트 써줘"**, **"분석 노트 갱신"** 등을 말하면:
+
+### 실행 순서
+
+1. **데이터 읽기** (모두 읽기)
+   - `holdings.csv` — 보유 종목 목록 + 매수가
+   - `results/summary_signals.csv` — 추세/RSI/12M 수익률
+   - `results/fundamentals.csv` — PER/PBR/ROE/성장률
+   - `results/coin_summary.csv` — 코인 현재가/RSI
+   - `results/cycle_metrics.csv` — MVRV Z-Score/NUPL/Puell
+   - `core_etfs.csv` — ETF 티커 목록
+   - `asset_reports.json` — 기존 리서치 노트 (sources 필드 보존)
+
+2. **종목별 분석** (각 보유 종목에 대해)
+   - 자산 유형 판별: `-USD` 포함 → 코인, `core_etfs.csv` 해당 → ETF, 나머지 → 개별주
+   - 수익률 계산: `(현재가 / 매수가 - 1) × 100`
+   - 데이터 기반 분석 (절대 원칙 준수)
+
+3. **JSON 작성** — 종목별로 아래 형식:
+   ```json
+   {
+     "opinion": "한 줄 요약 (15자 이내)",
+     "opinion_type": "positive 또는 caution 또는 negative",
+     "summary": "현재 상황 요약 — 데이터 기반, 150자 이내",
+     "bull": "강세 근거 (60자 이내)",
+     "bear": "약세 근거 / 틀릴 조건 (60자 이내)",
+     "updated": "YYYY-MM-DD",
+     "sources": "(기존 값 그대로 보존, 없으면 생략)"
+   }
+   ```
+   - `opinion_type` 기준: positive = 추세 양호/상승, caution = 혼조/주의, negative = 손실/약세
+
+4. **파일 저장** — `asset_reports.json` 덮어쓰기
+
+5. **Git 커밋 & 푸시** — 사용자 확인 후
+   ```
+   git add asset_reports.json
+   git commit -m "data: 리서치 노트 수동 갱신 YYYY-MM-DD"
+   git push
+   ```
+
+### 분석 원칙 (절대 원칙에 추가)
+- 코인: MVRV Z < 0 → positive, 0~1.5 → positive, 1.5~2.5 → caution, ≥ 2.5 → negative
+- ETF: 모멘텀 Q1 → positive, Q4 → caution, 나머지 → positive (리밸런싱 관리)
+- 개별주: 수익률 ≥ 0 + Q1 → positive / 수익률 -8% 이상 또는 Q4 → caution / -20% 이하 → negative
