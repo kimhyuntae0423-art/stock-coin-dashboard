@@ -474,17 +474,22 @@ if not holdings.empty:
 
     if any(p != "" for p in _th_parents[3:]):
         _th_custom = [[n, p, v] for n, p, v in zip(_th_hname, _th_hpnl, _th_hval)]
+        _pnl_abs  = max((abs(v) for v in _th_colors if v != 0), default=20)
+        _clim     = max(_pnl_abs, 10)
         _fig_tree = go.Figure(go.Treemap(
             ids=_th_ids, labels=_th_labels, parents=_th_parents,
             values=_th_values, branchvalues="total",
             customdata=_th_custom,
             marker=dict(
                 colors=_th_colors,
-                colorscale=[[0, "#ef4444"], [0.5, "#e2e8f0"], [1, "#22c55e"]],
-                cmid=0, showscale=True,
+                colorscale=[[0, "#dc2626"], [0.5, "#64748b"], [1, "#16a34a"]],
+                cmid=0, cmin=-_clim, cmax=_clim,
+                showscale=True,
                 colorbar=dict(title=dict(text="수익률%"), thickness=10, len=0.55, x=1.0),
+                line=dict(width=1, color="white"),
             ),
             texttemplate="%{label}",
+            textfont=dict(color="white", size=12),
             hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<extra></extra>",
         ))
         _fig_tree.update_layout(
