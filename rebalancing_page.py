@@ -1,7 +1,6 @@
 """리밸런싱 페이지 — Core-Satellite 자산배분 + 추천 포트폴리오."""
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 from pathlib import Path
 import sys
 
@@ -13,7 +12,6 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
-from scripts.portfolio_builder import build_portfolio
 
 RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
@@ -566,152 +564,6 @@ with st.expander("📋 Core ETF 전체 목록"):
         core_etfs[["ticker", "name", "category", "asset_class", "expense_ratio", "currency", "notes"]],
         hide_index=True, use_container_width=True,
         column_config={"expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f")},
-    )
-
-st.divider()
-
-# ── 추천 분산 포트폴리오 ─────────────────────────────────────────
-st.subheader("🎯 신규 자금 배분 시뮬레이터 (실험적)")
-st.caption(
-    "**현재 보유종목과 무관한 독립 시뮬레이션입니다.** "
-    "\"만약 X원을 새로 투자한다면?\" 에 대한 QVGM 기반 가중 배분 계산. "
-    "ETF는 PER/ROE 데이터가 없어 QVGM 점수≈0이므로, ETF를 포함하려면 가중 방식을 `inv_vol` 또는 `equal`로 변경하세요."
-)
-
-if scores_df.empty or summary.empty:
-    st.info("분석 결과(summary_signals.csv)가 없어 추천 포트폴리오를 만들 수 없습니다.")
-else:
-    pool = scores_df.merge(
-        summary[["ticker", "close"]], on="ticker", how="left"
-    ).merge(
-        funda[["ticker", "sector", "currency"]] if "sector" in funda.columns and "currency" in funda.columns else funda[["ticker"]],
-        on="ticker", how="left",
-    ).merge(
-        score_input[["ticker", "ann_vol"]] if "ann_vol" in score_input.columns else score_input[["ticker"]],
-        on="ticker", how="left",
-    )
-
-    # ETF는 fundamentals.csv에 없으므로 core_etfs.csv에서 currency/sector 보완
-    _etf_meta = core_etfs[["ticker", "currency", "category"]].copy()
-    _etf_meta["ticker"] = _etf_meta["ticker"].astype(str).str.strip().str.upper()
-    _etf_meta = _etf_meta.rename(columns={"currency": "_etf_cur", "category": "_etf_sec"})
-    pool["ticker"] = pool["ticker"].astype(str).str.strip().str.upper()
-    pool = pool.merge(_etf_meta, on="ticker", how="left")
-    if "currency" not in pool.columns:
-        pool["currency"] = None
-    if "sector" not in pool.columns:
-        pool["sector"] = None
-    pool["currency"] = pool["currency"].combine_first(pool["_etf_cur"])
-    pool["sector"] = pool["sector"].combine_first(pool["_etf_sec"])
-    pool.drop(columns=["_etf_cur", "_etf_sec"], inplace=True, errors="ignore")
-
-    def _timing(row):
-        oh = row.get("overheat_penalty", 0) or 0
-        mr = row.get("mean_reversion_bonus", 0) or 0
-        me = row.get("multi_exp_penalty", 0) or 0
-        if oh <= -0.4: return "🔴 너무 올라 위험"
-        if mr >= 0.30: return "💎 떨어진 우량주"
-        if mr >= 0.15: return "💚 매수 검토"
-        if me <= -0.30: return "⚠️ 가격이 실적보다 빨리 오름"
-        if oh <= -0.20: return "🟠 살짝 비쌈"
-        return ""
-    pool["타이밍"] = pool.apply(_timing, axis=1) if "overheat_penalty" in pool.columns else ""
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        market = st.selectbox("시장/통화", ["KRW (한국)", "USD (미국)", "전체"], index=0)
-    with col2:
-        capital_default = 10_000_000 if market.startswith("KRW") else (10_000 if market.startswith("USD") else 1_000_000)
-        capital_step = 100_000 if market.startswith("KRW") else 100
-        capital = st.number_input("총 투자 금액", min_value=0, value=capital_default, step=capital_step)
-    with col3:
-        top_n = st.slider("종목 수 (Top N)", min_value=3, max_value=20, value=10)
-
-    col4, col5, col6, col7 = st.columns(4)
-    with col4:
-        method = st.selectbox("가중 방식", ["score_x_invvol", "score", "inv_vol", "equal"], index=0)
-    with col5:
-        sector_cap_pct = st.slider("단일 섹터 최대 비중 (%)", min_value=20, max_value=100, value=35, step=5)
-    with col6:
-        min_score = st.number_input("최소 점수 (이 미만 제외)", value=0.0, step=0.1)
-    with col7:
-        exclude_overheat = st.checkbox("🔴 과열 종목 제외", value=False)
-
-    if "currency" in pool.columns:
-        if market.startswith("KRW"):
-            pool_f = pool[pool["currency"] == "KRW"].copy()
-        elif market.startswith("USD"):
-            pool_f = pool[pool["currency"] == "USD"].copy()
-        else:
-            pool_f = pool.copy()
-    else:
-        pool_f = pool.copy()
-
-    if exclude_overheat and "overheat_penalty" in pool_f.columns:
-        before_n = len(pool_f)
-        pool_f = pool_f[(pool_f["overheat_penalty"] > -0.4) &
-                        (pool_f.get("multi_exp_penalty", 0).fillna(0) > -0.3)]
-        removed = before_n - len(pool_f)
-        if removed > 0:
-            st.info(f"🔴 과열/멀티플 확장 종목 {removed}개 제외됨")
-
-    sec_cap = None if sector_cap_pct >= 100 else sector_cap_pct / 100.0
-
-    if pool_f.empty:
-        st.warning("선택한 통화에 후보 종목이 없습니다.")
-    else:
-        try:
-            result = build_portfolio(pool_f, capital=capital, top_n=top_n,
-                                     method=method, sector_cap=sec_cap, min_score=min_score)
-        except Exception as e:
-            st.error(f"포트폴리오 생성 실패: {e}")
-            result = None
-
-        if result and not result["portfolio"].empty:
-            p = result["portfolio"].copy()
-            p["종목명"] = p["ticker"].map(NAMES).fillna("-")
-            invested = float(p["actual_amount"].sum())
-            cash = result["cash_left"]
-            cash_pct = cash / capital * 100 if capital > 0 else 0
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("선정 종목 수", f"{len(p)}")
-            m2.metric("실제 매수 금액", f"{invested:,.0f}", delta=f"{invested/capital*100:.1f}% 사용")
-            m3.metric("잔여 현금", f"{cash:,.0f}", delta=f"{cash_pct:+.1f}%", delta_color="off")
-            m4.metric("최대 비중 종목", f"{p['weight_pct'].max():.1f}%")
-
-            p = p.merge(pool_f[["ticker", "타이밍"]], on="ticker", how="left")
-            disp = p[["ticker", "종목명", "sector", "타이밍", "score", "weight_pct",
-                       "price", "shares", "actual_amount", "target_amount"]].rename(
-                columns={"ticker": "티커", "sector": "섹터", "score": "점수",
-                         "weight_pct": "비중%", "price": "현재가",
-                         "shares": "매수수량", "actual_amount": "실제금액", "target_amount": "목표금액"}
-            )
-            st.dataframe(
-                disp, hide_index=True, use_container_width=True,
-                column_config={
-                    "점수": st.column_config.NumberColumn(format="%+.2f"),
-                    "비중%": st.column_config.NumberColumn(format="%.2f"),
-                    "현재가": st.column_config.NumberColumn(format="%,.2f"),
-                    "매수수량": st.column_config.NumberColumn(format="%d"),
-                    "실제금액": st.column_config.NumberColumn(format="%,.0f"),
-                    "목표금액": st.column_config.NumberColumn(format="%,.0f"),
-                },
-            )
-
-            if not result["sector_breakdown"].empty:
-                sb = result["sector_breakdown"]
-                fig2 = go.Figure(go.Pie(labels=sb["sector"], values=sb["weight_pct"], hole=0.45))
-                fig2.update_layout(height=320, margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig2, use_container_width=True)
-
-        elif result:
-            st.warning(result.get("meta", {}).get("error", "포트폴리오를 만들 후보가 부족합니다."))
-
-    st.caption(
-        "이 분석은 투자 판단을 돕기 위한 의사결정 보조 자료이며, "
-        "최종 매수·매도 결정은 공식 공시, 최신 실적, 본인의 투자 기간과 "
-        "위험 감내 범위를 확인한 뒤 내려야 합니다."
     )
 
 st.divider()
