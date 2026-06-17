@@ -50,10 +50,11 @@ def download_prices(tickers: list, period: str = "5y", interval: str = "1d") -> 
                     df.columns = [c[-1] if isinstance(c, tuple) else c for c in df.columns]
             df.dropna(how="all", inplace=True)
 
-            # 코인(-USD)이고 yfinance 데이터가 30일 이상 오래됐으면 Binance로 교체
+            # 코인(-USD)이고 yfinance 데이터가 30일 이상 오래됐거나 가격 오류가 알려진 종목은 Binance로 교체
+            _BINANCE_FORCE = {"ID-USD"}  # yfinance 가격이 10배 낮게 잘못 수집되는 종목
             if "-USD" in t:
                 yf_stale = df.empty or (pd.Timestamp.now() - df.index[-1]).days > 30
-                if yf_stale:
+                if yf_stale or t in _BINANCE_FORCE:
                     print(f"{t}: yfinance 데이터 오래됨 → Binance fallback 시도...")
                     try:
                         df_b = _fetch_binance_ohlcv(t, days=1825)
