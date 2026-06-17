@@ -382,18 +382,38 @@ def holding_signal(row):
             return "🟢 보유 양호", "ETF 추세 유지 중 — 리밸런싱 스케줄로 관리"
         return "🔵 보유", "ETF — 리밸런싱으로 관리 (개별 매도 신호 없음)"
 
-    # ── 코인: MVRV Z-Score 구간 기반 (백테스트 검증) ──────────────
+    # ── 코인: BTC는 MVRV 순수 적용, 알트는 MVRV + 개별 손실 병행 ──
     if is_coin:
+        is_btc = ticker == "BTC-USD"
         if _mvrv_z_now is not None:
             z = _mvrv_z_now
+
+            if is_btc:
+                if z < 0:
+                    return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
+                elif z < 1.5:
+                    return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간)"
+                elif z < 2.5:
+                    return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전 (BTC 45% 구간)"
+                else:
+                    return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
+
+            # 알트코인: 개별 손실 우선, MVRV는 사이클 컨텍스트
+            cycle_ctx = f"사이클 MVRV Z {z:.2f}({'축적' if z < 1.5 else '과열 경계' if z < 2.5 else '과열'} 구간)"
+            if pd.notna(pnl_pct):
+                if pnl_pct <= -40:
+                    return "🔴 매도 검토", f"{pnl_pct:.1f}% 손실 — 알트 개별 하락 심각. {cycle_ctx}"
+                elif pnl_pct <= -20:
+                    return "🟠 주의", f"{pnl_pct:.1f}% 손실 — 알트 하락 주의. {cycle_ctx}"
+            # 손실 없거나 -20% 이내 → MVRV 기반
             if z < 0:
-                return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
+                return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접"
             elif z < 1.5:
-                return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간)"
+                return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간"
             elif z < 2.5:
-                return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전 (BTC 45% 구간)"
+                return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전"
             else:
-                return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
+                return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간"
         return "🔵 보유", "MVRV 데이터 없음 — 코인 탭에서 온체인 지표 확인 권장"
 
     # ── 개별주: 매도 검토 / 주의 / 긍정 ──────────────────────────
