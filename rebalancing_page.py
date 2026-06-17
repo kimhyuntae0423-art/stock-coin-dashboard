@@ -465,65 +465,48 @@ if not holdings.empty:
     _ph_view = _ph_view[_ph_view["평가금액"] > 0].copy()
 
     if not _ph_view.empty:
-        _cat_colors = {"코어 ETF": "#3b82f6", "개별주": "#f97316", "코인": "#eab308"}
+        _core_upper = {x.upper() for x in core_set}
+        _ph_view["카테고리"] = _ph_view["ticker"].apply(
+            lambda t: "코인" if "-USD" in t else ("코어 ETF" if t in _core_upper else "개별주")
+        )
         _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
         def _pnl_to_color(pnl, clim):
             t = max(0.0, min(1.0, (pnl + clim) / (2 * clim)))
             return f"rgb({int(220*(1-t)+22*t)},{int(38*(1-t)+163*t)},{int(38*(1-t)+74*t)})"
 
-        _sb_ids, _sb_labels, _sb_parents, _sb_values, _sb_colors, _sb_custom = [], [], [], [], [], []
-        _core_upper = {x.upper() for x in core_set}
+        # 카테고리별 정렬 후 평가금액 내림차순
+        _cat_order = {"코어 ETF": 0, "개별주": 1, "코인": 2}
+        _ph_sorted = _ph_view.copy()
+        _ph_sorted["_co"] = _ph_sorted["카테고리"].map(_cat_order)
+        _ph_sorted = _ph_sorted.sort_values(["_co", "평가금액"], ascending=[True, False])
 
-        for _c, _cc in _cat_colors.items():
-            _sb_ids.append(_c); _sb_labels.append(_c); _sb_parents.append("")
-            _sb_values.append(0); _sb_colors.append(_cc); _sb_custom.append([_c, 0, 0])
+        _bar_colors = [_pnl_to_color(p, _pnl_max) for p in _ph_sorted["수익률(%)"]]
+        _bar_labels = [f"{nm}  {p:+.1f}%" for nm, p in zip(_ph_sorted["종목명"], _ph_sorted["수익률(%)"])]
+        _bar_total  = _ph_sorted["평가금액"].sum()
+        _bar_pct    = [v / _bar_total * 100 for v in _ph_sorted["평가금액"]]
 
-        for _, _hr in _ph_view.iterrows():
-            _t   = str(_hr["ticker"])
-            _nm  = str(_hr["종목명"])
-            _val = float(_hr["평가금액"])
-            _pnl = float(_hr["수익률(%)"])
-            _cat = "코인" if "-USD" in _t else ("코어 ETF" if _t in _core_upper else "개별주")
-            _sb_ids.append(f"{_cat}/{_t}")
-            _sb_labels.append("")          # 외부 링 텍스트 제거 — 호버로 확인
-            _sb_parents.append(_cat)
-            _sb_values.append(_val)
-            _sb_colors.append(_pnl_to_color(_pnl, _pnl_max))
-            _sb_custom.append([_nm, _pnl, _val])
-
-        _fig_sb = go.Figure(go.Sunburst(
-            ids=_sb_ids, labels=_sb_labels, parents=_sb_parents,
-            values=_sb_values, branchvalues="remainder",
-            customdata=_sb_custom,
-            marker=dict(colors=_sb_colors, line=dict(width=1.5, color="white")),
-            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{percentRoot:.1%}<extra></extra>",
-            textinfo="label",
-            insidetextorientation="horizontal",
+        _fig_bar = go.Figure(go.Bar(
+            x=_ph_sorted["평가금액"],
+            y=[f"[{r['카테고리']}] {r['종목명']}" for _, r in _ph_sorted.iterrows()],
+            orientation="h",
+            marker=dict(color=_bar_colors, line=dict(width=0.5, color="white")),
+            text=[f"{p:+.1f}%  ({w:.1f}%)" for p, w in zip(_ph_sorted["수익률(%)"], _bar_pct)],
+            textposition="inside",
+            insidetextanchor="start",
+            textfont=dict(color="white", size=11),
+            customdata=list(zip(_ph_sorted["종목명"], _ph_sorted["수익률(%)"], _ph_sorted["평가금액"])),
+            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<extra></extra>",
         ))
-        _fig_sb.update_layout(
-            height=480,
-            margin=dict(t=10, b=10, l=10, r=10),
+        _fig_bar.update_layout(
+            height=max(300, len(_ph_sorted) * 34 + 40),
+            margin=dict(t=10, b=10, l=5, r=10),
+            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+            yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
             paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(_fig_sb, use_container_width=True)
-
-        # 종목 테이블 (카테고리별 정렬, 평가금액 내림차순)
-        _ph_view["카테고리"] = _ph_view["ticker"].apply(
-            lambda t: "코인" if "-USD" in t else ("코어 ETF" if t in _core_upper else "개별주")
-        )
-        _ph_tbl = _ph_view[["카테고리", "종목명", "ticker", "평가금액", "수익률(%)"]].copy()
-        _ph_tbl = _ph_tbl.sort_values(["카테고리", "평가금액"], ascending=[True, False])
-        st.dataframe(
-            _ph_tbl, hide_index=True, use_container_width=True,
-            column_config={
-                "카테고리":  st.column_config.TextColumn("카테고리"),
-                "종목명":    st.column_config.TextColumn("종목명"),
-                "ticker":    st.column_config.TextColumn("티커"),
-                "평가금액":  st.column_config.NumberColumn("평가금액", format="%,.0f"),
-                "수익률(%)": st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
-            },
-        )
+        st.plotly_chart(_fig_bar, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
