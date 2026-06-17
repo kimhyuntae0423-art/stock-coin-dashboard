@@ -822,6 +822,19 @@ for _, row in view.iterrows():
                         x=sig_df["date"], y=sig_df[ma_col], name=ma_name,
                         line=dict(color=ma_color, width=1), opacity=0.75))
 
+            # BB 밴드 오버레이 — 상단 먼저, 하단에 fill="tonexty"
+            fig_detail.add_trace(go.Scatter(
+                x=sig_df["date"], y=_bb_upper_line,
+                name="BB 상단(2σ)",
+                line=dict(color="rgba(120,120,200,0.55)", width=1, dash="dot"),
+                showlegend=True))
+            fig_detail.add_trace(go.Scatter(
+                x=sig_df["date"], y=_bb_lower_line,
+                name="BB 하단(2σ)",
+                line=dict(color="rgba(120,120,200,0.55)", width=1, dash="dot"),
+                fill="tonexty", fillcolor="rgba(120,120,200,0.05)",
+                showlegend=True))
+
             fig_detail.add_hline(
                 y=buy_line, line_dash="dash", line_color="#E377C2",
                 annotation_text=f"내 매수가 {buy_line:,.0f}",
