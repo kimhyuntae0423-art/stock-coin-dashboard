@@ -819,6 +819,15 @@ for _, row in view.iterrows():
             sig_df["date"] = pd.to_datetime(sig_df["date"])
             sig_df = sig_df.dropna(subset=["close"]).tail(365)
 
+            # 데이터 오래됨 경고
+            _data_age = (pd.Timestamp.now() - sig_df["date"].iloc[-1]).days
+            if _data_age > 30:
+                st.warning(
+                    f"⚠️ 데이터 갱신 중단 — 마지막 업데이트: "
+                    f"{sig_df['date'].iloc[-1].strftime('%Y년 %m월 %d일')} "
+                    f"({_data_age}일 전). 차트·지표가 현재 시세와 크게 다를 수 있습니다."
+                )
+
             if is_coin:
                 for _c in ["close", "ma50", "ma200"]:
                     if _c in sig_df.columns:
