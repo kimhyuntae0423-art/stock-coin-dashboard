@@ -1067,14 +1067,20 @@ for _, row in view.iterrows():
             # BB %B — ETF 제외
             if not is_etf and _pct_b_now is not None:
                 if _pct_b_now > 1.0:
-                    bb_tag = "🔴 상단 이탈" + (" — 알트 매도 신호" if is_coin else "")
-                    bb_dc = "inverse"
+                    if is_btc:
+                        bb_tag, bb_dc = "🟢 상단 이탈 — BTC 모멘텀 확인 신호", "normal"
+                    elif is_alt:
+                        bb_tag, bb_dc = "🔴 상단 이탈 — 알트 매도 신호", "inverse"
+                    else:
+                        bb_tag, bb_dc = "🔴 상단 이탈 — 단기 과열", "inverse"
                 elif _pct_b_now > 0.8:
                     bb_tag = "🟠 상단 근접 — 단기 비쌈"
                     bb_dc = "inverse"
                 elif _pct_b_now < 0.0:
-                    bb_tag = "🔵 하단 이탈 — 반등 후보"
-                    bb_dc = "normal"
+                    if is_btc:
+                        bb_tag, bb_dc = "🟠 하단 이탈 — BTC 약세 구간 주의", "inverse"
+                    else:
+                        bb_tag, bb_dc = "🔵 하단 이탈 — 반등 후보", "normal"
                 elif _pct_b_now < 0.2:
                     bb_tag = "🟡 하단 근접 — 저렴 구간"
                     bb_dc = "normal"
@@ -1083,13 +1089,19 @@ for _, row in view.iterrows():
                     bb_dc = "off"
                 _pb_display = (f"{_pct_b_now:.0%}" if 0.0 <= _pct_b_now <= 1.0
                                else f"{_pct_b_now:+.2f}")
+                _bb_help = (
+                    "BTC는 상단 이탈 시 모멘텀 지속 경향 (백테스트 +23%, 81%). 하단 이탈은 약세 주의."
+                    if is_btc else
+                    "알트코인은 상단 이탈 시 평균 -11.7% (백테스트). 하단 이탈 반등 확률 57%."
+                    if is_alt else
+                    "0%=밴드 바닥, 100%=밴드 천장. 0% 미만=하단 이탈, 100% 초과=상단 이탈."
+                )
                 ind4.metric(
                     "가격 위치 (BB %B)",
                     _pb_display,
                     delta=bb_tag,
                     delta_color=bb_dc,
-                    help="볼린저밴드(2σ) 안에서 현재 가격 위치. 0%=밴드 바닥, 100%=밴드 천장. "
-                         "0% 미만=하단 이탈(반등 후보 57%), 100% 초과=상단 이탈(알트 -11.7% 백테스트).",
+                    help=_bb_help,
                 )
 
         # ── 통합 분석 리포트 ────────────────────────────────────────
