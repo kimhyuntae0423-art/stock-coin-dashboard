@@ -473,66 +473,39 @@ if not holdings.empty:
             {"코어 ETF": "🏛️ 코어", "개별주": "🎯 위성", "코인": "🎯 위성"}
         )
         _ph_total = _ph_view["평가금액"].sum()
+        _ph_sorted = _ph_view.sort_values("평가금액", ascending=False)
 
-        _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
+        # 범례 라벨: [코어 ETF] 종목명  or  [개별주] 종목명  or  [코인] 종목명
+        _pie_labels = [
+            f"[{r['카테고리']}] {r['종목명']}  {r['수익률(%)']:+.1f}%"
+            for _, r in _ph_sorted.iterrows()
+        ]
+        _pie_custom = [
+            [r["종목명"], r["수익률(%)"], r["평가금액"], r["평가금액"]/_ph_total*100, r["카테고리"]]
+            for _, r in _ph_sorted.iterrows()
+        ]
 
-        def _pnl_hex(pnl, clim):
-            # 감마 보정(0.55): 작은 손익도 색이 빠르게 채워짐 — Finviz 스타일
-            t = min(1.0, abs(pnl) / clim) ** 0.55
-            if pnl >= 0:
-                r = int(156*(1-t) + 22*t)
-                g = int(163*(1-t) + 163*t)
-                b = int(175*(1-t) + 74*t)
-            else:
-                r = int(156*(1-t) + 220*t)
-                g = int(163*(1-t) + 38*t)
-                b = int(175*(1-t) + 38*t)
-            return f"rgb({r},{g},{b})"
-
-        # 플랫 트리맵 — 부모 노드 없이 모든 종목이 루트에 위치 → 빈 공간 없음
-        # 코어를 맨 앞에 배치해서 시각적으로 왼쪽에 모이도록
-        _tm_ids, _tm_labels, _tm_parents, _tm_values, _tm_colors, _tm_custom = [], [], [], [], [], []
-
-        _ph_flat = pd.concat([
-            _ph_view[_ph_view["버킷"] == "🏛️ 코어"].sort_values("평가금액", ascending=False),
-            _ph_view[_ph_view["버킷"] == "🎯 위성"].sort_values("평가금액", ascending=False),
-        ])
-
-        for _, row in _ph_flat.iterrows():
-            _t   = row["ticker"]
-            _nm  = row["종목명"]
-            _val = float(row["평가금액"])
-            _pnl = float(row["수익률(%)"])
-            _wt  = _val / _ph_total * 100
-            _tag = "🏛️" if row["버킷"] == "🏛️ 코어" else "🎯"
-            _tm_ids.append(_t)
-            _tm_labels.append(f"{_tag} {_nm}<br>{_pnl:+.1f}%")
-            _tm_parents.append("")
-            _tm_values.append(_val)
-            _tm_colors.append(_pnl_hex(_pnl, _pnl_max))
-            _tm_custom.append([_nm, _pnl, _val, _wt, row["버킷"]])
-
-        _fig_tm = go.Figure(go.Treemap(
-            ids=_tm_ids, labels=_tm_labels, parents=_tm_parents,
-            values=_tm_values,
-            customdata=_tm_custom,
-            marker=dict(
-                colors=_tm_colors,
-                line=dict(width=2, color="white"),
-                pad=dict(t=4, l=4, r=4, b=4),
-            ),
-            texttemplate="%{label}",
-            textfont=dict(color="white", size=13),
+        _fig_pie = go.Figure(go.Pie(
+            labels=_pie_labels,
+            values=_ph_sorted["평가금액"],
+            customdata=_pie_custom,
+            hole=0.42,
             hovertemplate="<b>%{customdata[0]}</b><br>카테고리: %{customdata[4]}<br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
+            textinfo="none",
+            showlegend=True,
         ))
-        _fig_tm.update_layout(
-            height=480,
+        _fig_pie.update_layout(
+            height=500,
             margin=dict(t=10, b=10, l=10, r=10),
-            uniformtext=dict(minsize=9, mode="hide"),
+            legend=dict(
+                font=dict(size=11),
+                x=1.01, y=0.5,
+                xanchor="left", yanchor="middle",
+                tracegroupgap=0,
+            ),
             paper_bgcolor="rgba(0,0,0,0)",
         )
-        st.caption("🔴 손실 &nbsp;&nbsp; ⬛ 중립 &nbsp;&nbsp; 🟢 수익 &nbsp;|&nbsp; 크기 = 평가금액 비중")
-        st.plotly_chart(_fig_tm, use_container_width=True)
+        st.plotly_chart(_fig_pie, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
