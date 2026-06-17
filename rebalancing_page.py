@@ -1,4 +1,4 @@
-"""리밸런싱 페이지 — Core-Satellite 자산배분 + 추천 포트폴리오."""
+"""리밸런싱 페이지 — 코어-위성 자산배분 + 추천 포트폴리오."""
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -55,7 +55,7 @@ NAMES = _load_names()
 # 공통 데이터 로드
 # =====================================================================
 st.title("⚖️ 리밸런싱")
-st.caption("Core-Satellite 자산배분 추적 · 추천 분산 포트폴리오.")
+st.caption("코어-위성 자산배분 추적 · 추천 분산 포트폴리오.")
 
 holdings = _load_holdings()
 
@@ -411,16 +411,16 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 
-# ── Core-Satellite 배분 추적 & 신규자금 리밸런싱 ─────────────────
-st.subheader("🏛️ Core-Satellite 배분 추적 & 신규자금 리밸런싱")
+# ── 코어-위성 배분 추적 & 신규자금 리밸런싱 ─────────────────────
+st.subheader("🏛️ 코어-위성 배분 추적 & 신규자금 리밸런싱")
 
 ic1, ic2, ic3, ic4, ic5 = st.columns(5)
 with ic1:
-    target_core = st.number_input("🏛️ Core 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
+    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
 with ic2:
-    target_satellite = st.number_input("🎯 Satellite 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
+    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
 with ic3:
-    target_cash = st.number_input("💵 Cash 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
+    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
 with ic4:
     cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
                                   help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
@@ -432,11 +432,11 @@ if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
 
 aa1, aa2, aa3, aa4 = st.columns(4)
-aa1.metric("🏛️ Core", f"{alloc['Core_pct']:.1f}%",
+aa1.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
            delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-aa2.metric("🎯 Satellite", f"{alloc['Satellite_pct']:.1f}%",
+aa2.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
            delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-aa3.metric("💵 Cash", f"{alloc['Cash_pct']:.1f}%",
+aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
            delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
@@ -473,19 +473,19 @@ if new_money > 0 and alloc["Total"] > 0:
         cash_res = new_money
 
     mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("🏛️ Core 매수", f"{core_buy:,.0f}원")
-    mc2.metric("🎯 Satellite 매수", f"{sat_buy:,.0f}원")
+    mc1.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
+    mc2.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
     mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
 
     new_core_pct = (alloc["Core_value"] + core_buy) / total_after * 100
     new_sat_pct  = (alloc["Satellite_value"] + sat_buy) / total_after * 100
     new_cash_pct = (cash_amount + cash_res) / total_after * 100
     st.caption(
-        f"매수 후 예상 배분: Core **{new_core_pct:.1f}%** / Satellite **{new_sat_pct:.1f}%** / Cash **{new_cash_pct:.1f}%** "
+        f"매수 후 예상 배분: 코어 **{new_core_pct:.1f}%** / 위성 **{new_sat_pct:.1f}%** / 현금 **{new_cash_pct:.1f}%** "
         f"(목표: {target_core}% / {target_satellite}% / {target_cash}%)"
     )
 
-    with st.expander("🏛️ Core ETF 매수 후보"):
+    with st.expander("🏛️ 코어 ETF 매수 후보"):
         _price_map_c = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
         _core_show = core_etfs.copy()
         _core_show["현재가"] = _core_show["ticker"].astype(str).str.upper().map(_price_map_c)
@@ -505,9 +505,15 @@ if new_money > 0 and alloc["Total"] > 0:
                 },
             )
         else:
-            st.info("Core 배분 없음 또는 현재가 데이터 없음.")
+            st.info("코어 배분 없음 또는 현재가 데이터 없음.")
+        st.caption("전체 목록")
+        st.dataframe(
+            core_etfs[["ticker", "name", "category", "asset_class", "expense_ratio", "currency", "notes"]],
+            hide_index=True, use_container_width=True,
+            column_config={"expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f")},
+        )
 
-    with st.expander("🎯 Satellite 매수 후보"):
+    with st.expander("🎯 위성 매수 후보"):
         if sat_buy > 0:
             _STOCK_THRESHOLD = 1.5
             _sat_stocks = pd.DataFrame()
@@ -554,17 +560,11 @@ if new_money > 0 and alloc["Total"] > 0:
                 else:
                     st.info("섹터/테마 ETF 데이터 없음.")
         else:
-            st.info("Satellite 배분이 없습니다.")
+            st.info("위성 배분이 없습니다.")
 
 elif new_money > 0:
     st.info("현재 보유 포트폴리오가 없습니다. 보유종목 페이지에서 먼저 종목을 추가하세요.")
 
-with st.expander("📋 Core ETF 전체 목록"):
-    st.dataframe(
-        core_etfs[["ticker", "name", "category", "asset_class", "expense_ratio", "currency", "notes"]],
-        hide_index=True, use_container_width=True,
-        column_config={"expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f")},
-    )
 
 st.divider()
 
