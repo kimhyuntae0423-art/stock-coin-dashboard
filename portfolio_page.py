@@ -896,33 +896,48 @@ for _, row in view.iterrows():
                         delta_color="normal" if mh > 0 else "inverse",
                         help="양수(+)면 현재 오르는 속도가 빨라지고 있다는 뜻, 음수(-)면 내리는 속도가 빨라지고 있다는 뜻.",
                     )
+            elif _bw_now is not None:
+                # MACD 없을 때(코인 등) — BB 밴드폭(스퀴즈) 표시
+                if _bw_squeeze:
+                    bw_tag, bw_dc = "🔔 스퀴즈 — 큰 움직임 전조", "off"
+                else:
+                    bw_tag, bw_dc = "변동성 정상", "off"
+                ind3.metric(
+                    "변동성 (BB 밴드폭)",
+                    f"{_bw_now:.1%}",
+                    delta=bw_tag,
+                    delta_color=bw_dc,
+                    help="볼린저밴드 폭이 좁아지면 '스퀴즈' — 곧 큰 움직임(상승 또는 하락) 가능. 방향은 알 수 없음. "
+                         "백테스트: 스퀴즈 후 90일 ENS +20%, BTC +16%.",
+                )
 
-            if "bb_pct" in cols:
-                bb = latest.get("bb_pct")
-                if pd.notna(bb):
-                    if bb > 0.8:
-                        bb_tag, bb_desc = "상단 근접 — 단기 비쌈", "inverse"
-                    elif bb < 0.2:
-                        bb_tag, bb_desc = "하단 근접 — 단기 저렴", "normal"
-                    else:
-                        bb_tag, bb_desc = "중간 구간 — 보통 수준", "off"
-                    ind4.metric(
-                        "가격 위치 (볼린저밴드)",
-                        f"{bb:.0%}",
-                        delta=bb_tag,
-                        delta_color=bb_desc,
-                        help="최근 가격 변동 범위 안에서 지금 가격이 어디 있는지. 0%=밴드 바닥(저렴), 100%=밴드 천장(비쌈), 50%=중간.",
-                    )
-            elif "momentum20" in cols:
-                mom = latest.get("momentum20")
-                if pd.notna(mom):
-                    ind4.metric(
-                        "20일 상승률",
-                        f"{mom:+.1%}",
-                        delta="오르는 중" if mom > 0 else "내리는 중",
-                        delta_color="normal" if mom > 0 else "inverse",
-                        help="최근 20일 동안 가격이 얼마나 올랐는지(양수) 또는 내렸는지(음수).",
-                    )
+            # BB %B — 항상 직접 계산 (bb_pct 컬럼 불필요)
+            if _pct_b_now is not None:
+                if _pct_b_now > 1.0:
+                    bb_tag = "🔴 상단 이탈 — 알트 매도 신호"
+                    bb_dc = "inverse"
+                elif _pct_b_now > 0.8:
+                    bb_tag = "🟠 상단 근접 — 단기 비쌈"
+                    bb_dc = "inverse"
+                elif _pct_b_now < 0.0:
+                    bb_tag = "🔵 하단 이탈 — 반등 후보"
+                    bb_dc = "normal"
+                elif _pct_b_now < 0.2:
+                    bb_tag = "🟡 하단 근접 — 저렴 구간"
+                    bb_dc = "normal"
+                else:
+                    bb_tag = "중간 구간"
+                    bb_dc = "off"
+                _pb_display = (f"{_pct_b_now:.0%}" if 0.0 <= _pct_b_now <= 1.0
+                               else f"{_pct_b_now:+.2f}")
+                ind4.metric(
+                    "가격 위치 (BB %B)",
+                    _pb_display,
+                    delta=bb_tag,
+                    delta_color=bb_dc,
+                    help="볼린저밴드(2σ) 안에서 현재 가격 위치. 0%=밴드 바닥, 100%=밴드 천장. "
+                         "0% 미만=하단 이탈(반등 후보 57%), 100% 초과=상단 이탈(알트 -11.7% 백테스트).",
+                )
 
         # ── 현재 신호 사유 ─────────────────────────────────────────
         st.info(f"**지금 이 신호가 뜬 이유**: {row['사유']}")
