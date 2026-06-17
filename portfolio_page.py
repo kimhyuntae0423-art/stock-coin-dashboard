@@ -755,14 +755,16 @@ if total_value > 0:
     )
     st.plotly_chart(fig_pie, use_container_width=True)
 
+# 캡션 — _SIGNAL_DISPLAY caption 필드에서 자동 생성
+_caption_parts = [
+    f"{_sd['emoji']} {_sd['caption']}"
+    for _sd in _SIGNAL_DISPLAY if _sd.get("caption")
+]
 st.caption(
-    "**신호 기준 (자산유형별)**: "
-    "📈 개별주 — -20% 이상 손실 시 🔴 매도 검토 (-20%+Q1은 🟠 신호 충돌), 모멘텀 Q1 시 🟢 | "
+    "**신호 기준**: " + " · ".join(_caption_parts) + " | "
     "📦 ETF — 손실 신호 없음, 리밸런싱으로 관리 | "
-    "🪙 BTC — MVRV Z-Score 구간 기반 (0/1.5/2.5, 백테스트 검증) | "
-    "🪙 알트 — BB(%B) 복합 신호: 🔴 상단이탈(%B>1+RSI>70, -11.7% 백테스트) · "
-    "🟠 추세반전경보(bull+%B<0.2, -18.2% 백테스트) · "
-    "🔵 반등후보(%B<0+RSI<30, +21.4% 백테스트) · 손실 -20%/-40% 기준 유지. "
+    "🪙 BTC — MVRV Z-Score 구간 기반 (0/1.5/2.5) | "
+    "🪙 알트 — BB(%B) 복합 신호 (범례 참고). "
     "골든크로스(50.8%)·RSI70+(45%)는 주신호 제외."
 )
 
