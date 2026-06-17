@@ -469,44 +469,65 @@ if not holdings.empty:
         _ph_view["카테고리"] = _ph_view["ticker"].apply(
             lambda t: "코인" if "-USD" in t else ("코어 ETF" if t in _core_upper else "개별주")
         )
-        _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
+        _ph_view["버킷"] = _ph_view["카테고리"].map(
+            {"코어 ETF": "🏛️ 코어", "개별주": "🎯 위성", "코인": "🎯 위성"}
+        )
+        _ph_total = _ph_view["평가금액"].sum()
 
-        def _pnl_to_color(pnl, clim):
-            t = max(0.0, min(1.0, (pnl + clim) / (2 * clim)))
-            return f"rgb({int(220*(1-t)+22*t)},{int(38*(1-t)+163*t)},{int(38*(1-t)+74*t)})"
-
-        # 카테고리별 정렬 후 평가금액 내림차순
+        # 코어 내림차순, 위성(개별주→코인) 내림차순
         _cat_order = {"코어 ETF": 0, "개별주": 1, "코인": 2}
-        _ph_sorted = _ph_view.copy()
-        _ph_sorted["_co"] = _ph_sorted["카테고리"].map(_cat_order)
-        _ph_sorted = _ph_sorted.sort_values(["_co", "평가금액"], ascending=[True, False])
+        _ph_view["_co"] = _ph_view["카테고리"].map(_cat_order)
+        _ph_sorted = _ph_view.sort_values(["_co", "평가금액"], ascending=[True, False])
 
-        _bar_colors = [_pnl_to_color(p, _pnl_max) for p in _ph_sorted["수익률(%)"]]
-        _bar_labels = [f"{nm}  {p:+.1f}%" for nm, p in zip(_ph_sorted["종목명"], _ph_sorted["수익률(%)"])]
-        _bar_total  = _ph_sorted["평가금액"].sum()
-        _bar_pct    = [v / _bar_total * 100 for v in _ph_sorted["평가금액"]]
+        # 종목마다 고유 색상 (plotly 팔레트)
+        _palette = [
+            "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
+            "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
+            "#54a24b","#88d27a","#b79a20","#439894","#83bcb6",
+        ]
 
-        _fig_bar = go.Figure(go.Bar(
-            x=_ph_sorted["평가금액"],
-            y=[f"[{r['카테고리']}] {r['종목명']}" for _, r in _ph_sorted.iterrows()],
-            orientation="h",
-            marker=dict(color=_bar_colors, line=dict(width=0.5, color="white")),
-            text=[f"{p:+.1f}%  ({w:.1f}%)" for p, w in zip(_ph_sorted["수익률(%)"], _bar_pct)],
-            textposition="inside",
-            insidetextanchor="start",
-            textfont=dict(color="white", size=11),
-            customdata=list(zip(_ph_sorted["종목명"], _ph_sorted["수익률(%)"], _ph_sorted["평가금액"])),
-            hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<extra></extra>",
-        ))
-        _fig_bar.update_layout(
-            height=max(300, len(_ph_sorted) * 34 + 40),
-            margin=dict(t=10, b=10, l=5, r=10),
+        _y_rows = ["🏛️ 코어", "🎯 위성"]
+        _fig_stack = go.Figure()
+
+        for i, (_, row) in enumerate(_ph_sorted.iterrows()):
+            _nm  = row["종목명"]
+            _pnl = row["수익률(%)"]
+            _val = row["평가금액"]
+            _wt  = _val / _ph_total * 100
+            _bkt = row["버킷"]
+            _col = _palette[i % len(_palette)]
+
+            _fig_stack.add_trace(go.Bar(
+                name=f"{_nm}  {_pnl:+.1f}%",
+                y=_y_rows,
+                x=[_val if _bkt == "🏛️ 코어" else 0,
+                   0   if _bkt == "🏛️ 코어" else _val],
+                orientation="h",
+                marker=dict(color=_col, line=dict(width=1, color="white")),
+                text=["" if (_bkt == "🎯 위성") else f"{_nm}<br>{_pnl:+.1f}%",
+                      "" if (_bkt == "🏛️ 코어") else f"{_nm}<br>{_pnl:+.1f}%"],
+                textposition="inside",
+                insidetextanchor="middle",
+                textfont=dict(size=10, color="white"),
+                customdata=[[_nm, _pnl, _val, _wt]] * 2,
+                hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
+                showlegend=True,
+            ))
+
+        _fig_stack.update_layout(
+            barmode="stack",
+            height=220,
+            margin=dict(t=10, b=10, l=10, r=10),
             xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-            yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
+            yaxis=dict(tickfont=dict(size=13, color="#374151")),
+            legend=dict(
+                orientation="h", x=0, y=-0.15,
+                font=dict(size=10), traceorder="normal",
+            ),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(_fig_bar, use_container_width=True)
+        st.plotly_chart(_fig_stack, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if actions_alloc:
