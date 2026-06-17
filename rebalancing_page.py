@@ -508,6 +508,20 @@ if not holdings.empty:
         )
         st.plotly_chart(_fig_pie, use_container_width=True)
 
+        _tbl = _ph_sorted[["카테고리", "종목명", "ticker", "평가금액", "수익률(%)"]].copy()
+        _tbl["비중(%)"] = _ph_sorted["평가금액"] / _ph_total * 100
+        st.dataframe(
+            _tbl, hide_index=True, use_container_width=True,
+            column_config={
+                "카테고리":  st.column_config.TextColumn("카테고리"),
+                "종목명":    st.column_config.TextColumn("종목명"),
+                "ticker":    st.column_config.TextColumn("티커"),
+                "평가금액":  st.column_config.NumberColumn("평가금액", format="%,.0f"),
+                "수익률(%)": st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
+                "비중(%)":   st.column_config.NumberColumn("비중(%)", format="%.1f"),
+            },
+        )
+
 _bkt_name = {"Core": "🏛️ 코어", "Satellite": "🎯 위성", "Cash": "💵 현금"}
 _bkt_cur  = {"Core": alloc["Core_value"], "Satellite": alloc["Satellite_value"], "Cash": alloc["Cash_value"]}
 _detail_rows = []
