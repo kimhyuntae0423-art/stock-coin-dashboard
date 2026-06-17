@@ -624,51 +624,65 @@ st.divider()
 
 # ── 적립 & 리밸런싱 시뮬레이션 ──────────────────────────────────
 st.subheader("📈 적립 시뮬레이션")
-st.caption("현재 포트폴리오에서 매월 적립·리밸런싱했을 때 자산 성장 추이. 확정 수익률 모형(세금·보수 미반영).")
+st.caption("강제 매도 없이 신규 자금 배분만으로 목표 비중에 점진적으로 수렴하는 경로를 보여줍니다. 확정 수익률 모형(세금·보수 미반영).")
 
-_sc1, _sc2, _sc3, _sc4, _sc5 = st.columns(5)
+_sc1, _sc2, _sc3, _sc4 = st.columns(4)
 with _sc1:
     _sim_monthly = st.number_input("월 적립액 (원)", min_value=0, value=1_000_000,
                                    step=100_000, key="sim_monthly")
 with _sc2:
-    _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=10, key="sim_years")
+    _sim_years = st.slider("기간 (년)", min_value=1, max_value=30, value=15, key="sim_years")
 with _sc3:
     _sim_r_core = st.slider("코어 연수익률 (%)", min_value=0, max_value=15, value=8, key="sim_r_core")
 with _sc4:
-    _sim_r_sat = st.slider("위성 연수익률 (%)", min_value=0, max_value=20, value=10, key="sim_r_sat")
-with _sc5:
-    _sim_freq = st.selectbox("리밸런싱 주기", ["매월", "분기", "반기", "매년"], index=3, key="sim_freq")
+    _sim_r_sat = st.slider("위성 연수익률 (%)", min_value=-10, max_value=20, value=5, key="sim_r_sat")
 
-_freq_map   = {"매월": 1, "분기": 3, "반기": 6, "매년": 12}
-_sim_freq_m = _freq_map[_sim_freq]
+_sc5, _sc6 = st.columns(2)
+with _sc5:
+    _contrib_core_pct = st.slider(
+        "신규 자금 → 코어 비중 (%)",
+        min_value=0, max_value=100, value=100, step=5, key="sim_contrib_core",
+        help="100%이면 월 적립액 전액을 코어(S&P ETF)에만 넣습니다. 위성을 강제 매도하지 않고 신규 자금으로만 비중을 조정합니다.",
+    )
+with _sc6:
+    _sim_freq = st.selectbox(
+        "강제 리밸런싱 주기",
+        ["없음 (매도 안 함)", "반기", "매년"], index=0, key="sim_freq",
+        help="'없음' 선택 시 신규 자금 배분만으로 비중을 조정합니다. 위성 손실 구간에서는 '없음'을 권장합니다.",
+    )
+
+_freq_map        = {"없음 (매도 안 함)": 0, "반기": 6, "매년": 12}
+_sim_freq_m      = _freq_map[_sim_freq]
+_contrib_sat_pct = 100 - _contrib_core_pct
 
 _sv_core       = float(alloc["Core_value"])
 _sv_sat        = float(alloc["Satellite_value"])
 _sv_cash       = float(cash_amount)
 _r_c_m         = _sim_r_core / 100 / 12
 _r_s_m         = _sim_r_sat  / 100 / 12
-_r_x_m         = 0.02 / 12          # 현금 2% 고정
+_r_x_m         = 0.02 / 12
 _months_total  = _sim_years * 12
 _initial_total = _sv_core + _sv_sat + _sv_cash
 
 _xs, _cores, _sats, _cashs = [], [], [], []
+_core_target_month = None  # 코어가 목표 비중 도달하는 시점
+
 for _m in range(_months_total + 1):
+    _tot = _sv_core + _sv_sat + _sv_cash
     _xs.append(_m / 12)
     _cores.append(_sv_core)
     _sats.append(_sv_sat)
     _cashs.append(_sv_cash)
+    if _core_target_month is None and _tot > 0 and (_sv_core / _tot * 100) >= target_core:
+        _core_target_month = _m / 12
     if _m == _months_total:
         break
-    # 성장
     _sv_core *= (1 + _r_c_m)
     _sv_sat  *= (1 + _r_s_m)
     _sv_cash *= (1 + _r_x_m)
-    # 적립
-    _sv_core += _sim_monthly * target_core      / 100
-    _sv_sat  += _sim_monthly * target_satellite / 100
-    _sv_cash += _sim_monthly * target_cash      / 100
-    # 리밸런싱
-    if (_m + 1) % _sim_freq_m == 0:
+    _sv_core += _sim_monthly * _contrib_core_pct / 100
+    _sv_sat  += _sim_monthly * _contrib_sat_pct  / 100
+    if _sim_freq_m > 0 and (_m + 1) % _sim_freq_m == 0:
         _st = _sv_core + _sv_sat + _sv_cash
         _sv_core = _st * target_core      / 100
         _sv_sat  = _st * target_satellite / 100
@@ -677,40 +691,83 @@ for _m in range(_months_total + 1):
 _final_total    = _sv_core + _sv_sat + _sv_cash
 _invested_total = _initial_total + _sim_monthly * _months_total
 _invested_line  = [_initial_total + _sim_monthly * _m for _m in range(_months_total + 1)]
+_totals         = [c + s + x for c, s, x in zip(_cores, _sats, _cashs)]
+_core_pcts      = [c / t * 100 if t > 0 else 0 for c, t in zip(_cores, _totals)]
+_sat_pcts       = [s / t * 100 if t > 0 else 0 for s, t in zip(_sats,  _totals)]
+_cash_pcts      = [x / t * 100 if t > 0 else 0 for x, t in zip(_cashs, _totals)]
 
-_fig_sim = go.Figure()
-_fig_sim.add_trace(go.Scatter(
-    x=_xs, y=_cashs, name="현금",
-    stackgroup="one", fillcolor="rgba(34,197,94,0.45)",
-    line=dict(width=0), mode="none",
-))
-_fig_sim.add_trace(go.Scatter(
-    x=_xs, y=_sats, name="위성",
-    stackgroup="one", fillcolor="rgba(249,115,22,0.45)",
-    line=dict(width=0), mode="none",
-))
-_fig_sim.add_trace(go.Scatter(
-    x=_xs, y=_cores, name="코어",
-    stackgroup="one", fillcolor="rgba(59,130,246,0.45)",
-    line=dict(width=0), mode="none",
-))
-_fig_sim.add_trace(go.Scatter(
-    x=_xs, y=_invested_line, name="누적 원금",
-    line=dict(color="#94a3b8", width=2, dash="dash"),
-    mode="lines",
-))
-_fig_sim.update_layout(
-    height=420,
-    margin=dict(t=20, b=20, l=10, r=10),
-    xaxis=dict(title="년", showgrid=True, gridcolor="rgba(0,0,0,0.06)", dtick=1),
-    yaxis=dict(title="자산 (원)", tickformat=",d", showgrid=True,
-               gridcolor="rgba(0,0,0,0.06)"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    hovermode="x unified",
-)
-st.plotly_chart(_fig_sim, use_container_width=True)
+_tab1, _tab2 = st.tabs(["💰 자산 가치", "📊 비중 변화"])
+
+with _tab1:
+    _fig_val = go.Figure()
+    _fig_val.add_trace(go.Scatter(
+        x=_xs, y=_cashs, name="현금",
+        stackgroup="one", fillcolor="rgba(34,197,94,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    _fig_val.add_trace(go.Scatter(
+        x=_xs, y=_sats, name="위성",
+        stackgroup="one", fillcolor="rgba(249,115,22,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    _fig_val.add_trace(go.Scatter(
+        x=_xs, y=_cores, name="코어",
+        stackgroup="one", fillcolor="rgba(59,130,246,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    _fig_val.add_trace(go.Scatter(
+        x=_xs, y=_invested_line, name="누적 원금",
+        line=dict(color="#94a3b8", width=2, dash="dash"), mode="lines",
+    ))
+    _fig_val.update_layout(
+        height=380, margin=dict(t=20, b=20, l=10, r=10),
+        xaxis=dict(title="년", showgrid=True, gridcolor="rgba(0,0,0,0.06)", dtick=1),
+        yaxis=dict(title="자산 (원)", tickformat=",d", showgrid=True, gridcolor="rgba(0,0,0,0.06)"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
+    )
+    st.plotly_chart(_fig_val, use_container_width=True)
+
+with _tab2:
+    _fig_pct = go.Figure()
+    _fig_pct.add_trace(go.Scatter(
+        x=_xs, y=_cash_pcts, name="현금",
+        stackgroup="one", fillcolor="rgba(34,197,94,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    _fig_pct.add_trace(go.Scatter(
+        x=_xs, y=_sat_pcts, name="위성",
+        stackgroup="one", fillcolor="rgba(249,115,22,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    _fig_pct.add_trace(go.Scatter(
+        x=_xs, y=_core_pcts, name="코어",
+        stackgroup="one", fillcolor="rgba(59,130,246,0.45)",
+        line=dict(width=0), mode="none",
+    ))
+    # 목표 비중 점선
+    _fig_pct.add_hline(y=target_core, line_dash="dot", line_color="#3b82f6", line_width=1.5,
+                       annotation_text=f"코어 목표 {target_core}%", annotation_position="right")
+    _fig_pct.add_hline(y=100 - target_core, line_dash="dot", line_color="#f97316", line_width=1,
+                       annotation_text=f"위성+현금 목표 {100 - target_core}%", annotation_position="right")
+    # 목표 도달 세로선
+    if _core_target_month is not None:
+        _fig_pct.add_vline(x=_core_target_month, line_dash="dash", line_color="#3b82f6", line_width=1.5,
+                           annotation_text=f"코어 목표 도달\n{_core_target_month:.1f}년", annotation_position="top left")
+    _fig_pct.update_layout(
+        height=380, margin=dict(t=20, b=20, l=10, r=10),
+        xaxis=dict(title="년", showgrid=True, gridcolor="rgba(0,0,0,0.06)", dtick=1),
+        yaxis=dict(title="비중 (%)", range=[0, 100], showgrid=True, gridcolor="rgba(0,0,0,0.06)"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
+    )
+    st.plotly_chart(_fig_pct, use_container_width=True)
+    if _core_target_month is not None:
+        st.success(f"✅ 현재 설정대로면 약 **{_core_target_month:.1f}년** 후 코어 비중이 목표({target_core}%)에 도달합니다. (강제 매도 없음)")
+    else:
+        st.warning(f"⚠️ {_sim_years}년 내에 코어 목표 비중({target_core}%)에 도달하지 못합니다. 기간을 늘리거나 월 적립액을 높여보세요.")
 
 _multiple = _final_total / _invested_total if _invested_total > 0 else 0
 _net_gain = _final_total - _invested_total
