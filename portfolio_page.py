@@ -1079,8 +1079,100 @@ for _, row in view.iterrows():
                          "0% 미만=하단 이탈(반등 후보 57%), 100% 초과=상단 이탈(알트 -11.7% 백테스트).",
                 )
 
-        # ── 현재 신호 사유 ─────────────────────────────────────────
-        st.info(f"**지금 이 신호가 뜬 이유**: {row['사유']}")
+        # ── 통합 분석 리포트 ────────────────────────────────────────
+        st.markdown("---")
+        _rpt_updated = _rpt.get("updated", "") if _rpt else ""
+        _title_suffix = f"리서치 {_rpt_updated} + 실시간 기술 지표" if _rpt_updated else "실시간 기술 지표"
+        st.markdown(f"**📊 종합 분석 리포트** · {_title_suffix}")
+
+        if _rpt and _rpt.get("summary"):
+            st.markdown(
+                f"<div style='background:#f1f5f9;border-radius:6px;padding:10px 14px;"
+                f"font-size:0.92em;margin-bottom:8px;color:#334155'>"
+                f"💬 {_rpt['summary']}</div>",
+                unsafe_allow_html=True,
+            )
+
+        _bull_items: list[tuple[str, str]] = []
+        _bear_items: list[tuple[str, str]] = []
+
+        if _rpt and _rpt.get("bull"):
+            _bull_items.append(("📝", _rpt["bull"]))
+        if _rpt and _rpt.get("bear"):
+            _bear_items.append(("📝", _rpt["bear"]))
+
+        _latest = sig_df.iloc[-1] if not sig_df.empty else None
+        if _latest is not None:
+            _ma50_v  = float(_latest["ma50"])  if pd.notna(_latest.get("ma50"))  else None
+            _ma200_v = float(_latest["ma200"]) if pd.notna(_latest.get("ma200")) else None
+            if _ma50_v and _ma200_v and _ma200_v > 0:
+                _spd = (_ma50_v / _ma200_v - 1) * 100
+                if _spd > 0:
+                    _bull_items.append(("📊", f"상승 추세 — 단기평균이 장기평균보다 {_spd:.1f}% 높음"))
+                else:
+                    _bear_items.append(("📊", f"하락 추세 — 단기평균이 장기평균보다 {abs(_spd):.1f}% 낮음"))
+
+            _rsi_v = _latest.get("rsi14")
+            if pd.notna(_rsi_v):
+                _rsi_v = float(_rsi_v)
+                if _rsi_v >= 70:
+                    _bear_items.append(("📊", f"RSI {_rsi_v:.0f} — 과열 구간 (70+)"))
+                elif _rsi_v <= 30:
+                    _bull_items.append(("📊", f"RSI {_rsi_v:.0f} — 낙폭 과다, 반등 후보"))
+                else:
+                    _bull_items.append(("📊", f"RSI {_rsi_v:.0f} — 정상 구간"))
+
+            if "macd_hist" in sig_df.columns:
+                _mh_v = _latest.get("macd_hist")
+                if pd.notna(_mh_v):
+                    if float(_mh_v) > 0:
+                        _bull_items.append(("📊", "MACD 양수 — 모멘텀 상승 중"))
+                    else:
+                        _bear_items.append(("📊", "MACD 음수 — 모멘텀 감속 중"))
+
+        if _pct_b_now is not None:
+            if _pct_b_now > 1.0:
+                _bear_items.append(("📊", f"BB %B {_pct_b_now:+.2f} — 상단 이탈 (알트 백테스트 평균 -11.7%)"))
+            elif _pct_b_now > 0.8:
+                _bear_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 상단 근접, 단기 비쌈"))
+            elif _pct_b_now < 0:
+                _bull_items.append(("📊", f"BB %B {_pct_b_now:+.2f} — 하단 이탈 (반등 후보 57%)"))
+            elif _pct_b_now < 0.2:
+                _bull_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 하단 근접, 저렴 구간"))
+            else:
+                _bull_items.append(("📊", f"BB %B {_pct_b_now:.0%} — 밴드 중간 (정상)"))
+
+        if _bw_squeeze:
+            _bear_items.append(("📊", "BB 스퀴즈 — 변동성 폭발 전조 (방향 미확정)"))
+
+        _rc1, _rc2 = st.columns(2)
+        with _rc1:
+            st.markdown("**📈 강세 근거**")
+            for _ico, _txt in _bull_items:
+                st.markdown(
+                    f"<div style='font-size:0.9em;padding:2px 0'>{_ico} {_txt}</div>",
+                    unsafe_allow_html=True)
+            if not _bull_items:
+                st.markdown("<div style='font-size:0.9em;color:#9ca3af'>—</div>",
+                            unsafe_allow_html=True)
+        with _rc2:
+            st.markdown("**📉 약세 근거 / 틀릴 조건**")
+            for _ico, _txt in _bear_items:
+                st.markdown(
+                    f"<div style='font-size:0.9em;padding:2px 0'>{_ico} {_txt}</div>",
+                    unsafe_allow_html=True)
+            if not _bear_items:
+                st.markdown("<div style='font-size:0.9em;color:#9ca3af'>—</div>",
+                            unsafe_allow_html=True)
+
+        _foot: list[str] = [f"자동 신호: {_sig_text} — {row.get('사유','')}"]
+        if _rpt_updated:
+            _foot.append(f"리서치 노트 {_rpt_updated} 기준")
+        _src_list = _rpt.get("sources", []) if _rpt else []
+        if _src_list:
+            _foot.append("출처: " + "  ·  ".join(
+                f"[{_s['title']}]({_s['url']})" for _s in _src_list))
+        st.caption("  |  ".join(_foot))
 
         # ── BTC 온체인 지표 ────────────────────────────────────────
         if ticker == "BTC-USD" and _cycle is not None:
