@@ -508,58 +508,38 @@ if not holdings.empty:
         )
         st.plotly_chart(_fig_pie, use_container_width=True)
 
-        _tbl = _ph_sorted[["카테고리", "종목명", "ticker", "평가금액", "수익률(%)"]].copy()
-        _tbl["비중(%)"] = _ph_sorted["평가금액"] / _ph_total * 100
+        _cat_order = {"코어 ETF": 0, "개별주": 1, "코인": 2}
+        _tbl = _ph_sorted.copy()
+        _tbl["_co"] = _tbl["카테고리"].map(_cat_order)
+        _tbl = _tbl.sort_values(["_co", "평가금액"], ascending=[True, False]).drop(columns=["_co", "버킷"])
+        _tbl["수량"]    = pd.to_numeric(_tbl["qty"], errors="coerce")
+        _tbl["매수가"]  = pd.to_numeric(_tbl["buy_price"], errors="coerce")
+        _tbl["현재가"]  = pd.to_numeric(_tbl["close"], errors="coerce")
+        _tbl["원금"]    = _tbl["수량"] * _tbl["매수가"]
+        _tbl["손익"]    = _tbl["평가금액"] - _tbl["원금"]
+        _tbl["비중(%)"] = _tbl["평가금액"] / _ph_total * 100
+        _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
+                           "원금", "평가금액", "손익", "수익률(%)", "비중(%)"]].copy()
         st.dataframe(
-            _tbl, hide_index=True, use_container_width=True,
+            _tbl_show, hide_index=True, use_container_width=True,
             column_config={
                 "카테고리":  st.column_config.TextColumn("카테고리"),
                 "종목명":    st.column_config.TextColumn("종목명"),
                 "ticker":    st.column_config.TextColumn("티커"),
+                "수량":      st.column_config.NumberColumn("수량", format="%.4f"),
+                "매수가":    st.column_config.NumberColumn("매수가", format="%,.0f"),
+                "현재가":    st.column_config.NumberColumn("현재가", format="%,.0f"),
+                "원금":      st.column_config.NumberColumn("원금", format="%,.0f"),
                 "평가금액":  st.column_config.NumberColumn("평가금액", format="%,.0f"),
+                "손익":      st.column_config.NumberColumn("손익", format="%+,.0f"),
                 "수익률(%)": st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
                 "비중(%)":   st.column_config.NumberColumn("비중(%)", format="%.1f"),
             },
         )
 
-_bkt_name = {"Core": "🏛️ 코어", "Satellite": "🎯 위성", "Cash": "💵 현금"}
-_bkt_cur  = {"Core": alloc["Core_value"], "Satellite": alloc["Satellite_value"], "Cash": alloc["Cash_value"]}
-_detail_rows = []
-for _bkt in ["Core", "Satellite", "Cash"]:
-    _cur_val = _bkt_cur[_bkt]
-    _cur_pct = alloc[f"{_bkt}_pct"]
-    _tgt_pct = {"Core": target_core, "Satellite": target_satellite, "Cash": target_cash}[_bkt]
-    _tgt_val = alloc["Total"] * _tgt_pct / 100
-    _dev_pp  = _cur_pct - _tgt_pct
-    _diff    = _tgt_val - _cur_val
-    _action  = ("✅ 목표 도달" if abs(_dev_pp) < 5 else
-                ("📈 추가매수" if _diff > 0 else "📉 일부매도"))
-    _detail_rows.append({
-        "버킷":      _bkt_name[_bkt],
-        "현재 금액": _cur_val,
-        "현재 비중": _cur_pct,
-        "목표 비중": _tgt_pct,
-        "목표 금액": _tgt_val,
-        "편차":      _dev_pp,
-        "액션":      _action,
-        "필요 금액": abs(_diff),
-    })
-_action_df = pd.DataFrame(_detail_rows)
-st.dataframe(
-    _action_df, hide_index=True, use_container_width=True,
-    column_config={
-        "버킷":      st.column_config.TextColumn("버킷"),
-        "현재 금액": st.column_config.NumberColumn("현재 금액", format="%,.0f"),
-        "현재 비중": st.column_config.NumberColumn("현재 비중", format="%.1f%%"),
-        "목표 비중": st.column_config.NumberColumn("목표 비중", format="%.1f%%"),
-        "목표 금액": st.column_config.NumberColumn("목표 금액", format="%,.0f"),
-        "편차":      st.column_config.NumberColumn("편차 (pp)", format="%+.1f"),
-        "액션":      st.column_config.TextColumn("액션"),
-        "필요 금액": st.column_config.NumberColumn("필요 금액", format="%,.0f"),
-    },
-)
-if all(abs(r["편차"]) < 5 for r in _detail_rows):
-    st.success("✅ 전 버킷 목표 배분 ±5%p 이내. 리밸런싱 불필요.")
+actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
+if not actions_alloc:
+    st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
 
 if new_money > 0 and alloc["Total"] > 0:
     total_after = alloc["Total"] + new_money
