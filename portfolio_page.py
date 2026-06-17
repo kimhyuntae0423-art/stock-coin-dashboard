@@ -847,7 +847,7 @@ for _, row in view.iterrows():
             sig_df = sig_df.dropna(subset=["close"]).tail(365)
 
             if is_coin:
-                for _c in ["close", "ma50", "ma200", "sma20w", "ema21w"]:
+                for _c in ["close", "ma50", "ma200"]:
                     if _c in sig_df.columns:
                         sig_df[_c] = sig_df[_c] * usdkrw
                 buy_line = row["buy_price"]
