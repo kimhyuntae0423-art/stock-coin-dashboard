@@ -352,6 +352,34 @@ view["손익"] = view["평가금액"] - view["원금"]
 view["수익률(%)"] = ((view["close"] / view["buy_price"]) - 1) * 100
 
 
+def _coin_bb(ticker: str) -> dict | None:
+    """해당 코인의 현재 BB %B, RSI, state 계산. 데이터 부족시 None."""
+    path = RESULTS / f"coin_{ticker}_signals.csv"
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_csv(path, usecols=["Close", "rsi14", "state"]).tail(40)
+    except Exception:
+        return None
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df["rsi14"] = pd.to_numeric(df["rsi14"], errors="coerce")
+    if len(df) < 20:
+        return None
+    mid = df["Close"].rolling(20).mean()
+    std = df["Close"].rolling(20).std()
+    upper = mid + 2 * std
+    lower = mid - 2 * std
+    rng = (upper - lower).replace(0, float("nan"))
+    pct_b_s = (df["Close"] - lower) / rng
+    last = df.iloc[-1]
+    pb = pct_b_s.iloc[-1]
+    return {
+        "pct_b": float(pb) if pd.notna(pb) else None,
+        "rsi14": float(last["rsi14"]) if pd.notna(last["rsi14"]) else None,
+        "state": str(last["state"]) if pd.notna(last["state"]) else None,
+    }
+
+
 # MVRV Z-Score 로드 — 코인 보유 신호에 사용 (cycle_metrics.csv)
 _mvrv_z_now: float | None = None
 _cycle_file = RESULTS / "cycle_metrics.csv"
