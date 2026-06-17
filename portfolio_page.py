@@ -774,6 +774,8 @@ for _, row in view.iterrows():
     name = row["종목명"]
     is_coin = "-USD" in ticker
     is_etf  = ticker in _ETF_TICKERS
+    is_btc  = ticker == "BTC-USD"
+    is_alt  = is_coin and not is_btc   # BTC와 알트 구분 (BB 신호 방향 반대)
     pnl_pct = row["수익률(%)"]
 
     sig_filename = f"coin_{ticker}_signals.csv" if is_coin else f"{ticker}_signals.csv"
