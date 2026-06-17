@@ -476,12 +476,20 @@ if not holdings.empty:
 
         _pnl_max = max(abs(_ph_view["수익률(%)"].max()), abs(_ph_view["수익률(%)"].min()), 10)
 
+        def _pnl_hex(pnl, clim):
+            t = max(0.0, min(1.0, (pnl + clim) / (2 * clim)))
+            if t < 0.5:
+                t2 = t * 2
+                return f"rgb({int(220*(1-t2)+100*t2)},{int(53*(1-t2)+116*t2)},{int(69*(1-t2)+139*t2)})"
+            else:
+                t2 = (t - 0.5) * 2
+                return f"rgb({int(100*(1-t2)+21*t2)},{int(116*(1-t2)+128*t2)},{int(139*(1-t2)+0*t2)})"
+
         _tm_ids, _tm_labels, _tm_parents, _tm_values, _tm_colors, _tm_custom = [], [], [], [], [], []
 
-        # 부모 노드 (코어 / 위성)
         for _bkt in ["🏛️ 코어", "🎯 위성"]:
             _tm_ids.append(_bkt); _tm_labels.append(_bkt); _tm_parents.append("")
-            _tm_values.append(0); _tm_colors.append(0); _tm_custom.append(["", 0, 0, 0])
+            _tm_values.append(0); _tm_colors.append("#334155"); _tm_custom.append(["", 0, 0, 0])
 
         for _, row in _ph_view.iterrows():
             _t   = row["ticker"]
@@ -494,7 +502,7 @@ if not holdings.empty:
             _tm_labels.append(f"{_nm}<br>{_pnl:+.1f}%")
             _tm_parents.append(_bkt)
             _tm_values.append(_val)
-            _tm_colors.append(_pnl)
+            _tm_colors.append(_pnl_hex(_pnl, _pnl_max))
             _tm_custom.append([_nm, _pnl, _val, _wt])
 
         _fig_tm = go.Figure(go.Treemap(
@@ -503,21 +511,20 @@ if not holdings.empty:
             customdata=_tm_custom,
             marker=dict(
                 colors=_tm_colors,
-                colorscale=[[0, "#dc2626"], [0.5, "#1e293b"], [1, "#16a34a"]],
-                cmid=0, cmin=-_pnl_max, cmax=_pnl_max,
-                showscale=True,
-                colorbar=dict(title=dict(text="수익률%"), thickness=10, len=0.6, x=1.0),
                 line=dict(width=2, color="white"),
+                pad=dict(t=4, l=4, r=4, b=4),
             ),
             texttemplate="%{label}",
-            textfont=dict(color="white", size=12),
+            textfont=dict(color="white", size=14),
             hovertemplate="<b>%{customdata[0]}</b><br>평가금액: %{customdata[2]:,.0f}원<br>수익률: %{customdata[1]:+.1f}%<br>비중: %{customdata[3]:.1f}%<extra></extra>",
+            root_color="rgba(0,0,0,0)",
         ))
         _fig_tm.update_layout(
             height=480,
-            margin=dict(t=10, b=10, l=10, r=80),
+            margin=dict(t=10, b=10, l=10, r=10),
             paper_bgcolor="rgba(0,0,0,0)",
         )
+        st.caption("🔴 손실 &nbsp;&nbsp; ⬛ 중립 &nbsp;&nbsp; 🟢 수익 &nbsp;|&nbsp; 크기 = 평가금액 비중")
         st.plotly_chart(_fig_tm, use_container_width=True)
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
