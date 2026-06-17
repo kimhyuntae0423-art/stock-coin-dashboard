@@ -648,30 +648,97 @@ st.dataframe(
         "사유": st.column_config.TextColumn("사유", width="large"),
     },
 )
-st.markdown("""
-<div style='display:flex; gap:8px; margin-top:16px; margin-bottom:8px; flex-wrap:wrap'>
-  <div style='flex:1; min-width:148px; background:#f0fdf4; border-left:4px solid #22c55e; border-radius:6px; padding:10px 12px'>
-    <div style='font-size:13px; font-weight:700; color:#15803d; margin-bottom:4px'>🟢 추가 매수 / 보유 양호</div>
-    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: 모멘텀 Q1~Q2<br>📦 ETF: 리밸런싱 적기 (Q1)<br>🪙 BTC: MVRV &lt; 1.5 저평가<br>🪙 BTC: BB 모멘텀 강화(%B&gt;1+RSI70)</div>
-  </div>
-  <div style='flex:1; min-width:148px; background:#eff6ff; border-left:4px solid #3b82f6; border-radius:6px; padding:10px 12px'>
-    <div style='font-size:13px; font-weight:700; color:#1d4ed8; margin-bottom:4px'>🔵 보유 / 반등 후보</div>
-    <div style='font-size:11px; color:#555; line-height:1.6'>특이 신호 없음 → 보유 유지<br>📦 ETF: 리밸런싱으로 관리<br>🪙 코인: MVRV 데이터 없음<br>🪙 알트: BB하단+RSI과매도<br>&nbsp;&nbsp;(%B&lt;0+RSI&lt;30, 반등 후보 57%)</div>
-  </div>
-  <div style='flex:1; min-width:148px; background:#fff7ed; border-left:4px solid #f97316; border-radius:6px; padding:10px 12px'>
-    <div style='font-size:13px; font-weight:700; color:#c2410c; margin-bottom:4px'>🟠 주의 / 경보</div>
-    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: -8~-20% 손실·Q4·RSI 80+<br>&nbsp;&nbsp;또는 -20% + Q1(추세 살아있음)<br>📦 ETF: Q4 비중 점검<br>🪙 코인: MVRV 1.5~2.5<br>🪙 알트: BB추세반전 경보<br>&nbsp;&nbsp;(bull+%B&lt;0.2, -18.2% 백테스트)</div>
-  </div>
-  <div style='flex:1; min-width:148px; background:#fff1f2; border-left:4px solid #ef4444; border-radius:6px; padding:10px 12px'>
-    <div style='font-size:13px; font-weight:700; color:#b91c1c; margin-bottom:4px'>🔴 매도 검토</div>
-    <div style='font-size:11px; color:#555; line-height:1.6'>📈 개별주: -20% 이상 손실<br>&nbsp;&nbsp;(Q4이면 추세도 악화)<br>🪙 BTC: MVRV &gt; 2.5 과열<br>🪙 알트: BB상단이탈(%B&gt;1+RSI70)<br>&nbsp;&nbsp;또는 -40% 손실<br>📦 ETF: 해당 없음</div>
-  </div>
-  <div style='flex:1; min-width:148px; background:#faf5ff; border-left:4px solid #a855f7; border-radius:6px; padding:10px 12px'>
-    <div style='font-size:13px; font-weight:700; color:#7e22ce; margin-bottom:4px'>💎 비중 확대 기회</div>
-    <div style='font-size:11px; color:#555; line-height:1.6'>🪙 코인 전용<br>MVRV &lt; 0 — 역사적 바닥<br>BTC 100% 구간 (백테스트)</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+# ──────────────────────────────────────────────────────────────────────
+# 신호 표시 정의 (단일 소스)
+# 신호 종류·조건이 바뀌면 이 리스트만 수정 → 범례 카드·배경색이 자동 반영
+# ──────────────────────────────────────────────────────────────────────
+_SIGNAL_DISPLAY = [
+    {
+        "emoji": "🟢",
+        "label": "추가 매수 / 보유 양호",
+        "card_bg": "#f0fdf4", "card_border": "#22c55e", "card_color": "#15803d",
+        "live_bg": "#e8f5e9", "live_bd": "#43a047",
+        "items_html": (
+            "📈 개별주: 모멘텀 Q1~Q2<br>"
+            "📦 ETF: 리밸런싱 적기 (Q1)<br>"
+            "🪙 BTC: MVRV &lt; 1.5 저평가<br>"
+            "🪙 BTC: BB 모멘텀 강화(%B&gt;1+RSI70)"
+        ),
+        "caption": "모멘텀 Q1 시 🟢",
+    },
+    {
+        "emoji": "🔵",
+        "label": "보유 / 반등 후보",
+        "card_bg": "#eff6ff", "card_border": "#3b82f6", "card_color": "#1d4ed8",
+        "live_bg": "#eff6ff", "live_bd": "#3b82f6",
+        "items_html": (
+            "특이 신호 없음 → 보유 유지<br>"
+            "📦 ETF: 리밸런싱으로 관리<br>"
+            "🪙 코인: MVRV 데이터 없음<br>"
+            "🪙 알트: BB하단+RSI과매도<br>"
+            "&nbsp;&nbsp;(%B&lt;0+RSI&lt;30, 반등 후보 57%)"
+        ),
+        "caption": None,
+    },
+    {
+        "emoji": "🟠",
+        "label": "주의 / 경보",
+        "card_bg": "#fff7ed", "card_border": "#f97316", "card_color": "#c2410c",
+        "live_bg": "#fff3e0", "live_bd": "#fb8c00",
+        "items_html": (
+            "📈 개별주: -8~-20% 손실·Q4·RSI 80+<br>"
+            "&nbsp;&nbsp;또는 -20% + Q1(추세 살아있음)<br>"
+            "📦 ETF: Q4 비중 점검<br>"
+            "🪙 코인: MVRV 1.5~2.5<br>"
+            "🪙 알트: BB추세반전 경보<br>"
+            "&nbsp;&nbsp;(bull+%B&lt;0.2, -18.2% 백테스트)"
+        ),
+        "caption": "-20%+Q1은 🟠 신호 충돌",
+    },
+    {
+        "emoji": "🔴",
+        "label": "매도 검토",
+        "card_bg": "#fff1f2", "card_border": "#ef4444", "card_color": "#b91c1c",
+        "live_bg": "#ffebee", "live_bd": "#e53935",
+        "items_html": (
+            "📈 개별주: -20% 이상 손실<br>"
+            "&nbsp;&nbsp;(Q4이면 추세도 악화)<br>"
+            "🪙 BTC: MVRV &gt; 2.5 과열<br>"
+            "🪙 알트: BB상단이탈(%B&gt;1+RSI70)<br>"
+            "&nbsp;&nbsp;또는 -40% 손실<br>"
+            "📦 ETF: 해당 없음"
+        ),
+        "caption": "-20% 이상 손실 시 🔴 매도 검토",
+    },
+    {
+        "emoji": "💎",
+        "label": "비중 확대 기회",
+        "card_bg": "#faf5ff", "card_border": "#a855f7", "card_color": "#7e22ce",
+        "live_bg": "#e8f5e9", "live_bd": "#43a047",
+        "items_html": (
+            "🪙 코인 전용<br>"
+            "MVRV &lt; 0 — 역사적 바닥<br>"
+            "BTC 100% 구간 (백테스트)"
+        ),
+        "caption": None,
+    },
+]
+# emoji → live 배경색 빠른 조회 (상세 카드 배경에 사용)
+_SIGNAL_LIVE = {d["emoji"]: (d["live_bg"], d["live_bd"]) for d in _SIGNAL_DISPLAY}
+
+# 범례 카드 — _SIGNAL_DISPLAY에서 자동 생성
+_cards_html = "<div style='display:flex; gap:8px; margin-top:16px; margin-bottom:8px; flex-wrap:wrap'>"
+for _sd in _SIGNAL_DISPLAY:
+    _cards_html += (
+        f"<div style='flex:1; min-width:148px; background:{_sd['card_bg']};"
+        f"border-left:4px solid {_sd['card_border']};border-radius:6px;padding:10px 12px'>"
+        f"<div style='font-size:13px;font-weight:700;color:{_sd['card_color']};margin-bottom:4px'>"
+        f"{_sd['emoji']} {_sd['label']}</div>"
+        f"<div style='font-size:11px;color:#555;line-height:1.6'>{_sd['items_html']}</div>"
+        f"</div>"
+    )
+_cards_html += "</div>"
+st.markdown(_cards_html, unsafe_allow_html=True)
 
 # 파이차트
 if total_value > 0:
