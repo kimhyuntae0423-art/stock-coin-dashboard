@@ -443,7 +443,7 @@ aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
 # ── 보유 종목 트리맵 ──────────────────────────────────────────────
-if not holdings.empty:
+if not holdings.empty and not classified.empty:
     _th_ids, _th_labels, _th_parents, _th_values, _th_colors = [], [], [], [], []
     _th_hname, _th_hpnl, _th_hval = [], [], []
 
@@ -452,16 +452,19 @@ if not holdings.empty:
         _th_values.append(0); _th_colors.append(0)
         _th_hname.append(_c); _th_hpnl.append(0); _th_hval.append(0)
 
-    for _, _hr in holdings.iterrows():
-        _t  = str(_hr["ticker"])
-        _q  = float(_hr.get("qty", 0))
-        _bp = float(_hr.get("buy_price", 0))
+    # classified는 ticker가 이미 upper(), bucket이 Core/Satellite로 분류됨
+    # price_map_alloc은 alloc 계산에 실제 사용된 upper() 키 가격 맵
+    for _, _hr in classified.iterrows():
+        _t  = str(_hr["ticker"])   # upper
+        _q  = float(_hr.get("qty", 0) or 0)
+        _bp = float(_hr.get("buy_price", 0) or 0)
+        _cur = float(price_map_alloc.get(_t, 0.0) or 0.0)
         if "-USD" in _t:
-            _cat = "코인";    _cur = _i_cp.get(_t, 0.0)
-        elif _t in _i_etf_set:
-            _cat = "코어 ETF"; _cur = float(_i_sp.get(_t, 0.0))
+            _cat = "코인"
+        elif str(_hr.get("bucket", "")) == "Core":
+            _cat = "코어 ETF"
         else:
-            _cat = "개별주";  _cur = float(_i_sp.get(_t, 0.0))
+            _cat = "개별주"
         _val = _q * _cur
         if _val <= 0:
             continue
