@@ -717,18 +717,23 @@ if not holdings.empty:
                         "기술등급":  st.column_config.TextColumn("기술등급",
                                      help="추세+과열 복합 판단"),
                         "거래량":    st.column_config.TextColumn("거래량신호"),
+                        "1M(%)":     st.column_config.NumberColumn("1M(%)", format="%+.1f",
+                                     help="한국 개별주 모멘텀 IC=0.065 (방향 맞으나 통계 미검증 — 참고용)"),
+                        "12M(%)":    st.column_config.NumberColumn("12M(%)", format="%+.1f",
+                                     help="한국 개별주 모멘텀 IC=0.065 (방향 맞으나 통계 미검증 — 참고용)"),
                         "분석액션":  st.column_config.TextColumn("분석 액션",
-                                     help="백테스트 IC 검증 신호 기반. 최종 결정은 직접 판단"),
+                                     help="과열(IC 역방향 검증) + 추세(bear=손절 검토) 기반. 최종 결정은 직접 판단"),
                     },
                 )
+                st.caption("한국 개별주 모멘텀은 IC=0.065 — 방향은 맞으나 데이터 부족으로 통계 미검증. 과열·추세 신호 위주로 판단하세요.")
 
                 # 긴급 알림
                 _bear_holds = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🔴", na=False)]
                 _hot_holds  = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🌡️", na=False)]
                 if not _bear_holds.empty:
-                    st.error(f"🔴 하락추세 보유 종목: {', '.join(_bear_holds['티커'])} — 추세 전환 확인 전 추가매수 자제")
+                    st.error(f"🔴 하락추세: {', '.join(_bear_holds['티커'])} — 추세 전환 확인 전 추가매수 자제 (bear추세 = 향후 수익 낮은 경향)")
                 if not _hot_holds.empty:
-                    st.warning(f"🌡️ 과열 차익실현 구간: {', '.join(_hot_holds['티커'])} — IC 역방향 검증, 일부 실현 고려")
+                    st.warning(f"🌡️ 과열 차익실현 구간: {', '.join(_hot_holds['티커'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
 
             # ── 코인 분석 ────────────────────────────────────────────────────────
             _an_cu = _an_h[_an_h["ticker"].str.contains("-USD", na=False)].copy()
@@ -994,18 +999,20 @@ if new_money > 0 and alloc["Total"] > 0:
                     "전술비중(%)":   st.column_config.NumberColumn("전술비중(%)", format="%.1f"),
                     "비중차이(%p)":  st.column_config.NumberColumn("차이(%p)", format="%+.1f",
                                     help="전술비중 - 현재비중. (+)=추가매수 필요, (-)=비중 과다"),
-                    "배율":          st.column_config.TextColumn("사이클배율"),
-                    "score":         st.column_config.ProgressColumn("종합점수",
-                                    format="%.0f", min_value=0, max_value=180),
+                    "배율":          st.column_config.TextColumn("사이클배율",
+                                    help="배분점수의 핵심 드라이버. ×1.25=강세, ×0.75=약세"),
+                    "score":         st.column_config.ProgressColumn("배분점수",
+                                    format="%.0f", min_value=0, max_value=180,
+                                    help="섹터사이클×VIX국면 기반. 모멘텀은 25% 보조만 (ETF 모멘텀 IC 유의성 없음)"),
                     "리밸런싱":      st.column_config.TextColumn("리밸런싱 액션"),
                     "추천금액(원)":  st.column_config.NumberColumn("추천금액(원)", format="%,.0f"),
                     "추천수량":      st.column_config.NumberColumn("추천수량"),
                 },
             )
             st.caption(
-                "종합점수 = 모멘텀 × 시장국면(VIX포함) × 섹터사이클 × 과열감점. "
-                "비중차이(+)=전술 대비 언더웨이트 → 추가매수. "
-                "최종 결정은 직접 판단하세요."
+                "배분점수 = 섹터사이클배율 × VIX국면배율 (백테스트 유효 신호 기반).  "
+                "모멘텀 수익률은 참고 정보 — ETF에서 예측력 미검증 (IC=0.019, p=0.61).  "
+                "비중차이(+)=전술 대비 언더웨이트 → 추가매수. 최종 결정은 직접 판단."
             )
 
     with st.expander("🎯 위성 매수 후보"):

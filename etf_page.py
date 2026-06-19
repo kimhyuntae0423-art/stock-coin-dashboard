@@ -115,33 +115,51 @@ _m4.metric("채권(TLT) 1M",  f"{_regime['tlt_1m']:+.1f}%",
 st.divider()
 
 # ── 추천 섹션 ─────────────────────────────────────────────────────────────────
-st.subheader("🎯 ETF 추천")
-st.caption("점수 = 모멘텀(12M×70% + 1M×30%) × 시장 국면 배율 × 섹터 사이클 배율")
+st.subheader("🎯 ETF 배분 점수")
+st.info(
+    "**백테스트 결과 반영**: ETF 모멘텀 순위 IC=0.019 (p=0.61, 유의성 없음)  \n"
+    "→ 배분점수는 **섹터사이클(실제 드라이버)** + **VIX 국면** 이 결정. 모멘텀은 25% 보조 가중치만 적용  \n"
+    "→ **과열 신호(IC 역방향 검증)**와 **VIX 타이밍(IC=0.14)** 만 통계적으로 신뢰 가능"
+)
 
 _cy_df = sector_cycles(summary)
 
 if not _valid.empty:
-    _bull_ok = _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)].head(5)
+    # 상위 5개: 섹터사이클 강세 + bull추세 + RSI<70 기준
+    _hot_cycle = _valid[
+        _valid["섹터사이클"].str.contains("🔥", na=False) & (_valid["state"] == "bull")
+    ].head(5)
+    _bull_ok = _hot_cycle if not _hot_cycle.empty else \
+               _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)].head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
-    # ── Top 5 추천 카드 ────────────────────────────────────────────────────────
+    # ── Top 5 카드: 섹터사이클 기준 ───────────────────────────────────────────
     if not _bull_ok.empty:
         _cols = st.columns(min(len(_bull_ok), 5))
         for i, (_, row) in enumerate(_bull_ok.iterrows()):
             with _cols[i]:
-                st.metric(f"**{row['ticker']}**",
-                          f"{row['return_12m_pct']:+.1f}%",
-                          f"1M {row['return_1m_pct']:+.1f}%")
-                st.caption(row["name"])
                 cy = row.get("섹터사이클", "—")
                 cy_str = cy if pd.notna(cy) and cy != "—" else "➡️ 중립"
-                st.caption(f"사이클 {cy_str}")
-                st.caption(f"RSI {row['rsi14']:.0f} · 점수 **{row['score']:.0f}**")
+                st.metric(
+                    f"**{row['ticker']}**",
+                    cy_str,
+                    f"1M {row['return_1m_pct']:+.1f}%",
+                )
+                st.caption(row["name"])
+                st.caption(f"12M {row['return_12m_pct']:+.1f}% · RSI {row['rsi14']:.0f}")
+                oh = row.get("과열신호", "")
+                if oh and "⚠️" in str(oh):
+                    st.caption(f"⚠️ 과열 주의")
 
     st.divider()
 
-    # ── 전체 추천 테이블 (섹터 사이클 통합) ────────────────────────────────────
-    st.markdown("**전체 ETF 점수 · 사이클 현황**")
+    # ── 전체 테이블 ────────────────────────────────────────────────────────────
+    st.markdown("**전체 ETF 배분 점수 현황**")
+    st.caption(
+        "배분점수 = (섹터사이클배율 × VIX국면배율) 기반. "
+        "모멘텀 수익률은 참고 정보 (ETF에서 예측력 미검증). "
+        "**섹터사이클**과 **과열신호**를 우선 확인."
+    )
 
     _full = _valid.copy()
     _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
@@ -152,11 +170,11 @@ if not _valid.empty:
         "ticker", "name", "버킷", "사이클상태",
         "return_1m_pct", "return_12m_pct", "rsi14",
         *([c for c in _extra_cols if c in _full.columns]),
-        "mom_score", "사이클배율", "score", "state",
+        "사이클배율", "score", "state",
     ]].copy() if _has_extra else _full[[
         "ticker", "name", "버킷", "사이클상태",
         "return_1m_pct", "return_12m_pct", "rsi14",
-        "mom_score", "사이클배율", "score", "state",
+        "사이클배율", "score", "state",
     ]].copy()
     _tbl_full["사이클배율"] = _tbl_full["사이클배율"].apply(
         lambda x: f"×{x:.2f}" if pd.notna(x) else "×1.00"
@@ -169,24 +187,30 @@ if not _valid.empty:
             "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
-            "mom_score": "모멘텀", "사이클배율": "배율",
-            "score": "최종점수", "state": "추세",
+            "사이클배율": "사이클배율", "score": "배분점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
-            "1M(%)":    st.column_config.NumberColumn(format="%+.2f"),
-            "12M(%)":   st.column_config.NumberColumn(format="%+.2f"),
+            "1M(%)":    st.column_config.NumberColumn("1M(%)", format="%+.2f",
+                         help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
+            "12M(%)":   st.column_config.NumberColumn("12M(%)", format="%+.2f",
+                         help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
             "RSI":      st.column_config.NumberColumn(format="%.0f"),
-            "과열신호": st.column_config.TextColumn(
-                         help="백테스트 IC<0 확인: MA=3+BB>0.85 = 과열. 오히려 점수 감점 적용됨"),
+            "섹터사이클": st.column_config.TextColumn("섹터사이클",
+                         help="배분점수의 핵심 드라이버. 🔥강세섹터 = 오버웨이트"),
+            "과열신호": st.column_config.TextColumn("과열",
+                         help="IC 역방향 검증: 과열 = 향후 수익 낮은 경향. 신규 매수 자제"),
             "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
-                         help="0-3점. 3=완전정렬이나 역방향 신호(IC=-0.065) — 과열 경보"),
+                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향)"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
                          help="0.85↑ = 과열 감점 적용(IC=-0.087). 0.3↓ = 하단지지"),
             "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
-                         help="10일 OBV 변화율(IC=+0.04). 양수=매집 신호"),
-            "모멘텀":   st.column_config.NumberColumn(format="%.0f"),
-            "최종점수": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=180),
+                         help="IC=+0.04 (약한 양방향). 매집 신호 참고용"),
+            "사이클배율": st.column_config.TextColumn("사이클배율",
+                         help="배분점수 핵심 드라이버. ×1.25=강세, ×0.75=약세"),
+            "배분점수": st.column_config.ProgressColumn("배분점수",
+                         format="%.0f", min_value=0, max_value=180,
+                         help="섹터사이클×VIX국면 기반. 모멘텀 순위는 25% 보조만"),
         },
     )
 
