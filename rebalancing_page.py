@@ -750,7 +750,7 @@ _core_pcts      = [c / t * 100 if t > 0 else 0 for c, t in zip(_cores, _totals)]
 _sat_pcts       = [s / t * 100 if t > 0 else 0 for s, t in zip(_sats,  _totals)]
 _cash_pcts      = [x / t * 100 if t > 0 else 0 for x, t in zip(_cashs, _totals)]
 
-_tab1, _tab2, _tab3 = st.tabs(["💰 자산 가치", "📊 비중 변화", "🏛️ 코어 ETF 수익률"])
+_tab1, _tab2 = st.tabs(["💰 자산 가치", "📊 비중 변화"])
 
 with _tab1:
     _fig_val = go.Figure()
@@ -822,67 +822,6 @@ with _tab2:
         st.success(f"✅ 현재 설정대로면 약 **{_core_target_month:.1f}년** 후 코어 비중이 목표({target_core}%)에 도달합니다. (강제 매도 없음)")
     else:
         st.warning(f"⚠️ {_sim_years}년 내에 코어 목표 비중({target_core}%)에 도달하지 못합니다. 기간을 늘리거나 월 적립액을 높여보세요.")
-
-with _tab3:
-    if summary.empty:
-        st.info("신호 데이터 없음")
-    else:
-        _etf_sig = summary[["ticker", "close", "return_1m_pct", "return_12m_pct", "rsi14", "state"]].copy()
-        _etf_sig["ticker"] = _etf_sig["ticker"].astype(str).str.upper()
-        _etf_base = core_etfs.copy()
-        _etf_base["ticker"] = _etf_base["ticker"].astype(str).str.upper()
-        _etf_cmp = _etf_base.merge(_etf_sig, on="ticker", how="left")
-        _etf_cmp = _etf_cmp.dropna(subset=["close"]).sort_values("return_12m_pct", ascending=False)
-
-        # 수익률 비교 막대 차트
-        _fig_etf = go.Figure()
-        _fig_etf.add_trace(go.Bar(
-            name="1개월 수익률",
-            x=_etf_cmp["ticker"],
-            y=_etf_cmp["return_1m_pct"],
-            marker_color=["#22a06b" if v >= 0 else "#e34935" for v in _etf_cmp["return_1m_pct"]],
-            opacity=0.7,
-            text=[f"{v:+.1f}%" for v in _etf_cmp["return_1m_pct"]],
-            textposition="outside",
-        ))
-        _fig_etf.add_trace(go.Bar(
-            name="12개월 수익률",
-            x=_etf_cmp["ticker"],
-            y=_etf_cmp["return_12m_pct"],
-            marker_color=["#1a7f64" if v >= 0 else "#c0392b" for v in _etf_cmp["return_12m_pct"]],
-            text=[f"{v:+.1f}%" for v in _etf_cmp["return_12m_pct"]],
-            textposition="outside",
-        ))
-        _fig_etf.add_hline(y=0, line_color="rgba(0,0,0,0.3)", line_width=1)
-        _fig_etf.update_layout(
-            barmode="group",
-            height=400,
-            margin=dict(t=30, b=10, l=10, r=10),
-            legend=dict(orientation="h", y=1.08, x=0),
-            yaxis=dict(title="수익률 (%)", zeroline=True),
-            paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(_fig_etf, use_container_width=True)
-
-        # 상세 테이블
-        _etf_tbl = _etf_cmp[["ticker", "name", "category", "close",
-                              "return_1m_pct", "return_12m_pct", "rsi14",
-                              "expense_ratio", "state"]].rename(columns={
-            "ticker": "티커", "name": "종목명", "category": "카테고리",
-            "close": "현재가", "return_1m_pct": "1M(%)",
-            "return_12m_pct": "12M(%)", "rsi14": "RSI",
-            "expense_ratio": "운용보수(%)", "state": "추세",
-        })
-        st.dataframe(
-            _etf_tbl, hide_index=True, use_container_width=True,
-            column_config={
-                "현재가":    st.column_config.NumberColumn("현재가", format="%,.2f"),
-                "1M(%)":     st.column_config.NumberColumn("1M(%)", format="%+.2f"),
-                "12M(%)":    st.column_config.NumberColumn("12M(%)", format="%+.2f"),
-                "RSI":       st.column_config.NumberColumn("RSI", format="%.1f"),
-                "운용보수(%)": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
-            },
-        )
 
 _multiple = _final_total / _invested_total if _invested_total > 0 else 0
 _net_gain = _final_total - _invested_total
