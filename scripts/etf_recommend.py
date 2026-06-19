@@ -1,5 +1,84 @@
 """시장 국면 + 섹터 사이클 반영 코어 ETF 추천 — etf_page.py · rebalancing_page.py 공유 모듈."""
 import pandas as pd
+from pathlib import Path
+
+
+def volume_signals(ticker: str, results_dir) -> dict:
+    """개별 종목 거래량 기반 선행 지표 계산.
+
+    Returns dict:
+        vol_ratio    : 최근5일 평균거래량 / 20일 평균거래량 (>1.3 = 급증)
+        obv_slope    : OBV 10일 변화율 % (양수=매집, 음수=분배)
+        macd_dir     : 'up' | 'down' (MACD 히스토그램 방향)
+        pv_signal    : 가격-거래량 다이버전스 요약 문자열
+        vol_label    : 종합 거래량 신호 이모지+문자
+    """
+    results_dir = Path(results_dir)
+    f = results_dir / f"{ticker}_signals.csv"
+    if not f.exists():
+        return {}
+    try:
+        df = pd.read_csv(f)
+    except Exception:
+        return {}
+    if len(df) < 25 or "Volume" not in df.columns:
+        return {}
+
+    # 거래량 비율
+    vol5  = df["Volume"].tail(5).mean()
+    vol20 = df["Volume"].tail(20).mean()
+    vol_ratio = round(vol5 / vol20, 2) if vol20 > 0 else 1.0
+
+    # OBV 기울기 (10일 변화율)
+    obv = df["obv"].tail(10)
+    obv_base = abs(obv.iloc[0])
+    obv_slope = round((obv.iloc[-1] - obv.iloc[0]) / obv_base * 100, 1) if obv_base > 0 else 0.0
+
+    # MACD 히스토그램 방향 (최근 3일 증가/감소)
+    mh = df["macd_hist"].tail(3)
+    macd_dir = "up" if mh.iloc[-1] > mh.iloc[0] else "down"
+
+    # 가격-거래량 다이버전스
+    price_up = df["Close"].tail(5).iloc[-1] > df["Close"].tail(5).iloc[0]
+    if price_up and vol_ratio >= 1.1:
+        pv = "강세확인 (가격↑·거래량↑)"
+    elif price_up and vol_ratio < 0.9:
+        pv = "약세다이버전스 (가격↑·거래량↓)"
+    elif not price_up and vol_ratio >= 1.1:
+        pv = "분배신호 (가격↓·거래량↑)"
+    else:
+        pv = "추세소멸 (가격↓·거래량↓)"
+
+    # 종합 라벨
+    if vol_ratio >= 1.4 and obv_slope > 0 and macd_dir == "up":
+        label = "🔥 매집 급증"
+    elif vol_ratio >= 1.2 and obv_slope > 0:
+        label = "📈 거래량 확대"
+    elif vol_ratio < 0.8 and obv_slope < 0:
+        label = "❄️ 거래량 위축"
+    elif "약세다이버전스" in pv or "분배신호" in pv:
+        label = "⚠️ 다이버전스"
+    else:
+        label = "➡️ 보통"
+
+    return {
+        "vol_ratio": vol_ratio,
+        "obv_slope": obv_slope,
+        "macd_dir":  macd_dir,
+        "pv_signal": pv,
+        "vol_label": label,
+    }
+
+
+def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
+    """score_etfs 결과에 거래량 선행 지표 컬럼을 추가."""
+    out = df.copy()
+    vols = [volume_signals(str(t), results_dir) for t in out["ticker"]]
+    out["거래량비율"] = [v.get("vol_ratio") for v in vols]
+    out["OBV추세"]   = [v.get("obv_slope") for v in vols]
+    out["거래량신호"] = [v.get("vol_label", "—") for v in vols]
+    out["PV다이버전스"] = [v.get("pv_signal", "—") for v in vols]
+    return out
 
 # ── 섹터 사이클 정의 ──────────────────────────────────────────────────────────
 # (카테고리 키워드) → (대표 ETF, 비교 벤치마크, 라벨)

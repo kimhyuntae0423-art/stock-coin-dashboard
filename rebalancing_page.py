@@ -13,7 +13,7 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
-from scripts.etf_recommend import market_regime, score_etfs, tactical_alloc
+from scripts.etf_recommend import market_regime, score_etfs, tactical_alloc, enrich_with_volume
 
 RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
@@ -574,6 +574,7 @@ if new_money > 0 and alloc["Total"] > 0:
     with st.expander("🏛️ 코어 ETF 매수 후보 — 전술적 배분"):
         _e_regime = market_regime(summary)
         _e_scored = score_etfs(core_etfs, summary, _e_regime["key"])
+        _e_scored = enrich_with_volume(_e_scored, ROOT / "results")
         _e_alloc  = tactical_alloc(_e_scored, core_buy if core_buy > 0 else 1)
 
         # ── 국면 + 전환 요약 ────────────────────────────────────────────────────
@@ -592,12 +593,27 @@ if new_money > 0 and alloc["Total"] > 0:
                 st.info(f"📉 모멘텀 둔화: {', '.join(_slowing['ticker'].tolist())} — 비중 축소 검토")
 
             # ── 전술 배분 vs 균등 비교 테이블 ───────────────────────────────────
+            _cols_base = ["ticker", "name", "섹터사이클", "전환신호", "거래량신호",
+                          "return_1m_pct", "return_12m_pct", "rsi14",
+                          "거래량비율", "OBV추세", "사이클배율"]
+            _col_cfg_base = {
+                "ticker": st.column_config.TextColumn("티커"),
+                "name":   st.column_config.TextColumn("종목명"),
+                "섹터사이클":  st.column_config.TextColumn("사이클"),
+                "전환신호":    st.column_config.TextColumn("전환신호"),
+                "거래량신호":  st.column_config.TextColumn("거래량"),
+                "return_1m_pct":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                "return_12m_pct": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+                "rsi14":          st.column_config.NumberColumn("RSI", format="%.0f"),
+                "거래량비율":  st.column_config.NumberColumn("거래량비율", format="%.2f",
+                               help="최근5일/20일 평균거래량. 1.3↑=급증(기관개입 가능)"),
+                "OBV추세":     st.column_config.NumberColumn("OBV변화(%)", format="%+.1f",
+                               help="10일 OBV 변화율. 양수=매집, 음수=분배"),
+                "사이클배율":  st.column_config.TextColumn("배율"),
+            }
+
             if core_buy > 0:
-                _disp = _e_alloc[[
-                    "ticker", "name", "섹터사이클", "전환신호",
-                    "return_1m_pct", "return_12m_pct", "rsi14",
-                    "사이클배율", "기본배분", "전술배분", "배분차이",
-                ]].copy()
+                _disp = _e_alloc[_cols_base + ["기본배분", "전술배분", "배분차이"]].copy()
                 _disp["수량"] = (_disp["전술배분"] / _e_alloc["close"]).apply(
                     lambda x: int(x) if pd.notna(x) and x > 0 else 0
                 )
@@ -605,45 +621,88 @@ if new_money > 0 and alloc["Total"] > 0:
                     lambda x: f"×{float(x):.2f}" if pd.notna(x) else "×1.00"
                 )
                 st.dataframe(
-                    _disp.rename(columns={
-                        "ticker": "티커", "name": "종목명",
-                        "섹터사이클": "사이클", "전환신호": "전환신호",
-                        "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)",
-                        "rsi14": "RSI", "사이클배율": "배율",
-                        "기본배분": "균등(원)", "전술배분": "전술(원)", "배분차이": "차이(원)",
-                    }),
+                    _disp,
                     hide_index=True, use_container_width=True,
                     column_config={
-                        "1M(%)":   st.column_config.NumberColumn(format="%+.2f"),
-                        "12M(%)":  st.column_config.NumberColumn(format="%+.2f"),
-                        "RSI":     st.column_config.NumberColumn(format="%.0f"),
-                        "균등(원)": st.column_config.NumberColumn(format="%,.0f"),
-                        "전술(원)": st.column_config.NumberColumn(format="%,.0f"),
-                        "차이(원)": st.column_config.NumberColumn(format="%+,.0f"),
-                        "수량":    st.column_config.NumberColumn("수량(전술)"),
+                        **_col_cfg_base,
+                        "기본배분": st.column_config.NumberColumn("균등(원)", format="%,.0f"),
+                        "전술배분": st.column_config.NumberColumn("전술(원)", format="%,.0f"),
+                        "배분차이": st.column_config.NumberColumn("차이(원)", format="%+,.0f"),
+                        "수량":     st.column_config.NumberColumn("수량(전술)"),
                     },
                 )
-                st.caption(
-                    "전술배분 = 균등배분 × 섹터 사이클 배율. "
-                    "차이(+)는 균등 대비 오버웨이트, (-)는 언더웨이트. "
-                    "최종 매수 결정은 직접 판단하세요."
+                st.caption("전술(원) = 균등 × 사이클 배율. 차이(+)=오버웨이트. 최종 결정은 직접 판단하세요.")
+            else:
+                _disp2 = _e_alloc[_cols_base].copy()
+                _disp2["사이클배율"] = _disp2["사이클배율"].apply(
+                    lambda x: f"×{float(x):.2f}" if pd.notna(x) else "×1.00"
+                )
+                st.dataframe(_disp2, hide_index=True, use_container_width=True,
+                             column_config=_col_cfg_base)
+
+            # ── 보유 ETF 건강 체크 ────────────────────────────────────────────────
+            st.divider()
+            st.markdown("**📋 보유 ETF 건강 체크**")
+            st.caption("현재 보유 중인 ETF의 사이클·거래량 신호와 전술 추천 비중을 비교합니다.")
+
+            _held_etf = holdings[holdings["ticker"].astype(str).str.upper().isin(
+                _e_alloc["ticker"].astype(str).str.upper()
+            )].copy() if not holdings.empty else pd.DataFrame()
+
+            if not _held_etf.empty:
+                _held_etf["ticker"] = _held_etf["ticker"].astype(str).str.upper()
+                _held_etf = _held_etf.merge(
+                    _e_alloc[["ticker", "name", "close", "섹터사이클", "전환신호",
+                               "거래량신호", "거래량비율", "OBV추세", "PV다이버전스",
+                               "return_1m_pct", "return_12m_pct", "rsi14",
+                               "전술비중", "사이클배율"]],
+                    on="ticker", how="left",
+                )
+                _held_etf["보유금액"] = pd.to_numeric(_held_etf["qty"], errors="coerce") * \
+                                         pd.to_numeric(_held_etf["close"], errors="coerce")
+                _held_etf["수익률(%)"] = (pd.to_numeric(_held_etf["close"], errors="coerce") /
+                                           pd.to_numeric(_held_etf["buy_price"], errors="coerce") - 1) * 100
+                _held_total = _held_etf["보유금액"].sum()
+                _held_etf["현재비중(%)"] = _held_etf["보유금액"] / _held_total * 100 if _held_total > 0 else 0
+                _held_etf["전술비중(%)"] = _held_etf["전술비중"].fillna(0) * 100
+
+                # 액션 판단
+                def _action(row):
+                    diff = row["전술비중(%)"] - row["현재비중(%)"]
+                    sig  = str(row.get("전환신호", ""))
+                    vol  = str(row.get("거래량신호", ""))
+                    if "전환 주의" in sig or "모멘텀 둔화" in sig:
+                        return "🔻 비중 축소 검토"
+                    if diff > 5 and "매집" in vol:
+                        return "🚀 적극 확대"
+                    if diff > 3:
+                        return "📈 확대 검토"
+                    if diff < -5:
+                        return "📉 축소 검토"
+                    return "✅ 유지"
+
+                _held_etf["액션"] = _held_etf.apply(_action, axis=1)
+
+                st.dataframe(
+                    _held_etf[["ticker", "name", "수익률(%)", "현재비중(%)", "전술비중(%)",
+                                "섹터사이클", "전환신호", "거래량신호", "OBV추세", "PV다이버전스", "액션"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "ticker":     st.column_config.TextColumn("티커"),
+                        "name":       st.column_config.TextColumn("종목명"),
+                        "수익률(%)":  st.column_config.NumberColumn(format="%+.2f"),
+                        "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
+                        "전술비중(%)": st.column_config.NumberColumn("전술비중(%)", format="%.1f"),
+                        "섹터사이클": st.column_config.TextColumn("사이클"),
+                        "전환신호":   st.column_config.TextColumn("전환신호"),
+                        "거래량신호": st.column_config.TextColumn("거래량"),
+                        "OBV추세":    st.column_config.NumberColumn("OBV(%)", format="%+.1f"),
+                        "PV다이버전스": st.column_config.TextColumn("가격-거래량"),
+                        "액션":       st.column_config.TextColumn("액션"),
+                    },
                 )
             else:
-                # 매수금 없을 때: 사이클 상태만 표시
-                st.dataframe(
-                    _e_alloc[["ticker", "name", "섹터사이클", "전환신호",
-                               "return_1m_pct", "return_12m_pct", "rsi14", "사이클배율"]].rename(columns={
-                        "ticker": "티커", "name": "종목명", "섹터사이클": "사이클",
-                        "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)", "rsi14": "RSI",
-                        "사이클배율": "배율",
-                    }),
-                    hide_index=True, use_container_width=True,
-                    column_config={
-                        "1M(%)":  st.column_config.NumberColumn(format="%+.2f"),
-                        "12M(%)": st.column_config.NumberColumn(format="%+.2f"),
-                        "RSI":    st.column_config.NumberColumn(format="%.0f"),
-                    },
-                )
+                st.caption("코어 ETF 보유 종목 없음.")
         else:
             st.info("현재가 데이터 없음.")
 
