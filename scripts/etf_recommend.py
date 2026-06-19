@@ -70,14 +70,143 @@ def volume_signals(ticker: str, results_dir) -> dict:
     }
 
 
+def technical_signals(ticker: str, results_dir) -> dict:
+    """MA 정렬·BB위치·RSI추세 기반 기술적 선행 지표.
+
+    Returns dict:
+        ma_score   : 0~3  (ma20>ma50>ma200 정렬 점수)
+        bb_pct     : 0~1  (볼린저 밴드 위치, 0=하단, 1=상단)
+        bb_trend   : 'up'|'flat'|'down'  (최근 5일 bb_pct 방향)
+        rsi_slope  : RSI 10일 변화율 (%p/일)
+        tech_label : 종합 기술 신호 이모지
+        tech_score : -1.0 ~ +1.0  (score_etfs 보정에 사용)
+    """
+    results_dir = Path(results_dir)
+    f = results_dir / f"{ticker}_signals.csv"
+    if not f.exists():
+        return {}
+    try:
+        df = pd.read_csv(f)
+    except Exception:
+        return {}
+    if len(df) < 25:
+        return {}
+
+    last = df.iloc[-1]
+    # MA 정렬 (0~3)
+    ma_score = int(last["Close"] > last["ma20"]) + \
+               int(last["ma20"]  > last["ma50"]) + \
+               int(last["ma50"]  > last["ma200"])
+
+    # 볼린저 밴드 위치 및 추세
+    bb = float(last.get("bb_pct", 0.5))
+    bb5 = df["bb_pct"].tail(5)
+    bb_trend = "up" if bb5.iloc[-1] > bb5.iloc[0] + 0.05 else \
+               ("down" if bb5.iloc[-1] < bb5.iloc[0] - 0.05 else "flat")
+
+    # RSI 추세 (10일 기울기)
+    rsi10 = df["rsi14"].tail(10)
+    rsi_slope = round((rsi10.iloc[-1] - rsi10.iloc[0]) / 10, 2)
+
+    # 기술 점수 (-1 ~ +1)
+    score = (ma_score / 3 - 0.5) * 0.6          # MA 기여: -0.3 ~ +0.3
+    score += (bb - 0.5) * 0.2                    # BB 기여: -0.1 ~ +0.1
+    score += max(-0.1, min(0.1, rsi_slope / 10)) # RSI slope 기여
+    score = max(-1.0, min(1.0, score))
+
+    # 라벨
+    if ma_score == 3 and rsi_slope > 0:
+        label = "🟢 기술 강세"
+    elif ma_score >= 2 and bb > 0.5:
+        label = "📈 기술 양호"
+    elif ma_score <= 1 or rsi_slope < -0.5:
+        label = "🔴 기술 약세"
+    else:
+        label = "➡️ 기술 중립"
+
+    return {
+        "ma_score":  ma_score,
+        "bb_pct":    round(bb, 2),
+        "bb_trend":  bb_trend,
+        "rsi_slope": rsi_slope,
+        "tech_label": label,
+        "tech_score": round(score, 3),
+    }
+
+
+def macro_signals(summary_df: pd.DataFrame) -> dict:
+    """매크로 선행 지표 계산 — 기존 ETF 데이터로 추정.
+
+    구리/금 비율  : 경기 선행 (구리↑/금↑ = 성장 기대)
+    TLT vs SHY   : 수익률 곡선 대리 (장기채>단기채 = 안전자산 선호)
+    VIX 레벨     : 공포 지수 (>25 = 매수 기회, <15 = 과열 경계)
+    HYG/LQD 대리 : 신용 위험 (COPX vs BND로 대체)
+
+    Returns dict with regime_tilt adjustments per bucket.
+    """
+    if summary_df.empty:
+        return {}
+
+    latest = summary_df.sort_values("date").groupby("ticker").last().reset_index()
+    latest["ticker"] = latest["ticker"].astype(str).str.upper()
+
+    def _r(t, col="return_1m_pct"):
+        r = latest[latest["ticker"] == t]
+        return float(r[col].values[0]) if not r.empty and col in r.columns else None
+
+    out = {}
+
+    # 구리/금 비율 → 경기 선행 (COPX 1M - GLD 1M)
+    copx = _r("COPX"); gld = _r("GLD")
+    if copx is not None and gld is not None:
+        cu_au = round(copx - gld, 2)
+        out["구리금비율"] = cu_au
+        out["경기신호"]  = ("📈 성장 기대" if cu_au > 2 else
+                           ("📉 위험회피" if cu_au < -2 else "➡️ 중립"))
+
+    # 수익률 곡선 (TLT 1M vs SHY 1M) — 장기채가 더 오르면 안전자산 선호
+    tlt = _r("TLT"); shy = _r("SHY")
+    if tlt is not None and shy is not None:
+        curve = round(tlt - shy, 2)
+        out["수익률곡선"] = curve
+        out["곡선신호"]  = ("⚠️ 안전자산선호" if curve > 2 else
+                           ("✅ 위험자산선호" if curve < -2 else "➡️ 중립"))
+
+    # VIX (^VIX가 summary에 있으면 사용)
+    vix_row = latest[latest["ticker"].isin(["^VIX", "VIX"])]
+    if not vix_row.empty:
+        vix = float(vix_row["close"].values[0])
+        out["VIX"] = round(vix, 1)
+        out["공포신호"] = ("🔥 공포 극단(매수기회)" if vix > 30 else
+                          ("⚠️ 변동성 상승"        if vix > 20 else
+                          ("✅ 안정"               if vix > 12 else
+                           "🌡️ 과열 경계")))
+
+    # 달러 강도 (DXJ 1M > VEU 1M → 달러 강세 가능성 높음)
+    dxj = _r("DXJ"); veu = _r("VEU")
+    if dxj is not None and veu is not None:
+        out["달러강도"] = ("강달러 추정" if dxj > veu + 2 else
+                          ("약달러 추정" if dxj < veu - 2 else "중립"))
+
+    return out
+
+
 def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
-    """score_etfs 결과에 거래량 선행 지표 컬럼을 추가."""
-    out = df.copy()
-    vols = [volume_signals(str(t), results_dir) for t in out["ticker"]]
-    out["거래량비율"] = [v.get("vol_ratio") for v in vols]
-    out["OBV추세"]   = [v.get("obv_slope") for v in vols]
-    out["거래량신호"] = [v.get("vol_label", "—") for v in vols]
-    out["PV다이버전스"] = [v.get("pv_signal", "—") for v in vols]
+    """score_etfs 결과에 거래량·기술적 선행 지표 컬럼을 추가."""
+    out = df.reset_index(drop=True).copy()
+    vols  = [volume_signals(str(t), results_dir)    for t in out["ticker"]]
+    techs = [technical_signals(str(t), results_dir) for t in out["ticker"]]
+    out["거래량비율"]   = [v.get("vol_ratio")        for v in vols]
+    out["OBV추세"]      = [v.get("obv_slope")        for v in vols]
+    out["거래량신호"]   = [v.get("vol_label", "—")   for v in vols]
+    out["PV다이버전스"] = [v.get("pv_signal", "—")   for v in vols]
+    out["MA정렬"]       = [t.get("ma_score")          for t in techs]
+    out["BB위치"]       = [t.get("bb_pct")            for t in techs]
+    out["RSI기울기"]    = [t.get("rsi_slope")         for t in techs]
+    out["기술신호"]     = [t.get("tech_label", "—")  for t in techs]
+    tech_scores = pd.Series([t.get("tech_score", 0.0) for t in techs])
+    out["score"] = (pd.to_numeric(out["score"], errors="coerce")
+                    * (1 + tech_scores * 0.15)).round(1)
     return out
 
 # ── 섹터 사이클 정의 ──────────────────────────────────────────────────────────

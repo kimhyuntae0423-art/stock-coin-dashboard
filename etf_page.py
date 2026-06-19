@@ -6,7 +6,10 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from scripts.asset_allocation import load_core_etfs
-from scripts.etf_recommend import market_regime, score_etfs, sector_cycles
+from scripts.etf_recommend import (
+    market_regime, score_etfs, sector_cycles,
+    macro_signals, enrich_with_volume,
+)
 
 BASE    = Path(__file__).resolve().parent
 RESULTS = BASE / "results"
@@ -25,6 +28,8 @@ if summary.empty:
 # ── 시장 국면 & ETF 점수 ──────────────────────────────────────────────────────
 _regime  = market_regime(summary)
 _scored  = score_etfs(core_etfs, summary, _regime["key"])
+_scored  = enrich_with_volume(_scored, RESULTS)
+_macro   = macro_signals(summary)
 _valid   = _scored.dropna(subset=["close", "score"]).sort_values("score", ascending=False)
 _all     = _scored.sort_values("return_12m_pct", ascending=False, na_position="last")
 
@@ -36,6 +41,51 @@ if not _valid.empty:
     _best12 = _all.dropna(subset=["return_12m_pct"]).sort_values("return_12m_pct", ascending=False)
     _c3.metric(f"🥇 12M 최고 ({_best12.iloc[0]['ticker']})",  f"{_best12.iloc[0]['return_12m_pct']:+.1f}%")
     _c4.metric(f"🥉 12M 최저 ({_best12.iloc[-1]['ticker']})", f"{_best12.iloc[-1]['return_12m_pct']:+.1f}%")
+
+st.divider()
+
+# ── 매크로 레이더 ─────────────────────────────────────────────────────────────
+st.subheader("🌐 매크로 레이더")
+st.caption("경기·공포·채권 신호 — 가격보다 1~4주 선행하는 경향이 있는 지표들")
+
+_mr_cols = st.columns(4)
+_mr_idx  = 0
+
+if "경기신호" in _macro:
+    cu_str = f"{_macro['구리금비율']:+.1f}%p" if "구리금비율" in _macro else "—"
+    _mr_cols[_mr_idx].metric(
+        "구리/금 비율 (경기 선행)",
+        _macro["경기신호"],
+        cu_str,
+        help="COPX 1M - GLD 1M. 구리 > 금 = 경기 기대, 반대 = 위험회피. 경기에 2~4주 선행."
+    )
+    _mr_idx += 1
+
+if "곡선신호" in _macro:
+    cv_str = f"TLT-SHY {_macro['수익률곡선']:+.1f}%p" if "수익률곡선" in _macro else "—"
+    _mr_cols[_mr_idx].metric(
+        "수익률 곡선 (채권 흐름)",
+        _macro["곡선신호"],
+        cv_str,
+        help="장기채(TLT) vs 단기채(SHY) 1M 성과. 장기채 우위 = 안전자산 선호."
+    )
+    _mr_idx += 1
+
+if "공포신호" in _macro:
+    _mr_cols[_mr_idx].metric(
+        "공포지수 VIX",
+        _macro["공포신호"],
+        f"VIX {_macro['VIX']:.0f}",
+        help=">30 역사적 저점 매수 기회, <15 과열 경계. 역발상 지표."
+    )
+    _mr_idx += 1
+
+if "달러강도" in _macro:
+    _mr_cols[_mr_idx % 4].metric(
+        "달러 강도 (추정)",
+        _macro["달러강도"],
+        help="DXJ(일본 헤지) vs VEU(비미국) 상대강도. 강달러 = 신흥국·원자재 ETF 역풍."
+    )
 
 st.divider()
 
@@ -88,6 +138,11 @@ if not _valid.empty:
     _tbl_full = _full[[
         "ticker", "name", "버킷", "사이클상태",
         "return_1m_pct", "return_12m_pct", "rsi14",
+        "기술신호", "거래량신호", "MA정렬", "BB위치", "OBV추세",
+        "mom_score", "사이클배율", "score", "state",
+    ]].copy() if "기술신호" in _full.columns else _full[[
+        "ticker", "name", "버킷", "사이클상태",
+        "return_1m_pct", "return_12m_pct", "rsi14",
         "mom_score", "사이클배율", "score", "state",
     ]].copy()
     _tbl_full["사이클배율"] = _tbl_full["사이클배율"].apply(
@@ -96,9 +151,12 @@ if not _valid.empty:
     st.dataframe(
         _tbl_full.rename(columns={
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
-            "사이클상태": "섹터 사이클", "return_1m_pct": "1M(%)",
+            "사이클상태": "섹터사이클", "return_1m_pct": "1M(%)",
             "return_12m_pct": "12M(%)", "rsi14": "RSI",
-            "mom_score": "모멘텀점수", "사이클배율": "사이클배율",
+            "기술신호": "기술신호", "거래량신호": "거래량",
+            "MA정렬": "MA(0-3)", "BB위치": "BB위치",
+            "OBV추세": "OBV(%)",
+            "mom_score": "모멘텀", "사이클배율": "배율",
             "score": "최종점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
@@ -106,8 +164,14 @@ if not _valid.empty:
             "1M(%)":    st.column_config.NumberColumn(format="%+.2f"),
             "12M(%)":   st.column_config.NumberColumn(format="%+.2f"),
             "RSI":      st.column_config.NumberColumn(format="%.0f"),
-            "모멘텀점수": st.column_config.NumberColumn(format="%.0f"),
-            "최종점수": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=160),
+            "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
+                         help="3=MA20>MA50>MA200 완전 정렬(강세), 0=역배열(약세)"),
+            "BB위치":   st.column_config.NumberColumn(format="%.2f",
+                         help="볼린저밴드 위치. 0.8↑=상단압박, 0.2↓=하단지지"),
+            "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
+                         help="10일 OBV 변화율. 양수=매집, 음수=분배"),
+            "모멘텀":   st.column_config.NumberColumn(format="%.0f"),
+            "최종점수": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=180),
         },
     )
 

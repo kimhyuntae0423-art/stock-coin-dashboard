@@ -75,6 +75,9 @@ ARM
 476760.KS
 0072R0.KS
 
+# 매크로 지표
+^VIX
+
 # 미국 ETF (코어)
 VOO
 VTI
