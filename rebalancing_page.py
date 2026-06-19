@@ -648,150 +648,170 @@ if new_money > 0 and alloc["Total"] > 0:
         f"(목표: {target_core}% / {target_satellite}% / {target_cash}%)"
     )
 
-    with st.expander("🏛️ 코어 ETF 매수 후보 — 전술적 배분"):
+    with st.expander("🏛️ 코어 ETF 매수 후보 — 종합 순위 & 리밸런싱", expanded=True):
         _e_regime = market_regime(summary)
         _e_scored = score_etfs(core_etfs, summary, _e_regime["key"])
         _e_scored = enrich_with_volume(_e_scored, ROOT / "results")
         _e_alloc  = tactical_alloc(_e_scored, core_buy if core_buy > 0 else 1,
                                    regime=_e_regime)
 
-        # ── 국면 + VIX 배지 ──────────────────────────────────────────────────
+        # ── 국면 + VIX ───────────────────────────────────────────────────────
         st.caption(f"시장 국면: **{_e_regime['label']}** — {_e_regime['desc']}")
-        _vix = _e_regime.get("vix")
+        _vix  = _e_regime.get("vix")
         _vsig = _e_regime.get("vix_signal", "—")
         if _vix:
             if _vix > 25:
-                st.success(f"🔥 VIX {_vix:.0f} — {_vsig} (역발상 매수 타이밍, 공격 버킷 부스트 적용)")
+                st.success(f"🔥 VIX {_vix:.0f} — {_vsig}  ·  공격 버킷 오버웨이트 적용 (IC=0.14 검증)")
             elif _vix < 13:
-                st.warning(f"🌡️ VIX {_vix:.0f} — {_vsig} (신규 매수 신중, 공격 버킷 감점 적용)")
+                st.warning(f"🌡️ VIX {_vix:.0f} — {_vsig}  ·  공격 버킷 언더웨이트 적용")
             else:
                 st.info(f"VIX {_vix:.0f} — {_vsig}")
 
-        if not _e_alloc.empty:
-            # 전환 신호 요약 알림
-            _turning = _e_alloc[_e_alloc["전환신호"].str.contains("전환 주의|과열\+전환", na=False)]
-            _slowing = _e_alloc[_e_alloc["전환신호"] == "📉 모멘텀 둔화"]
-            _hot     = _e_alloc[_e_alloc["전환신호"] == "🔥 강세 유지"]
-            if not _hot.empty:
-                st.success(f"🔥 강세 섹터: {', '.join(_hot['ticker'].tolist())} — 전술 오버웨이트 적용")
-            if not _turning.empty:
-                st.warning(f"⚠️ 사이클 전환 주의: {', '.join(_turning['ticker'].tolist())} — 신규 매수 재고")
-            if not _slowing.empty:
-                st.info(f"📉 모멘텀 둔화: {', '.join(_slowing['ticker'].tolist())} — 비중 축소 검토")
-
-            # ── 전술 배분 vs 균등 비교 테이블 ───────────────────────────────────
-            _cols_base = ["ticker", "name", "섹터사이클", "전환신호", "거래량신호",
-                          "return_1m_pct", "return_12m_pct", "rsi14",
-                          "거래량비율", "OBV추세", "사이클배율"]
-            _col_cfg_base = {
-                "ticker": st.column_config.TextColumn("티커"),
-                "name":   st.column_config.TextColumn("종목명"),
-                "섹터사이클":  st.column_config.TextColumn("사이클"),
-                "전환신호":    st.column_config.TextColumn("전환신호"),
-                "거래량신호":  st.column_config.TextColumn("거래량"),
-                "return_1m_pct":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
-                "return_12m_pct": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
-                "rsi14":          st.column_config.NumberColumn("RSI", format="%.0f"),
-                "거래량비율":  st.column_config.NumberColumn("거래량비율", format="%.2f",
-                               help="최근5일/20일 평균거래량. 1.3↑=급증(기관개입 가능)"),
-                "OBV추세":     st.column_config.NumberColumn("OBV변화(%)", format="%+.1f",
-                               help="10일 OBV 변화율. 양수=매집, 음수=분배"),
-                "사이클배율":  st.column_config.TextColumn("배율"),
-            }
-
-            if core_buy > 0:
-                _disp = _e_alloc[_cols_base + ["기본배분", "전술배분", "배분차이"]].copy()
-                _disp["수량"] = (_disp["전술배분"] / _e_alloc["close"]).apply(
-                    lambda x: int(x) if pd.notna(x) and x > 0 else 0
-                )
-                _disp["사이클배율"] = _disp["사이클배율"].apply(
-                    lambda x: f"×{float(x):.2f}" if pd.notna(x) else "×1.00"
-                )
-                st.dataframe(
-                    _disp,
-                    hide_index=True, use_container_width=True,
-                    column_config={
-                        **_col_cfg_base,
-                        "기본배분": st.column_config.NumberColumn("균등(원)", format="%,.0f"),
-                        "전술배분": st.column_config.NumberColumn("전술(원)", format="%,.0f"),
-                        "배분차이": st.column_config.NumberColumn("차이(원)", format="%+,.0f"),
-                        "수량":     st.column_config.NumberColumn("수량(전술)"),
-                    },
-                )
-                st.caption("전술(원) = 균등 × 사이클 배율. 차이(+)=오버웨이트. 최종 결정은 직접 판단하세요.")
-            else:
-                _disp2 = _e_alloc[_cols_base].copy()
-                _disp2["사이클배율"] = _disp2["사이클배율"].apply(
-                    lambda x: f"×{float(x):.2f}" if pd.notna(x) else "×1.00"
-                )
-                st.dataframe(_disp2, hide_index=True, use_container_width=True,
-                             column_config=_col_cfg_base)
-
-            # ── 보유 ETF 건강 체크 ────────────────────────────────────────────────
-            st.divider()
-            st.markdown("**📋 보유 ETF 건강 체크**")
-            st.caption("현재 보유 중인 ETF의 사이클·거래량 신호와 전술 추천 비중을 비교합니다.")
-
-            _held_etf = holdings[holdings["ticker"].astype(str).str.upper().isin(
-                _e_alloc["ticker"].astype(str).str.upper()
-            )].copy() if not holdings.empty else pd.DataFrame()
-
-            if not _held_etf.empty:
-                _held_etf["ticker"] = _held_etf["ticker"].astype(str).str.upper()
-                _held_etf = _held_etf.merge(
-                    _e_alloc[["ticker", "name", "close", "섹터사이클", "전환신호",
-                               "거래량신호", "거래량비율", "OBV추세", "PV다이버전스",
-                               "return_1m_pct", "return_12m_pct", "rsi14",
-                               "전술비중", "사이클배율"]],
+        if _e_alloc.empty:
+            st.info("현재가 데이터 없음.")
+        else:
+            # ── 보유 ETF 현재 비중 계산 ─────────────────────────────────────
+            _held_map: dict = {}   # ticker → {qty, buy_price, 보유금액, 수익률}
+            if not holdings.empty:
+                _h = holdings.copy()
+                _h["ticker"] = _h["ticker"].astype(str).str.upper()
+                _h = _h.merge(
+                    summary.sort_values("date").groupby("ticker").last()
+                           .reset_index()[["ticker", "close"]].assign(
+                               ticker=lambda d: d["ticker"].astype(str).str.upper()),
                     on="ticker", how="left",
                 )
-                _held_etf["보유금액"] = pd.to_numeric(_held_etf["qty"], errors="coerce") * \
-                                         pd.to_numeric(_held_etf["close"], errors="coerce")
-                _held_etf["수익률(%)"] = (pd.to_numeric(_held_etf["close"], errors="coerce") /
-                                           pd.to_numeric(_held_etf["buy_price"], errors="coerce") - 1) * 100
-                _held_total = _held_etf["보유금액"].sum()
-                _held_etf["현재비중(%)"] = _held_etf["보유금액"] / _held_total * 100 if _held_total > 0 else 0
-                _held_etf["전술비중(%)"] = _held_etf["전술비중"].fillna(0) * 100
+                _h["보유금액"] = pd.to_numeric(_h["qty"], errors="coerce") * \
+                                  pd.to_numeric(_h["close"], errors="coerce")
+                _h["수익률(%)"] = (pd.to_numeric(_h["close"], errors="coerce") /
+                                    pd.to_numeric(_h["buy_price"], errors="coerce") - 1) * 100
+                _h_core = _h[_h["ticker"].isin(_e_alloc["ticker"].astype(str).str.upper())]
+                _h_total = _h_core["보유금액"].sum()
+                for _, _hr in _h_core.iterrows():
+                    _held_map[str(_hr["ticker"]).upper()] = {
+                        "보유금액":   float(_hr["보유금액"] or 0),
+                        "수익률(%)":  float(_hr.get("수익률(%)") or 0),
+                        "현재비중(%)": float(_hr["보유금액"] / _h_total * 100) if _h_total > 0 else 0,
+                    }
 
-                # 액션 판단
-                def _action(row):
-                    diff = row["전술비중(%)"] - row["현재비중(%)"]
-                    sig  = str(row.get("전환신호", ""))
-                    vol  = str(row.get("거래량신호", ""))
-                    if "전환 주의" in sig or "모멘텀 둔화" in sig:
-                        return "🔻 비중 축소 검토"
-                    if diff > 5 and "매집" in vol:
-                        return "🚀 적극 확대"
-                    if diff > 3:
-                        return "📈 확대 검토"
-                    if diff < -5:
-                        return "📉 축소 검토"
-                    return "✅ 유지"
+            # ── 통합 순위 테이블 구성 ────────────────────────────────────────
+            _ranked = _e_alloc.dropna(subset=["score"]).copy()
+            _ranked = _ranked.reset_index(drop=True)
+            _ranked["순위"] = range(1, len(_ranked) + 1)
 
-                _held_etf["액션"] = _held_etf.apply(_action, axis=1)
+            _ranked["ticker_u"] = _ranked["ticker"].astype(str).str.upper()
+            _ranked["보유"] = _ranked["ticker_u"].apply(
+                lambda t: "✅ 보유" if t in _held_map else "—"
+            )
+            _ranked["수익률(%)"] = _ranked["ticker_u"].apply(
+                lambda t: _held_map[t]["수익률(%)"] if t in _held_map else None
+            )
+            _ranked["현재비중(%)"] = _ranked["ticker_u"].apply(
+                lambda t: _held_map[t]["현재비중(%)"] if t in _held_map else 0.0
+            )
+            _ranked["전술비중(%)"] = _ranked["전술비중"].fillna(0) * 100
+            _ranked["비중차이(%p)"] = _ranked["전술비중(%)"] - _ranked["현재비중(%)"]
 
-                st.dataframe(
-                    _held_etf[["ticker", "name", "수익률(%)", "현재비중(%)", "전술비중(%)",
-                                "섹터사이클", "전환신호", "거래량신호", "OBV추세", "PV다이버전스", "액션"]],
-                    hide_index=True, use_container_width=True,
-                    column_config={
-                        "ticker":     st.column_config.TextColumn("티커"),
-                        "name":       st.column_config.TextColumn("종목명"),
-                        "수익률(%)":  st.column_config.NumberColumn(format="%+.2f"),
-                        "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
-                        "전술비중(%)": st.column_config.NumberColumn("전술비중(%)", format="%.1f"),
-                        "섹터사이클": st.column_config.TextColumn("사이클"),
-                        "전환신호":   st.column_config.TextColumn("전환신호"),
-                        "거래량신호": st.column_config.TextColumn("거래량"),
-                        "OBV추세":    st.column_config.NumberColumn("OBV(%)", format="%+.1f"),
-                        "PV다이버전스": st.column_config.TextColumn("가격-거래량"),
-                        "액션":       st.column_config.TextColumn("액션"),
-                    },
+            if core_buy > 0:
+                _ranked["추천금액(원)"] = (_ranked["전술비중"] * core_buy).round(0)
+                _ranked["추천수량"] = (_ranked["추천금액(원)"] / _ranked["close"]).apply(
+                    lambda x: int(x) if pd.notna(x) and x > 0 else 0
                 )
-            else:
-                st.caption("코어 ETF 보유 종목 없음.")
-        else:
-            st.info("현재가 데이터 없음.")
+
+            # 사이클배율 포맷
+            _ranked["배율"] = _ranked["사이클배율"].apply(
+                lambda x: f"×{float(x):.2f}" if pd.notna(x) else "×1.00"
+            )
+
+            # 종합 리밸런싱 액션
+            def _reb_action(row):
+                ticker  = str(row["ticker_u"])
+                held    = ticker in _held_map
+                diff    = float(row["비중차이(%p)"])
+                sig     = str(row.get("전환신호", ""))
+                overheat = str(row.get("과열신호", ""))
+                vol     = str(row.get("거래량신호", ""))
+                ret     = float(row.get("수익률(%)") or 0)
+                # 보유 중인 경우
+                if held:
+                    if "과열+전환" in sig or ("⚠️ 과열" in overheat and "전환 주의" in sig):
+                        return "🚨 즉시 축소"
+                    if "전환 주의" in sig or "모멘텀 둔화" in sig:
+                        return "📉 비중 축소"
+                    if "⚠️ 과열" in overheat and ret > 25:
+                        return "🌡️ 차익실현"
+                    if diff > 5 and "매집" in vol:
+                        return "🚀 적극 추가매수"
+                    if diff > 3:
+                        return "📈 추가매수"
+                    if diff < -5:
+                        return "📉 비중 축소"
+                    return "✅ 유지"
+                # 미보유
+                else:
+                    if "전환 주의" in sig or "❄️ 약세" == sig:
+                        return "⛔ 매수 보류"
+                    if row.get("전술비중(%)") or 0 > 3 and "🔥" in sig:
+                        return "🆕 신규매수 적극"
+                    if (row.get("전술비중(%)") or 0) > 2:
+                        return "🆕 신규매수 검토"
+                    return "— 관망"
+
+            _ranked["리밸런싱"] = _ranked.apply(_reb_action, axis=1)
+
+            # 긴급 경보 배너
+            _urgent = _ranked[_ranked["리밸런싱"].str.startswith("🚨", na=False)]
+            _new_buy = _ranked[_ranked["리밸런싱"].str.startswith("🆕", na=False)]
+            if not _urgent.empty:
+                st.error(f"🚨 즉시 조치 필요: {', '.join(_urgent['ticker'].tolist())}")
+            if not _new_buy.empty:
+                st.success(f"🆕 신규매수 후보: {', '.join(_new_buy['ticker'].tolist())}")
+
+            # ── 메인 테이블 ───────────────────────────────────────────────────
+            _show_cols = ["순위", "보유", "ticker", "name", "섹터사이클",
+                          "전환신호", "과열신호", "거래량신호",
+                          "return_1m_pct", "return_12m_pct", "수익률(%)",
+                          "현재비중(%)", "전술비중(%)", "비중차이(%p)",
+                          "배율", "score", "리밸런싱"]
+            if core_buy > 0:
+                _show_cols += ["추천금액(원)", "추천수량"]
+
+            _disp = _ranked[[c for c in _show_cols if c in _ranked.columns]].copy()
+            st.dataframe(
+                _disp,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "순위":          st.column_config.NumberColumn("순위", format="%d"),
+                    "보유":          st.column_config.TextColumn("보유"),
+                    "ticker":        st.column_config.TextColumn("티커"),
+                    "name":          st.column_config.TextColumn("종목명"),
+                    "섹터사이클":    st.column_config.TextColumn("사이클"),
+                    "전환신호":      st.column_config.TextColumn("전환신호"),
+                    "과열신호":      st.column_config.TextColumn("과열",
+                                    help="MA·BB 기반. 과열 = 향후 수익 낮은 경향 (IC 역방향 검증)"),
+                    "거래량신호":    st.column_config.TextColumn("거래량",
+                                    help="IC=+0.04 검증. 급증=기관 개입 추정"),
+                    "return_1m_pct": st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                    "return_12m_pct":st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+                    "수익률(%)":     st.column_config.NumberColumn("보유수익(%)", format="%+.2f"),
+                    "현재비중(%)":   st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
+                    "전술비중(%)":   st.column_config.NumberColumn("전술비중(%)", format="%.1f"),
+                    "비중차이(%p)":  st.column_config.NumberColumn("차이(%p)", format="%+.1f",
+                                    help="전술비중 - 현재비중. (+)=추가매수 필요, (-)=비중 과다"),
+                    "배율":          st.column_config.TextColumn("사이클배율"),
+                    "score":         st.column_config.ProgressColumn("종합점수",
+                                    format="%.0f", min_value=0, max_value=180),
+                    "리밸런싱":      st.column_config.TextColumn("리밸런싱 액션"),
+                    "추천금액(원)":  st.column_config.NumberColumn("추천금액(원)", format="%,.0f"),
+                    "추천수량":      st.column_config.NumberColumn("추천수량"),
+                },
+            )
+            st.caption(
+                "종합점수 = 모멘텀 × 시장국면(VIX포함) × 섹터사이클 × 과열감점. "
+                "비중차이(+)=전술 대비 언더웨이트 → 추가매수. "
+                "최종 결정은 직접 판단하세요."
+            )
 
     with st.expander("🎯 위성 매수 후보"):
         if sat_buy > 0:
