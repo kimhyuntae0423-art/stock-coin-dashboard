@@ -571,21 +571,30 @@ if new_money > 0 and alloc["Total"] > 0:
     )
 
     with st.expander("🏛️ 코어 ETF 매수 후보"):
-        _price_map_c = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
+        _sig_map = summary.set_index(summary["ticker"].astype(str).str.upper())[
+            ["close", "return_1m_pct", "return_12m_pct", "rsi14"]
+        ] if not summary.empty else pd.DataFrame(columns=["close", "return_1m_pct", "return_12m_pct", "rsi14"])
         _core_show = core_etfs.copy()
-        _core_show["현재가"] = _core_show["ticker"].astype(str).str.upper().map(_price_map_c)
-        _core_show = _core_show[_core_show["현재가"].notna()].copy()
-        if not _core_show.empty and core_buy > 0:
-            _core_show["균등배분"] = round(core_buy / len(_core_show))
-            _core_show["수량(균등)"] = (_core_show["균등배분"] / _core_show["현재가"]).apply(
+        _core_show["_tk"] = _core_show["ticker"].astype(str).str.upper()
+        _core_show["현재가"]    = _core_show["_tk"].map(_sig_map["close"].to_dict())
+        _core_show["1M(%)"]     = _core_show["_tk"].map(_sig_map["return_1m_pct"].to_dict())
+        _core_show["12M(%)"]    = _core_show["_tk"].map(_sig_map["return_12m_pct"].to_dict())
+        _core_show = _core_show.drop(columns=["_tk"])
+        _core_show_valid = _core_show[_core_show["현재가"].notna()].copy()
+        if not _core_show_valid.empty and core_buy > 0:
+            _core_show_valid["균등배분"] = round(core_buy / len(_core_show_valid))
+            _core_show_valid["수량(균등)"] = (_core_show_valid["균등배분"] / _core_show_valid["현재가"]).apply(
                 lambda x: int(x) if pd.notna(x) and x > 0 else 0
             )
             st.dataframe(
-                _core_show[["ticker", "name", "category", "expense_ratio", "currency", "현재가", "균등배분", "수량(균등)"]],
+                _core_show_valid[["ticker", "name", "category", "expense_ratio", "currency",
+                                  "현재가", "1M(%)", "12M(%)", "균등배분", "수량(균등)"]],
                 hide_index=True, use_container_width=True,
                 column_config={
                     "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
-                    "현재가": st.column_config.NumberColumn(format="%,.0f"),
+                    "현재가":  st.column_config.NumberColumn(format="%,.2f"),
+                    "1M(%)":   st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                    "12M(%)":  st.column_config.NumberColumn("12M(%)", format="%+.2f"),
                     "균등배분": st.column_config.NumberColumn(format="%,.0f"),
                 },
             )
@@ -593,9 +602,14 @@ if new_money > 0 and alloc["Total"] > 0:
             st.info("코어 배분 없음 또는 현재가 데이터 없음.")
         st.caption("전체 목록")
         st.dataframe(
-            core_etfs[["ticker", "name", "category", "asset_class", "expense_ratio", "currency", "notes"]],
+            _core_show[["ticker", "name", "category", "asset_class", "expense_ratio",
+                        "currency", "1M(%)", "12M(%)", "notes"]],
             hide_index=True, use_container_width=True,
-            column_config={"expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f")},
+            column_config={
+                "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
+                "1M(%)":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                "12M(%)": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+            },
         )
 
     with st.expander("🎯 위성 매수 후보"):
