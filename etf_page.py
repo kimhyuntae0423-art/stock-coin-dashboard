@@ -48,6 +48,75 @@ if not _cmp_valid.empty:
 
 st.divider()
 
+# ── 추천 섹션 ──────────────────────────────────────────────────────────────────
+st.subheader("🎯 매수 추천 ETF")
+st.caption("12M 모멘텀 70% + 1M 모멘텀 30% 점수 기준. Bull 추세 + RSI 70 미만 우선.")
+
+if not _cmp_valid.empty:
+    _scored = _cmp_valid.copy()
+    _scored["r12_rank"] = _scored["return_12m_pct"].rank(pct=True)
+    _scored["r1_rank"]  = _scored["return_1m_pct"].rank(pct=True)
+    _scored["score"]    = (_scored["r12_rank"] * 0.7 + _scored["r1_rank"] * 0.3) * 100
+
+    # 필터: bull + RSI < 70 → "적극 추천" / 나머지는 "관심"
+    _bull_ok  = _scored[(_scored["state"] == "bull") & (_scored["rsi14"] < 70)].sort_values("score", ascending=False)
+    _watch    = _scored[~_scored.index.isin(_bull_ok.index)].sort_values("score", ascending=False).head(3)
+
+    def _tag(row):
+        reasons = []
+        if row["return_12m_pct"] >= 20:  reasons.append(f"12M +{row['return_12m_pct']:.0f}%")
+        if row["return_1m_pct"]  >= 3:   reasons.append(f"1M +{row['return_1m_pct']:.1f}%")
+        if row["rsi14"] < 50:            reasons.append("RSI 여유")
+        if row["expense_ratio"]  <= 0.1: reasons.append("저보수")
+        return " · ".join(reasons) if reasons else "모멘텀 유지"
+
+    if not _bull_ok.empty:
+        _top = _bull_ok.head(5)
+        _cols = st.columns(min(len(_top), 5))
+        for i, (_, row) in enumerate(_top.iterrows()):
+            with _cols[i]:
+                st.metric(
+                    label=f"**{row['ticker']}**",
+                    value=f"{row['return_12m_pct']:+.1f}%",
+                    delta=f"1M {row['return_1m_pct']:+.1f}%",
+                )
+                st.caption(f"{row['name']}")
+                st.caption(f"RSI {row['rsi14']:.0f} · 점수 {row['score']:.0f}")
+                st.caption(_tag(row))
+
+    if not _watch.empty:
+        with st.expander("👀 관심 ETF (Bear 또는 RSI ≥ 70)"):
+            for _, row in _watch.iterrows():
+                reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
+                st.markdown(f"- **{row['ticker']}** {row['name']} — 12M {row['return_12m_pct']:+.1f}% / {reason}")
+
+    # 카테고리별 1위
+    st.divider()
+    st.markdown("**카테고리별 모멘텀 1위**")
+    _cat_best = (
+        _scored.sort_values("score", ascending=False)
+               .groupby("category", sort=False)
+               .first()
+               .reset_index()
+               [["category", "ticker", "name", "return_1m_pct", "return_12m_pct", "score", "state"]]
+               .sort_values("score", ascending=False)
+    )
+    st.dataframe(
+        _cat_best.rename(columns={
+            "category": "카테고리", "ticker": "티커", "name": "종목명",
+            "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)",
+            "score": "점수", "state": "추세",
+        }),
+        hide_index=True, use_container_width=True,
+        column_config={
+            "1M(%)":  st.column_config.NumberColumn(format="%+.2f"),
+            "12M(%)": st.column_config.NumberColumn(format="%+.2f"),
+            "점수":   st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=100),
+        },
+    )
+
+st.divider()
+
 # ── 수익률 비교 차트 ────────────────────────────────────────────────────────────
 st.subheader("수익률 비교")
 
