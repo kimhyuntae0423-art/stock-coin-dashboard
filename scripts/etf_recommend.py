@@ -133,6 +133,46 @@ def sector_cycles(summary_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def tactical_alloc(scored_df: pd.DataFrame, total_amount: float) -> pd.DataFrame:
+    """사이클배율 기반 전술적 배분 계산.
+
+    Returns scored_df에 추가 컬럼:
+        기본비중, 전술비중, 기본배분, 전술배분, 배분차이, 전환신호
+    """
+    df = scored_df.dropna(subset=["close", "score"]).copy()
+    if df.empty:
+        return df
+
+    n = len(df)
+    df["기본비중"]     = 1 / n
+    mult = df["사이클배율"].fillna(1.0).astype(float)
+    raw  = df["기본비중"] * mult
+    df["전술비중"]     = raw / raw.sum()
+    df["기본배분"]     = (df["기본비중"] * total_amount).round(0)
+    df["전술배분"]     = (df["전술비중"] * total_amount).round(0)
+    df["배분차이"]     = df["전술배분"] - df["기본배분"]
+
+    # 사이클 전환 감지: 12M 강세인데 1M 이 벤치 대비 약해지면 "전환 주의"
+    def _rotation_signal(row):
+        r12 = row.get("return_12m_pct", 0) or 0
+        r1  = row.get("return_1m_pct",  0) or 0
+        cy  = row.get("사이클배율", 1.0) or 1.0
+        rsi = row.get("rsi14", 50) or 50
+        # 강세였던 섹터(12M 높음)인데 최근 1M 둔화 + RSI 하락
+        if r12 > 20 and r1 < 0 and rsi < 50:
+            return "⚠️ 전환 주의"
+        if r12 > 15 and cy < 1.0:
+            return "📉 모멘텀 둔화"
+        if cy >= 1.12:
+            return "🔥 강세 유지"
+        if cy >= 1.0:
+            return "✅ 중립"
+        return "❄️ 약세"
+
+    df["전환신호"] = df.apply(_rotation_signal, axis=1)
+    return df
+
+
 def score_etfs(etf_df: pd.DataFrame, summary_df: pd.DataFrame, regime_key: str) -> pd.DataFrame:
     """core_etfs + summary 병합 후 국면 × 섹터 사이클 반영 점수 계산.
 
