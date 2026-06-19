@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from scripts.asset_allocation import load_core_etfs
-from scripts.etf_recommend import market_regime, score_etfs
+from scripts.etf_recommend import market_regime, score_etfs, sector_cycles
 
 BASE    = Path(__file__).resolve().parent
 RESULTS = BASE / "results"
@@ -53,9 +53,28 @@ _m4.metric("채권(TLT) 1M",  f"{_regime['tlt_1m']:+.1f}%",
 
 st.divider()
 
+# ── 섹터 사이클 현황 ──────────────────────────────────────────────────────────
+st.subheader("🔄 섹터 사이클 현황")
+st.caption("각 섹터 대표 ETF의 1M 상대강도 기준. 점수 계산에 자동 반영됩니다.")
+
+_cy_df = sector_cycles(summary)
+if not _cy_df.empty:
+    _cy_show = _cy_df[["섹터", "지표ETF", "벤치마크", "지표 1M", "벤치 1M", "상대강도", "사이클"]].copy()
+    _cy_show = _cy_show.sort_values("상대강도", ascending=False)
+    st.dataframe(
+        _cy_show, hide_index=True, use_container_width=True,
+        column_config={
+            "지표 1M":  st.column_config.NumberColumn("지표 1M(%)", format="%+.1f"),
+            "벤치 1M":  st.column_config.NumberColumn("벤치 1M(%)", format="%+.1f"),
+            "상대강도":  st.column_config.NumberColumn("상대강도(%p)", format="%+.1f"),
+        },
+    )
+
+st.divider()
+
 # ── 추천 섹션 ─────────────────────────────────────────────────────────────────
 st.subheader("🎯 시장 국면 반영 추천 ETF")
-st.caption("모멘텀(12M 70% + 1M 30%) × 국면 가중치. Bull 추세 + RSI 70 미만 우선.")
+st.caption("모멘텀(12M 70% + 1M 30%) × 시장 국면 × 섹터 사이클. Bull 추세 + RSI 70 미만 우선.")
 
 if not _valid.empty:
     _bull_ok = _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)]
@@ -80,6 +99,8 @@ if not _valid.empty:
                 st.caption(row["name"])
                 st.caption(f"RSI {row['rsi14']:.0f} · 점수 {row['score']:.0f}")
                 st.caption(_tag(row))
+                if pd.notna(row.get("섹터사이클")) and row["섹터사이클"] != "—":
+                    st.caption(f"사이클: {row['섹터사이클']}")
 
     if not _watch.empty:
         with st.expander("👀 관심 ETF (Bear 또는 RSI ≥ 70)"):

@@ -589,7 +589,7 @@ if new_money > 0 and alloc["Total"] > 0:
                 lambda x: int(x) if pd.notna(x) and x > 0 else 0
             )
             st.dataframe(
-                _e_valid[["ticker", "name", "버킷", "expense_ratio",
+                _e_valid[["ticker", "name", "버킷", "섹터사이클", "expense_ratio",
                            "close", "return_1m_pct", "return_12m_pct", "rsi14",
                            "score", "추천배분", "수량"]],
                 hide_index=True, use_container_width=True,
@@ -597,6 +597,7 @@ if new_money > 0 and alloc["Total"] > 0:
                     "ticker":         st.column_config.TextColumn("티커"),
                     "name":           st.column_config.TextColumn("종목명"),
                     "버킷":           st.column_config.TextColumn("위험도"),
+                    "섹터사이클":     st.column_config.TextColumn("섹터사이클"),
                     "expense_ratio":  st.column_config.NumberColumn("보수(%)", format="%.2f"),
                     "close":          st.column_config.NumberColumn("현재가", format="%,.2f"),
                     "return_1m_pct":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
