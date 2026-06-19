@@ -192,10 +192,18 @@ def macro_signals(summary_df: pd.DataFrame) -> dict:
 
 
 def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
-    """score_etfs 결과에 거래량·기술적 선행 지표 컬럼을 추가."""
+    """score_etfs 결과에 맥락 지표 컬럼을 추가 (점수 계산에는 불포함).
+
+    백테스트 결과 (signal_validation.csv):
+      - MA정렬, BB위치, RSI기울기: IC < 0 → 과열 경보로만 해석, 점수 보정 제외
+      - 거래량비율: IC=+0.04, p=0.001 → 약한 양방향 확인 → 거래량 신호만 표시
+      - MACD: IC≈0 → 정보 없음, 제외
+      점수 계산은 모멘텀 × 국면 × 사이클만 유지.
+    """
     out = df.reset_index(drop=True).copy()
     vols  = [volume_signals(str(t), results_dir)    for t in out["ticker"]]
     techs = [technical_signals(str(t), results_dir) for t in out["ticker"]]
+    # 맥락 정보로만 표시 — 점수 보정 없음
     out["거래량비율"]   = [v.get("vol_ratio")        for v in vols]
     out["OBV추세"]      = [v.get("obv_slope")        for v in vols]
     out["거래량신호"]   = [v.get("vol_label", "—")   for v in vols]
@@ -203,10 +211,17 @@ def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
     out["MA정렬"]       = [t.get("ma_score")          for t in techs]
     out["BB위치"]       = [t.get("bb_pct")            for t in techs]
     out["RSI기울기"]    = [t.get("rsi_slope")         for t in techs]
-    out["기술신호"]     = [t.get("tech_label", "—")  for t in techs]
-    tech_scores = pd.Series([t.get("tech_score", 0.0) for t in techs])
-    out["score"] = (pd.to_numeric(out["score"], errors="coerce")
-                    * (1 + tech_scores * 0.15)).round(1)
+    # 과열 경보 라벨 (역방향 신호 — 높은 MA·BB·RSI기울기는 주의 신호)
+    def _overheat(t):
+        ma, bb, rsi = t.get("ma_score", 0), t.get("bb_pct", 0.5), t.get("rsi_slope", 0)
+        if ma == 3 and bb > 0.8 and rsi > 0.5:
+            return "⚠️ 과열 주의"
+        if ma >= 2 and bb > 0.7:
+            return "🌡️ 상단 근접"
+        if ma <= 1 or bb < 0.3:
+            return "❄️ 하단 지지"
+        return "➡️ 보통"
+    out["과열신호"] = [_overheat(t) for t in techs]
     return out
 
 # ── 섹터 사이클 정의 ──────────────────────────────────────────────────────────

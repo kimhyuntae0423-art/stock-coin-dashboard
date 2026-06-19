@@ -103,10 +103,11 @@ except FileNotFoundError:
     st.stop()
 
 # ── 탭 구조 ──────────────────────────────────────────────
-tab_sum, tab0, tab1, tab2, tab3, tab4 = st.tabs([
+tab_sum, tab0, tab1, tab2, tab3, tab4, tab_val = st.tabs([
     "📋 요약",
     "🏆 개별주 vs 시장", "📈 골든/데스크로스", "📊 RSI 신호", "✂️ 손절선 검증",
-    "🔬 전략 백테스트"
+    "🔬 전략 백테스트",
+    "🧪 신호 예측력 검증",
 ])
 
 
@@ -1060,4 +1061,119 @@ with tab_sum:
             "근거":    st.column_config.TextColumn("근거",    width="large"),
         },
     )
+
+
+# ════════════════════════════════════════════════════════
+# TAB 신호 예측력 검증 — 가설 수립 → 검증 → 적용
+# ════════════════════════════════════════════════════════
+with tab_val:
+    st.subheader("🧪 신호 예측력 검증")
+    st.caption(
+        "가설 수립 → 데이터 검증 → 검증된 신호만 적용하는 과학적 프레임워크. "
+        "IC(Information Coefficient) = 신호와 미래 수익률의 피어슨 상관계수. "
+        "|IC| ≥ 0.05이고 p < 0.05일 때 '예측력 확인'으로 판단."
+    )
+
+    _val_file = RESULTS_DIR / "signal_validation.csv"
+    if not _val_file.exists():
+        st.info("검증 데이터 없음. 아래 버튼으로 실행하세요 (약 30초 소요).")
+        if st.button("▶ 신호 예측력 검증 실행"):
+            with st.spinner("검증 중..."):
+                from scripts.signal_validation import run_validation
+                _vdf = run_validation(RESULTS_DIR)
+                _vdf.to_csv(_val_file, index=False, encoding="utf-8-sig")
+                st.success("완료!")
+                st.rerun()
+        st.stop()
+
+    _vdf = pd.read_csv(_val_file)
+
+    # ── 1단계: 가설 목록 ───────────────────────────────────────────────────────
+    st.markdown("### 1️⃣ 가설 수립")
+    with st.expander("검증 대상 가설 목록 보기", expanded=False):
+        _hyp_tbl = _vdf[["id","가설","설명","참고문헌"]].drop_duplicates()
+        st.dataframe(_hyp_tbl, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # ── 2단계: 검증 결과 ───────────────────────────────────────────────────────
+    st.markdown("### 2️⃣ 가설 검증 결과")
+
+    _COLOR_MAP = {
+        "확인": "✅",
+        "약한": "⚠️",
+        "없음": "❌",
+        "역방향": "↩️",
+    }
+
+    for fwd_label in ["1M", "3M"]:
+        sub = _vdf[_vdf["예측창"] == fwd_label].copy()
+        if sub.empty:
+            continue
+        st.markdown(f"**예측 기간: {fwd_label}**")
+
+        display_cols = ["id","가설","IC","t통계","p값","적중률(%)","검증결과"]
+        disp = sub[display_cols].copy()
+
+        def _row_color(verdict):
+            if "확인" in str(verdict):   return "background-color: #d1fae5"
+            if "역방향" in str(verdict): return "background-color: #fef3c7"
+            if "약한" in str(verdict):   return "background-color: #fef9c3"
+            return "background-color: #fee2e2"
+
+        st.dataframe(
+            disp,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "IC":      st.column_config.NumberColumn(format="%.4f",
+                           help="신호↔미래수익 상관계수. |0.05|↑ + p<0.05 = 유의미"),
+                "t통계":   st.column_config.NumberColumn(format="%.2f"),
+                "p값":     st.column_config.NumberColumn(format="%.4f"),
+                "적중률(%)": st.column_config.NumberColumn(format="%.1f"),
+                "검증결과": st.column_config.TextColumn("결과"),
+            },
+        )
+
+    st.divider()
+
+    # ── 3단계: 적용 결론 ───────────────────────────────────────────────────────
+    st.markdown("### 3️⃣ 적용 결론")
+
+    _confirmed = _vdf[_vdf["검증결과"].str.contains("확인|약한", na=False)]["가설"].unique()
+    _rejected  = _vdf[_vdf["검증결과"].str.contains("없음", na=False)]["가설"].unique()
+    _reversed  = _vdf[_vdf["검증결과"].str.contains("역방향", na=False)]["가설"].unique()
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.success(f"**적용 신호 ({len(_confirmed)}개)**")
+        for s in _confirmed:
+            st.markdown(f"- {s}")
+    with col_b:
+        st.warning(f"**제거 신호 ({len(_rejected)}개)**")
+        for s in _rejected:
+            st.markdown(f"- {s}")
+    with col_c:
+        st.error(f"**역방향 신호 ({len(_reversed)}개) — 과열 경보로 전환**")
+        for s in _reversed:
+            st.markdown(f"- {s}")
+
+    st.info(
+        "MA정렬·BB위치·RSI기울기는 IC < 0 → 현재 상승 추세가 강할 때 오히려 "
+        "향후 수익이 낮아지는 경향. 점수 보너스 제거하고 **과열 경보 신호**로 전환했습니다. "
+        "VIX 역발상(1M)·거래량비율은 약하지만 방향이 맞아 맥락 정보로 유지합니다."
+    )
+
+    st.caption(
+        "주의: 이 검증은 2021-2026년 약 99개 종목 기준입니다. "
+        "데이터 기간·종목 수가 늘수록 결과가 달라질 수 있습니다. "
+        "재실행 버튼으로 최신 데이터로 재검증할 수 있습니다."
+    )
+    if st.button("🔄 재검증 실행"):
+        with st.spinner("검증 중... (약 30초)"):
+            from scripts.signal_validation import run_validation
+            _vdf_new = run_validation(RESULTS_DIR)
+            _vdf_new.to_csv(_val_file, index=False, encoding="utf-8-sig")
+            st.success("재검증 완료!")
+            st.rerun()
 
