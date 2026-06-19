@@ -615,6 +615,201 @@ if not holdings.empty:
             },
         )
 
+        # ── 보유 종목 종합 분석 익스팬더 ────────────────────────────────────────
+        with st.expander("📊 보유 종목 종합 분석", expanded=False):
+            _an_summary = summary.sort_values("date").groupby("ticker").last().reset_index()
+            _an_summary["ticker"] = _an_summary["ticker"].astype(str).str.upper()
+            try:
+                _an_coins = pd.read_csv(ROOT / "results" / "coin_summary.csv")
+                _an_coins["ticker"] = _an_coins["ticker"].astype(str).str.upper()
+            except Exception:
+                _an_coins = pd.DataFrame()
+            _an_fx = _i_fx  # 코인 KRW 환율
+
+            _an_h = _tbl.copy()  # 이미 정렬된 보유 종목 (위에서 계산)
+
+            # ── 한국주식 / ETF 분석 ──────────────────────────────────────────────
+            _an_ks = _an_h[~_an_h["ticker"].str.contains("-USD", na=False)].copy()
+            if not _an_ks.empty:
+                st.markdown("#### 🇰🇷 한국주식 / ETF")
+
+                _an_rows = []
+                for _, r in _an_ks.iterrows():
+                    tk   = str(r["ticker"]).upper()
+                    vsig = volume_signals(tk, _res_dir)
+                    tsig = technical_signals(tk, _res_dir)
+                    smr  = _an_summary[_an_summary["ticker"] == tk]
+
+                    state  = smr.iloc[0]["state"] if not smr.empty else "—"
+                    r1m    = float(smr.iloc[0]["return_1m_pct"])  if not smr.empty and pd.notna(smr.iloc[0]["return_1m_pct"])  else None
+                    r12m   = float(smr.iloc[0]["return_12m_pct"]) if not smr.empty and pd.notna(smr.iloc[0]["return_12m_pct"]) else None
+                    rsi    = float(smr.iloc[0]["rsi14"])           if not smr.empty and pd.notna(smr.iloc[0]["rsi14"])          else None
+
+                    ret   = float(r.get("수익률(%)") or 0)
+                    ma    = tsig.get("ma_score", 0) or 0
+                    bb    = float(tsig.get("bb_pct") or 0.5)
+                    vol_r = float(vsig.get("vol_ratio") or 1.0)
+                    vol_l = vsig.get("vol_label", "—")
+                    ovheat = ma == 3 and bb > 0.85
+
+                    # 액션 결정
+                    if state == "bear":
+                        if ret < -20:
+                            action = "🔴 추세 역전 + 손실 — 포지션 재검토"
+                        elif ret < 0:
+                            action = "🔴 하락추세 — 추가매수 보류"
+                        else:
+                            action = "⚠️ 하락추세 — 차익실현 고려"
+                    elif ovheat and ret > 30:
+                        action = "🌡️ 과열 + 고수익 — 분할 차익실현"
+                    elif ovheat and r1m is not None and r1m < 0:
+                        action = "⚠️ 과열 + 모멘텀 꺾임 — 분할매도 검토"
+                    elif "다이버전스" in vol_l and ret > 15:
+                        action = "⚠️ 가격↑ 거래량↓ — 상승 지속력 주의"
+                    elif bb < 0.2 and state == "bull":
+                        action = "❄️ 하단 지지 구간 — 분할매수 검토"
+                    elif vol_r >= 1.4 and state == "bull":
+                        action = "📈 거래량 급증 — 추세 강세"
+                    else:
+                        action = "✅ 유지"
+
+                    # 기술 등급
+                    if state == "bear":
+                        grade = "🔴 약세"
+                    elif ovheat:
+                        grade = "🌡️ 과열"
+                    elif ma >= 2 and bb > 0.5:
+                        grade = "🟢 강세"
+                    else:
+                        grade = "🟡 중립"
+
+                    _an_rows.append({
+                        "티커":     tk,
+                        "종목명":   r.get("종목명", tk),
+                        "수익률(%)": ret,
+                        "추세":     f"{'🟢' if state=='bull' else '🔴'} {state}",
+                        "1M(%)":    r1m,
+                        "12M(%)":   r12m,
+                        "RSI":      rsi,
+                        "기술등급":  grade,
+                        "거래량":   vol_l,
+                        "분석액션":  action,
+                    })
+
+                _an_ks_df = pd.DataFrame(_an_rows)
+                # 기술등급 정렬: 약세 → 과열 → 중립 → 강세
+                _grade_order = {"🔴 약세": 0, "🌡️ 과열": 1, "🟡 중립": 2, "🟢 강세": 3}
+                _an_ks_df["_g"] = _an_ks_df["기술등급"].map(_grade_order).fillna(9)
+                _an_ks_df = _an_ks_df.sort_values("_g").drop(columns=["_g"])
+
+                st.dataframe(
+                    _an_ks_df,
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "티커":      st.column_config.TextColumn("티커"),
+                        "종목명":    st.column_config.TextColumn("종목명"),
+                        "수익률(%)": st.column_config.NumberColumn("보유수익(%)", format="%+.1f"),
+                        "추세":      st.column_config.TextColumn("추세"),
+                        "1M(%)":     st.column_config.NumberColumn("1M(%)", format="%+.1f"),
+                        "12M(%)":    st.column_config.NumberColumn("12M(%)", format="%+.1f"),
+                        "RSI":       st.column_config.NumberColumn("RSI", format="%.0f",
+                                     help="70↑ 과열 / 30↓ 침체. 역방향 신호로 활용"),
+                        "기술등급":  st.column_config.TextColumn("기술등급",
+                                     help="추세+과열 복합 판단"),
+                        "거래량":    st.column_config.TextColumn("거래량신호"),
+                        "분석액션":  st.column_config.TextColumn("분석 액션",
+                                     help="백테스트 IC 검증 신호 기반. 최종 결정은 직접 판단"),
+                    },
+                )
+
+                # 긴급 알림
+                _bear_holds = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🔴", na=False)]
+                _hot_holds  = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🌡️", na=False)]
+                if not _bear_holds.empty:
+                    st.error(f"🔴 하락추세 보유 종목: {', '.join(_bear_holds['티커'])} — 추세 전환 확인 전 추가매수 자제")
+                if not _hot_holds.empty:
+                    st.warning(f"🌡️ 과열 차익실현 구간: {', '.join(_hot_holds['티커'])} — IC 역방향 검증, 일부 실현 고려")
+
+            # ── 코인 분석 ────────────────────────────────────────────────────────
+            _an_cu = _an_h[_an_h["ticker"].str.contains("-USD", na=False)].copy()
+            if not _an_cu.empty and not _an_coins.empty:
+                st.markdown("#### 🪙 코인")
+
+                _coin_rows = []
+                for _, r in _an_cu.iterrows():
+                    tk  = str(r["ticker"]).upper()
+                    row = _an_coins[_an_coins["ticker"] == tk]
+                    if row.empty:
+                        continue
+                    cr   = row.iloc[0]
+                    ret  = float(r.get("수익률(%)") or 0)
+                    reg  = str(cr.get("regime", "—"))
+                    r90  = float(cr.get("return_90d_pct") or 0)
+                    rsi  = float(cr.get("rsi14") or 50)
+                    act_c = str(cr.get("action", "—"))
+
+                    # 코인 액션 판단
+                    if ret < -80:
+                        coin_action = "🔴 -80% 이상 손실 — 회복 불확실, 정리 검토"
+                    elif ret < -60:
+                        coin_action = "⚠️ 깊은 손실 — 핵심 코인 외 정리 고려"
+                    elif ret < -30 and rsi < 35:
+                        coin_action = "❄️ 누적 손실 + RSI 침체 — 분할 물타기 or 관망"
+                    elif reg == "accumulation" and rsi < 40 and ret > -20:
+                        coin_action = "📥 매집 국면 + RSI 침체 — 분할매수 고려"
+                    elif reg == "accumulation":
+                        coin_action = "📥 매집 국면 — 관망 유지"
+                    else:
+                        coin_action = "✅ 유지"
+
+                    _coin_rows.append({
+                        "티커":       tk,
+                        "보유수익(%)": ret,
+                        "코인국면":    reg,
+                        "90d(%)":     r90,
+                        "RSI":        rsi,
+                        "코인액션":    act_c,
+                        "분석액션":    coin_action,
+                    })
+
+                if _coin_rows:
+                    _an_cu_df = pd.DataFrame(_coin_rows).sort_values("보유수익(%)")
+                    st.dataframe(
+                        _an_cu_df,
+                        hide_index=True, use_container_width=True,
+                        column_config={
+                            "티커":        st.column_config.TextColumn("티커"),
+                            "보유수익(%)": st.column_config.NumberColumn("보유수익(%)", format="%+.1f"),
+                            "코인국면":    st.column_config.TextColumn("국면"),
+                            "90d(%)":      st.column_config.NumberColumn("90일(%)", format="%+.1f"),
+                            "RSI":         st.column_config.NumberColumn("RSI", format="%.0f"),
+                            "코인액션":    st.column_config.TextColumn("코인신호"),
+                            "분석액션":    st.column_config.TextColumn("분석 액션"),
+                        },
+                    )
+
+                    # 심각한 손실 코인 경보
+                    _deep_loss = _an_cu_df[_an_cu_df["보유수익(%)"] < -60]
+                    _accum_ok  = _an_cu_df[
+                        (_an_cu_df["코인국면"] == "accumulation") & (_an_cu_df["보유수익(%)"] > -30)
+                    ]
+                    if not _deep_loss.empty:
+                        st.error(
+                            f"🔴 60% 이상 손실 코인 {len(_deep_loss)}종: "
+                            f"{', '.join(_deep_loss['티커'].tolist())} — "
+                            "원금 회복에 각각 150~900% 상승 필요. 포지션 재검토 권장"
+                        )
+                    if not _accum_ok.empty:
+                        st.info(
+                            f"📥 매집 국면 + 손실 소폭: {', '.join(_accum_ok['티커'].tolist())} — "
+                            "분할매수 검토 가능 구간 (단, 코인 변동성 유의)"
+                        )
+
+            st.caption(
+                "분석 기준: 기술 신호(백테스트 IC 검증) + 코인 온체인 국면. "
+                "최종 매수·매도 결정은 공식 공시·실적·본인 위험 감내 범위 확인 후 내리세요."
+            )
+
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if not actions_alloc:
     st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
