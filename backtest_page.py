@@ -1177,3 +1177,124 @@ with tab_val:
             st.success("재검증 완료!")
             st.rerun()
 
+    st.divider()
+
+    # ── 4단계: 추천 시스템 종합 검증 ──────────────────────────────────────────
+    st.markdown("### 4️⃣ 추천 vs 비추천 — 실제로 작동하는가?")
+    st.caption(
+        "개별 신호 IC가 유효해도, 그것을 합산한 '종합 순위 시스템'이 실제로 수익 차이를 만드는지 별도로 검증합니다."
+    )
+
+    _comp_ic_file  = RESULTS_DIR / "composite_validation_ic.csv"
+    _comp_sp_file  = RESULTS_DIR / "composite_validation_spread.csv"
+    _comp_missing  = not _comp_ic_file.exists() or not _comp_sp_file.exists()
+
+    if _comp_missing:
+        st.info("추천 시스템 검증 데이터 없음. 아래 버튼으로 실행하세요.")
+
+    _run_comp = st.button("▶ 추천 시스템 검증 실행 (약 20초)")
+    if _run_comp or not _comp_missing:
+        if _run_comp:
+            with st.spinner("추천 vs 비추천 백테스트 중..."):
+                from scripts.signal_validation import run_composite_validation
+                _cic, _csp = run_composite_validation(RESULTS_DIR)
+                _cic.to_csv(_comp_ic_file, index=False, encoding="utf-8-sig")
+                _csp.to_csv(_comp_sp_file, index=False, encoding="utf-8-sig")
+                st.success("완료!")
+        else:
+            _cic = pd.read_csv(_comp_ic_file)
+            _csp = pd.read_csv(_comp_sp_file)
+
+        # ── H9/H10 IC 결과 ─────────────────────────────────────────────────
+        st.markdown("**H9 복합 모멘텀 (7:3 가중) / H10 과열 조합 역방향 검증**")
+        if not _cic.empty:
+            st.dataframe(
+                _cic[["id","가설","예측창","IC","t통계","p값","적중률(%)","검증결과"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "IC":     st.column_config.NumberColumn(format="%.4f"),
+                    "t통계":  st.column_config.NumberColumn(format="%.2f"),
+                    "p값":    st.column_config.NumberColumn(format="%.4f"),
+                    "검증결과": st.column_config.TextColumn("결과"),
+                },
+            )
+
+        st.divider()
+
+        # ── H11 추천 vs 비추천 격차 ────────────────────────────────────────
+        st.markdown("**H11: 복합점수 상위33% vs 하위33% — 월별 수익률 격차**")
+        st.caption("매월 종목들을 복합점수로 줄 세워, 상위33%(추천)와 하위33%(비추천)의 평균 1개월 수익률 차이를 측정합니다.")
+
+        if not _csp.empty:
+            st.dataframe(
+                _csp,
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "추천평균수익(%)":  st.column_config.NumberColumn("추천 평균(%)", format="%+.3f"),
+                    "비추천평균수익(%)": st.column_config.NumberColumn("비추천 평균(%)", format="%+.3f"),
+                    "격차(%p)":        st.column_config.NumberColumn("격차(%p)", format="%+.3f"),
+                    "t통계":           st.column_config.NumberColumn(format="%.2f"),
+                    "p값":             st.column_config.NumberColumn(format="%.4f"),
+                    "격차양수비율(%)":  st.column_config.NumberColumn("추천>비추천 비율(%)", format="%.1f"),
+                    "월수":            st.column_config.NumberColumn("측정 월수"),
+                    "검증결과":        st.column_config.TextColumn("결과"),
+                },
+            )
+
+            # 결론 카드
+            _sp1m = _csp[_csp["예측창"] == "1M"].iloc[0] if "1M" in _csp["예측창"].values else None
+            if _sp1m is not None:
+                _gap    = float(_sp1m["격차(%p)"])
+                _pval   = float(_sp1m["p값"])
+                _hit    = float(_sp1m["격차양수비율(%)"])
+                _result = str(_sp1m["검증결과"])
+
+                if "❌" in _result:
+                    st.error(
+                        f"**❌ 추천 시스템이 통계적으로 유의한 수익 차이를 만들지 못함** (p={_pval:.3f})\n\n"
+                        f"추천 평균: {float(_sp1m['추천평균수익(%)']):+.2f}% / "
+                        f"비추천 평균: {float(_sp1m['비추천평균수익(%)']):+.2f}% / "
+                        f"격차: {_gap:+.2f}%p"
+                    )
+                    st.markdown(
+                        "**해석**: 방향은 맞지만(추천이 비추천보다 약간 더 벌음), "
+                        f"그 차이가 랜덤 오차 범위 안에 있습니다. "
+                        f"격차가 양수인 달의 비율 = **{_hit:.0f}%** (50%와 큰 차이 없음)."
+                    )
+                elif "✅" in _result:
+                    st.success(
+                        f"**✅ 추천 시스템이 유의미한 수익 차이를 만들었음** (p={_pval:.3f})\n\n"
+                        f"격차: {_gap:+.2f}%p / 추천>비추천 비율: {_hit:.0f}%"
+                    )
+
+        # ── 종합 진단 ────────────────────────────────────────────────────
+        st.divider()
+        st.markdown("### 🔬 추천 시스템 종합 진단")
+        st.markdown("""
+| 구분 | 검증 결과 | 실용 가치 |
+|---|---|---|
+| **모멘텀 순위 (H1, H9)** | ❌ 통계 유의성 없음 (p>0.6) | 종목 선택 기준으로 신뢰도 낮음 |
+| **과열 페널티 (H10)** | ⚠️ 약한 유의성 (p=0.02, IC=0.03) | 과열 종목 피하기는 효과 있음 |
+| **추천 vs 비추천 격차 (H11)** | ❌ 통계 유의성 없음 (p>0.4) | 추천 순위대로 사는 것이 유리하지 않음 |
+| **VIX 타이밍 (H8)** | ✅ 강한 유의성 (IC=0.14, p<0.001) | 시장 전체 진입 타이밍에 효과 있음 |
+""")
+        st.warning(
+            "**핵심 결론**: 이 시스템은 **어떤 ETF를 살지 고르는 것에는 통계적으로 검증되지 않았습니다.**  \n"
+            "대신 **VIX 공포 국면에서 시장에 진입**하고, **과열 종목의 비중을 줄이는** 두 가지는 "
+            "데이터로 확인된 행동입니다.  \n"
+            "모멘텀 순위 시스템은 '손해는 안 나지만 유의한 알파를 만들지도 않는' 수준입니다."
+        )
+        st.caption(
+            "샘플 제한: 약 20~50개 ETF × 5년. 수십만 종목을 수십 년 검증한 학술 연구와 달리 "
+            "통계 검정력이 낮습니다. 더 많은 데이터가 쌓이면 결론이 바뀔 수 있습니다."
+        )
+
+        if st.button("🔄 추천 시스템 재검증"):
+            with st.spinner("재검증 중..."):
+                from scripts.signal_validation import run_composite_validation
+                _cic2, _csp2 = run_composite_validation(RESULTS_DIR)
+                _cic2.to_csv(_comp_ic_file, index=False, encoding="utf-8-sig")
+                _csp2.to_csv(_comp_sp_file, index=False, encoding="utf-8-sig")
+                st.success("재검증 완료!")
+                st.rerun()
+

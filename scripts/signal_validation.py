@@ -20,6 +20,33 @@ FWD_WINDOWS = [22, 66]   # 1개월, 3개월
 
 
 # ── 가설 정의 ────────────────────────────────────────────────────────────────
+HYPOTHESES_COMPOSITE = [
+    {
+        "id":        "H9",
+        "name":      "복합 모멘텀 (7:3)",
+        "signal":    "composite_mom",   # 0.7×mom_12m + 0.3×mom_1m
+        "direction": "higher_is_better",
+        "desc":      "7:3 가중 복합 모멘텀이 12M 단독보다 향후 수익 예측력이 높을 것이다",
+        "ref":       "Asness (1994), 복합 모멘텀",
+    },
+    {
+        "id":        "H10",
+        "name":      "과열 복합 조건 역방향",
+        "signal":    "overheat_flag",   # 1 if MA==3 and BB>0.85 else 0
+        "direction": "lower_is_better", # 과열 = 향후 수익 낮음
+        "desc":      "MA완전정렬+BB상단(과열) 상태일 때 향후 수익이 낮을 것이다 (역방향 페널티 근거)",
+        "ref":       "H2+H4 결합. IC 역방향 검증",
+    },
+    {
+        "id":        "H11",
+        "name":      "추천 vs 비추천 수익 격차",
+        "signal":    "_quantile_spread",  # 특수 처리
+        "direction": "higher_is_better",
+        "desc":      "복합점수 상위 33% 수익률이 하위 33%보다 유의하게 높을 것이다",
+        "ref":       "장기 포트폴리오 성과 검증",
+    },
+]
+
 HYPOTHESES = [
     {
         "id":        "H1",
@@ -182,6 +209,141 @@ def _verdict(ic, p_value) -> str:
     if p_value < 0.10:
         return "⚠️ 약한 신호"
     return "❌ 예측력 없음"
+
+
+def _cross_ic_monthly(panel: pd.DataFrame, sig_col: str, fwd_col: str) -> dict:
+    """월별 Cross-sectional IC 계산."""
+    panel_sub = panel[["date", "ticker", sig_col, fwd_col]].dropna()
+    monthly = panel_sub.copy()
+    monthly["ym"] = monthly["date"].dt.to_period("M")
+    monthly_ics = []
+    for _, grp in monthly.groupby("ym"):
+        if len(grp) < 5:
+            continue
+        r = stats.pearsonr(grp[sig_col], grp[fwd_col])
+        monthly_ics.append(r[0])
+    monthly_ics = [x for x in monthly_ics if not np.isnan(x)]
+    if not monthly_ics:
+        return {}
+    ic_arr  = np.array(monthly_ics)
+    ic_mean = float(np.mean(ic_arr))
+    t_stat  = float(np.mean(ic_arr) / (np.std(ic_arr, ddof=1) / np.sqrt(len(ic_arr))))
+    p_val   = float(2 * (1 - stats.t.cdf(abs(t_stat), df=len(ic_arr) - 1)))
+    hit = ((panel_sub[sig_col] > panel_sub[sig_col].median()) == (panel_sub[fwd_col] > 0)).mean() * 100
+    return {
+        "n": len(panel_sub),
+        "ic": round(ic_mean, 4),
+        "t_stat": round(t_stat, 2),
+        "p_value": round(p_val, 4),
+        "hit_rate": round(float(hit), 1),
+    }
+
+
+def run_composite_validation(results_dir=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    H9~H11: 복합 점수 예측력 + 추천 vs 비추천 수익 격차 검증.
+    Returns: (ic_df, spread_df)
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    panel = _load_signals_df(results_dir)
+    if panel.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    # 파생 신호 계산
+    panel["composite_mom"] = panel["mom_12m"] * 0.7 + panel["mom_1m"] * 0.3
+    panel["overheat_flag"] = (
+        (panel["ma_score"] == 3) & (panel["bb_pct"] > 0.85)
+    ).astype(int)
+
+    ic_rows = []
+    spread_rows = []
+
+    for hyp in HYPOTHESES_COMPOSITE:
+        sig_col = hyp["signal"]
+        for fwd_days in FWD_WINDOWS:
+            fwd_col = f"fwd_{fwd_days}d"
+            fwd_label = f"{fwd_days // 22}M"
+
+            if sig_col == "_quantile_spread":
+                # H11: Top33% vs Bottom33% 월별 수익률 격차
+                composite_col = "composite_mom"
+                sub = panel[["date", "ticker", composite_col, fwd_col]].dropna()
+                sub = sub.copy()
+                sub["ym"] = sub["date"].dt.to_period("M")
+
+                monthly_spreads = []
+                top_rets, bot_rets = [], []
+                for _, grp in sub.groupby("ym"):
+                    if len(grp) < 6:
+                        continue
+                    q33 = grp[composite_col].quantile(0.33)
+                    q67 = grp[composite_col].quantile(0.67)
+                    top = grp[grp[composite_col] >= q67][fwd_col].mean()
+                    bot = grp[grp[composite_col] <= q33][fwd_col].mean()
+                    if pd.notna(top) and pd.notna(bot):
+                        monthly_spreads.append(top - bot)
+                        top_rets.append(top)
+                        bot_rets.append(bot)
+
+                if not monthly_spreads:
+                    continue
+
+                sp_arr  = np.array(monthly_spreads)
+                sp_mean = float(np.mean(sp_arr))
+                sp_std  = float(np.std(sp_arr, ddof=1))
+                t_stat  = sp_mean / (sp_std / np.sqrt(len(sp_arr)))
+                p_val   = float(2 * (1 - stats.t.cdf(abs(t_stat), df=len(sp_arr) - 1)))
+                hit     = float(np.mean(np.array(monthly_spreads) > 0) * 100)
+
+                spread_rows.append({
+                    "예측창":          fwd_label,
+                    "추천평균수익(%)":  round(float(np.mean(top_rets)), 3),
+                    "비추천평균수익(%)": round(float(np.mean(bot_rets)), 3),
+                    "격차(%p)":        round(sp_mean, 3),
+                    "t통계":           round(t_stat, 2),
+                    "p값":             round(p_val, 4),
+                    "격차양수비율(%)":  round(hit, 1),
+                    "월수":            len(monthly_spreads),
+                    "검증결과": (
+                        "✅ 추천이 비추천을 유의하게 이겼다" if p_val < 0.05 and sp_mean > 0
+                        else "✅ 비추천이 추천을 역방향으로 이겼다" if p_val < 0.05 and sp_mean < 0
+                        else "⚠️ 방향성 있으나 비유의" if hit >= 55
+                        else "❌ 격차 없음"
+                    ),
+                })
+                continue
+
+            if sig_col not in panel.columns:
+                continue
+
+            # IC 방향 조정 (lower_is_better → 신호 반전)
+            if hyp["direction"] == "lower_is_better":
+                panel[f"_{sig_col}_inv"] = -panel[sig_col]
+                sig_col_use = f"_{sig_col}_inv"
+            else:
+                sig_col_use = sig_col
+
+            stats_d = _cross_ic_monthly(panel, sig_col_use, fwd_col)
+            if not stats_d:
+                continue
+
+            ic_rows.append({
+                "id":       hyp["id"],
+                "가설":     hyp["name"],
+                "예측창":   fwd_label,
+                "IC":       stats_d["ic"],
+                "t통계":    stats_d["t_stat"],
+                "p값":      stats_d["p_value"],
+                "적중률(%)": stats_d["hit_rate"],
+                "표본수":   stats_d["n"],
+                "검증결과": _verdict(stats_d["ic"], stats_d["p_value"]),
+                "설명":     hyp["desc"],
+            })
+
+    return pd.DataFrame(ic_rows), pd.DataFrame(spread_rows)
 
 
 def run_validation(results_dir=None) -> pd.DataFrame:
