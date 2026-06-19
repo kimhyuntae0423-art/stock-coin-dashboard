@@ -13,7 +13,10 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
-from scripts.etf_recommend import market_regime, score_etfs, tactical_alloc, enrich_with_volume
+from scripts.etf_recommend import (
+    market_regime, score_etfs, tactical_alloc, enrich_with_volume,
+    volume_signals, technical_signals,
+)
 
 RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
@@ -443,6 +446,18 @@ aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
            delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
+# ── 백테스트 기반 시장 신호 ─────────────────────────────────────
+_h_regime = market_regime(summary)
+_h_vix    = _h_regime.get("vix")
+_h_vsig   = _h_regime.get("vix_signal", "")
+if _h_vix:
+    if _h_vix > 25:
+        st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
+    elif _h_vix < 13:
+        st.warning(f"🌡️ VIX {_h_vix:.0f} — {_h_vsig}  ·  과열 경계, 신규 매수 신중")
+    else:
+        st.info(f"VIX {_h_vix:.0f} — {_h_vsig}")
+
 # ── 보유 종목 파이차트 ───────────────────────────────────────────
 if not holdings.empty:
     # portfolio_page.py와 동일한 방식으로 가격 합산 (주식 + 코인 KRW 변환)
@@ -519,22 +534,84 @@ if not holdings.empty:
         _tbl["원금"]    = _tbl["수량"] * _tbl["매수가"]
         _tbl["손익"]    = _tbl["평가금액"] - _tbl["원금"]
         _tbl["비중(%)"] = _tbl["평가금액"] / _ph_total * 100
+
+        # ── 백테스트 기반 신호 추가 ─────────────────────────────────────────
+        _res_dir = ROOT / "results"
+        _vsigs, _tsigs = [], []
+        for _tk in _tbl["ticker"]:
+            _vsigs.append(volume_signals(str(_tk), _res_dir))
+            _tsigs.append(technical_signals(str(_tk), _res_dir))
+
+        # 1M 수익률 룩업 (summary_signals에서)
+        _sum_latest = summary.sort_values("date").groupby("ticker").last().reset_index()
+        _sum_latest["ticker"] = _sum_latest["ticker"].astype(str).str.upper()
+        _ret1m_map = dict(zip(_sum_latest["ticker"], _sum_latest.get("return_1m_pct", pd.Series(dtype=float))))
+
+        def _overheat_lbl(t, v):
+            ma  = t.get("ma_score", 0) or 0
+            bb  = t.get("bb_pct",   0.5) or 0.5
+            vol = v.get("vol_ratio", 1.0) or 1.0
+            if ma == 3 and bb > 0.85:
+                return "⚠️ 과열" if vol < 1.3 else "🌡️ 과열+거래량"
+            if ma >= 2 and bb > 0.7:
+                return "🌡️ 상단근접"
+            if ma <= 1 or bb < 0.3:
+                return "❄️ 하단지지"
+            return "➡️ 보통"
+
+        def _action(row, t, v):
+            ret      = float(row.get("수익률(%)") or 0)
+            ret_1m   = float(_ret1m_map.get(str(row.get("ticker","")).upper()) or 0)
+            vol_r    = float(v.get("vol_ratio") or 1.0)
+            ma       = t.get("ma_score", 0) or 0
+            bb       = float(t.get("bb_pct") or 0.5)
+            overheat = ma == 3 and bb > 0.85
+            vix_fear = _h_vix and _h_vix > 25
+
+            # 백테스트 인사이트 우선순위 적용
+            if overheat and ret > 20 and ret_1m < 0:
+                return "⚠️ 분할매도 검토"   # 과열+모멘텀 꺾임
+            if overheat and ret > 30:
+                return "🌡️ 차익실현 고려"   # 과열+고수익
+            if vix_fear and ret < -10:
+                return "🔥 역발상 추가매수"  # VIX 극단 + 손실 = 매수 기회 (IC=0.14)
+            if vol_r >= 1.4 and bb < 0.4:
+                return "📈 거래량+저점 주목" # 거래량 급증 + 하단 = 매집 신호
+            if ma <= 1 and ret < -15:
+                return "❄️ 추세 약세 관망"
+            return "✅ 유지"
+
+        _tbl["과열신호"]  = [_overheat_lbl(t, v) for t, v in zip(_tsigs, _vsigs)]
+        _tbl["거래량신호"] = [v.get("vol_label", "—") for v in _vsigs]
+        _tbl["OBV추세"]   = [v.get("obv_slope") for v in _vsigs]
+        _tbl["액션"]      = [_action(r, t, v)
+                             for (_, r), t, v in zip(_tbl.iterrows(), _tsigs, _vsigs)]
+
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
-                           "원금", "평가금액", "손익", "수익률(%)", "비중(%)"]].copy()
+                           "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
+                           "과열신호", "거래량신호", "OBV추세", "액션"]].copy()
         st.dataframe(
             _tbl_show, hide_index=True, use_container_width=True,
             column_config={
-                "카테고리":  st.column_config.TextColumn("카테고리"),
-                "종목명":    st.column_config.TextColumn("종목명"),
-                "ticker":    st.column_config.TextColumn("티커"),
-                "수량":      st.column_config.NumberColumn("수량", format="%.4f"),
-                "매수가":    st.column_config.NumberColumn("매수가", format="%,.0f"),
-                "현재가":    st.column_config.NumberColumn("현재가", format="%,.0f"),
-                "원금":      st.column_config.NumberColumn("원금", format="%,.0f"),
-                "평가금액":  st.column_config.NumberColumn("평가금액", format="%,.0f"),
-                "손익":      st.column_config.NumberColumn("손익", format="%+,.0f"),
-                "수익률(%)": st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
-                "비중(%)":   st.column_config.NumberColumn("비중(%)", format="%.1f"),
+                "카테고리":   st.column_config.TextColumn("카테고리"),
+                "종목명":     st.column_config.TextColumn("종목명"),
+                "ticker":     st.column_config.TextColumn("티커"),
+                "수량":       st.column_config.NumberColumn("수량", format="%.4f"),
+                "매수가":     st.column_config.NumberColumn("매수가", format="%,.0f"),
+                "현재가":     st.column_config.NumberColumn("현재가", format="%,.0f"),
+                "원금":       st.column_config.NumberColumn("원금", format="%,.0f"),
+                "평가금액":   st.column_config.NumberColumn("평가금액", format="%,.0f"),
+                "손익":       st.column_config.NumberColumn("손익", format="%+,.0f"),
+                "수익률(%)":  st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
+                "비중(%)":    st.column_config.NumberColumn("비중(%)", format="%.1f"),
+                "과열신호":   st.column_config.TextColumn("과열신호",
+                              help="MA=3+BB>0.85 = 과열(IC 역방향 확인). 과열일수록 향후 수익 낮은 경향"),
+                "거래량신호": st.column_config.TextColumn("거래량",
+                              help="거래량비율(IC=+0.04). 급증=기관 개입 추정"),
+                "OBV추세":    st.column_config.NumberColumn("OBV(%)", format="%+.1f",
+                              help="10일 OBV 변화율. 양수=매집, 음수=분배"),
+                "액션":       st.column_config.TextColumn("백테스트 액션",
+                              help="VIX·과열·거래량 신호 기반 행동 제안. 최종 결정은 직접 판단"),
             },
         )
 
