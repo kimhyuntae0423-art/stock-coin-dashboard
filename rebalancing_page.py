@@ -13,6 +13,7 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
+from scripts.etf_recommend import market_regime, score_etfs
 
 RESULTS = ROOT / "results"
 HOLDINGS_FILE = ROOT / "holdings.csv"
@@ -571,46 +572,58 @@ if new_money > 0 and alloc["Total"] > 0:
     )
 
     with st.expander("🏛️ 코어 ETF 매수 후보"):
-        _sig_map = summary.set_index(summary["ticker"].astype(str).str.upper())[
-            ["close", "return_1m_pct", "return_12m_pct", "rsi14"]
-        ] if not summary.empty else pd.DataFrame(columns=["close", "return_1m_pct", "return_12m_pct", "rsi14"])
-        _core_show = core_etfs.copy()
-        _core_show["_tk"] = _core_show["ticker"].astype(str).str.upper()
-        _core_show["현재가"]    = _core_show["_tk"].map(_sig_map["close"].to_dict())
-        _core_show["1M(%)"]     = _core_show["_tk"].map(_sig_map["return_1m_pct"].to_dict())
-        _core_show["12M(%)"]    = _core_show["_tk"].map(_sig_map["return_12m_pct"].to_dict())
-        _core_show = _core_show.drop(columns=["_tk"])
-        _core_show_valid = _core_show[_core_show["현재가"].notna()].copy()
-        if not _core_show_valid.empty and core_buy > 0:
-            _core_show_valid["균등배분"] = round(core_buy / len(_core_show_valid))
-            _core_show_valid["수량(균등)"] = (_core_show_valid["균등배분"] / _core_show_valid["현재가"]).apply(
+        # 시장 국면 + 점수 계산
+        _e_regime  = market_regime(summary)
+        _e_scored  = score_etfs(core_etfs, summary, _e_regime["key"])
+        _e_valid   = _e_scored.dropna(subset=["close", "score"]).copy()
+        _e_valid   = _e_valid.sort_values("score", ascending=False)
+
+        # 국면 배지
+        st.caption(f"시장 국면: **{_e_regime['label']}** — {_e_regime['desc']}")
+
+        if not _e_valid.empty and core_buy > 0:
+            # 점수 비례 배분 (균등 대신 score 가중)
+            _e_valid["배분비중"] = _e_valid["score"] / _e_valid["score"].sum()
+            _e_valid["추천배분"] = (_e_valid["배분비중"] * core_buy).round(0)
+            _e_valid["수량"]     = (_e_valid["추천배분"] / _e_valid["close"]).apply(
                 lambda x: int(x) if pd.notna(x) and x > 0 else 0
             )
             st.dataframe(
-                _core_show_valid[["ticker", "name", "category", "expense_ratio", "currency",
-                                  "현재가", "1M(%)", "12M(%)", "균등배분", "수량(균등)"]],
+                _e_valid[["ticker", "name", "버킷", "expense_ratio",
+                           "close", "return_1m_pct", "return_12m_pct", "rsi14",
+                           "score", "추천배분", "수량"]],
                 hide_index=True, use_container_width=True,
                 column_config={
-                    "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
-                    "현재가":  st.column_config.NumberColumn(format="%,.2f"),
-                    "1M(%)":   st.column_config.NumberColumn("1M(%)", format="%+.2f"),
-                    "12M(%)":  st.column_config.NumberColumn("12M(%)", format="%+.2f"),
-                    "균등배분": st.column_config.NumberColumn(format="%,.0f"),
+                    "ticker":         st.column_config.TextColumn("티커"),
+                    "name":           st.column_config.TextColumn("종목명"),
+                    "버킷":           st.column_config.TextColumn("위험도"),
+                    "expense_ratio":  st.column_config.NumberColumn("보수(%)", format="%.2f"),
+                    "close":          st.column_config.NumberColumn("현재가", format="%,.2f"),
+                    "return_1m_pct":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                    "return_12m_pct": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+                    "rsi14":          st.column_config.NumberColumn("RSI", format="%.0f"),
+                    "score":          st.column_config.ProgressColumn("점수", format="%.0f", min_value=0, max_value=130),
+                    "추천배분":       st.column_config.NumberColumn("추천배분(원)", format="%,.0f"),
+                    "수량":           st.column_config.NumberColumn("수량"),
+                },
+            )
+            st.caption("추천배분 = 국면 반영 점수 비례. 매수·매도 결정은 직접 확인 후 판단하세요.")
+        elif not _e_valid.empty:
+            st.caption("추가 매수 금액 없음 — 수익률·점수 참고용")
+            st.dataframe(
+                _e_valid[["ticker", "name", "버킷", "close",
+                           "return_1m_pct", "return_12m_pct", "rsi14", "score"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "close":          st.column_config.NumberColumn("현재가", format="%,.2f"),
+                    "return_1m_pct":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
+                    "return_12m_pct": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+                    "rsi14":          st.column_config.NumberColumn("RSI", format="%.0f"),
+                    "score":          st.column_config.ProgressColumn("점수", format="%.0f", min_value=0, max_value=130),
                 },
             )
         else:
-            st.info("코어 배분 없음 또는 현재가 데이터 없음.")
-        st.caption("전체 목록")
-        st.dataframe(
-            _core_show[["ticker", "name", "category", "asset_class", "expense_ratio",
-                        "currency", "1M(%)", "12M(%)", "notes"]],
-            hide_index=True, use_container_width=True,
-            column_config={
-                "expense_ratio": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
-                "1M(%)":  st.column_config.NumberColumn("1M(%)", format="%+.2f"),
-                "12M(%)": st.column_config.NumberColumn("12M(%)", format="%+.2f"),
-            },
-        )
+            st.info("현재가 데이터 없음.")
 
     with st.expander("🎯 위성 매수 후보"):
         if sat_buy > 0:
