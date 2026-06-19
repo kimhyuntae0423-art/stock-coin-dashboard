@@ -20,6 +20,33 @@ FWD_WINDOWS = [22, 66]   # 1개월, 3개월
 
 
 # ── 가설 정의 ────────────────────────────────────────────────────────────────
+HYPOTHESES_SYSTEM = [
+    {
+        "id":        "H12",
+        "name":      "섹터사이클 (1M 상대강도)",
+        "signal":    "rel_1m",        # mom_1m - spy_1m (계산 필요)
+        "direction": "higher_is_better",
+        "desc":      "SPY 대비 1M 초과수익(섹터사이클 배율 근거)이 향후 1M 수익 예측",
+        "ref":       "사이클배율 실제 드라이버 검증",
+    },
+    {
+        "id":        "H13",
+        "name":      "Bull추세 필터 (골든크로스)",
+        "signal":    "is_bull",       # ma_score >= 2
+        "direction": "higher_is_better",
+        "desc":      "Bull추세(MA 상승정렬) 종목이 Bear추세보다 향후 수익 좋을 것이다",
+        "ref":       "추천 필터 유효성 검증",
+    },
+    {
+        "id":        "H14",
+        "name":      "12M 상대강도 (섹터 vs SPY)",
+        "signal":    "rel_12m",       # mom_12m - spy_12m (계산 필요)
+        "direction": "higher_is_better",
+        "desc":      "12M 상대강도가 높은 ETF가 향후에도 초과수익 낼 것이다",
+        "ref":       "장기 상대 모멘텀 검증",
+    },
+]
+
 HYPOTHESES_COMPOSITE = [
     {
         "id":        "H9",
@@ -237,6 +264,65 @@ def _cross_ic_monthly(panel: pd.DataFrame, sig_col: str, fwd_col: str) -> dict:
         "p_value": round(p_val, 4),
         "hit_rate": round(float(hit), 1),
     }
+
+
+def run_system_validation(results_dir=None) -> pd.DataFrame:
+    """
+    H12~H14: 현재 시스템에서 실제 사용 중인 신호 검증.
+    - H12: 섹터사이클 (1M 상대강도 vs SPY)
+    - H13: Bull추세 필터 (골든크로스 대리변수)
+    - H14: 12M 상대강도 vs SPY
+    Returns: ic_df
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    panel = _load_signals_df(results_dir)
+    if panel.empty:
+        return pd.DataFrame()
+
+    # SPY 기준 상대강도 계산
+    spy = panel[panel["ticker"] == "SPY"][["date", "mom_1m", "mom_12m"]].copy()
+    spy = spy.rename(columns={"mom_1m": "spy_1m", "mom_12m": "spy_12m"})
+    spy["date"] = pd.to_datetime(spy["date"])
+    panel = panel.merge(spy, on="date", how="left")
+    panel["rel_1m"]  = panel["mom_1m"]  - panel["spy_1m"]
+    panel["rel_12m"] = panel["mom_12m"] - panel["spy_12m"]
+    # Bull추세: MA정렬 2개 이상 (ma50>ma200 + ma20>ma50)
+    panel["is_bull"] = (panel["ma_score"] >= 2).astype(int)
+
+    ic_rows = []
+    for hyp in HYPOTHESES_SYSTEM:
+        sig_col = hyp["signal"]
+        if sig_col not in panel.columns:
+            continue
+        for fwd_days in FWD_WINDOWS:
+            fwd_col   = f"fwd_{fwd_days}d"
+            fwd_label = f"{fwd_days // 22}M"
+
+            if hyp["direction"] == "lower_is_better":
+                use_col = f"_{sig_col}_inv"
+                panel[use_col] = -panel[sig_col]
+            else:
+                use_col = sig_col
+
+            d = _cross_ic_monthly(panel, use_col, fwd_col)
+            if not d:
+                continue
+            ic_rows.append({
+                "id":        hyp["id"],
+                "가설":      hyp["name"],
+                "예측창":    fwd_label,
+                "IC":        d["ic"],
+                "t통계":     d["t_stat"],
+                "p값":       d["p_value"],
+                "적중률(%)": d["hit_rate"],
+                "표본수":    d["n"],
+                "검증결과":  _verdict(d["ic"], d["p_value"]),
+                "설명":      hyp["desc"],
+            })
+    return pd.DataFrame(ic_rows)
 
 
 def run_composite_validation(results_dir=None) -> tuple[pd.DataFrame, pd.DataFrame]:

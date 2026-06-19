@@ -1267,28 +1267,6 @@ with tab_val:
                         f"격차: {_gap:+.2f}%p / 추천>비추천 비율: {_hit:.0f}%"
                     )
 
-        # ── 종합 진단 ────────────────────────────────────────────────────
-        st.divider()
-        st.markdown("### 🔬 추천 시스템 종합 진단")
-        st.markdown("""
-| 구분 | 검증 결과 | 실용 가치 |
-|---|---|---|
-| **모멘텀 순위 (H1, H9)** | ❌ 통계 유의성 없음 (p>0.6) | 종목 선택 기준으로 신뢰도 낮음 |
-| **과열 페널티 (H10)** | ⚠️ 약한 유의성 (p=0.02, IC=0.03) | 과열 종목 피하기는 효과 있음 |
-| **추천 vs 비추천 격차 (H11)** | ❌ 통계 유의성 없음 (p>0.4) | 추천 순위대로 사는 것이 유리하지 않음 |
-| **VIX 타이밍 (H8)** | ✅ 강한 유의성 (IC=0.14, p<0.001) | 시장 전체 진입 타이밍에 효과 있음 |
-""")
-        st.warning(
-            "**핵심 결론**: 이 시스템은 **어떤 ETF를 살지 고르는 것에는 통계적으로 검증되지 않았습니다.**  \n"
-            "대신 **VIX 공포 국면에서 시장에 진입**하고, **과열 종목의 비중을 줄이는** 두 가지는 "
-            "데이터로 확인된 행동입니다.  \n"
-            "모멘텀 순위 시스템은 '손해는 안 나지만 유의한 알파를 만들지도 않는' 수준입니다."
-        )
-        st.caption(
-            "샘플 제한: 약 20~50개 ETF × 5년. 수십만 종목을 수십 년 검증한 학술 연구와 달리 "
-            "통계 검정력이 낮습니다. 더 많은 데이터가 쌓이면 결론이 바뀔 수 있습니다."
-        )
-
         if st.button("🔄 추천 시스템 재검증"):
             with st.spinner("재검증 중..."):
                 from scripts.signal_validation import run_composite_validation
@@ -1297,4 +1275,62 @@ with tab_val:
                 _csp2.to_csv(_comp_sp_file, index=False, encoding="utf-8-sig")
                 st.success("재검증 완료!")
                 st.rerun()
+
+    st.divider()
+
+    # ── 5단계: 시스템 실사용 신호 검증 (H12~H14) ──────────────────────────────
+    st.markdown("### 5️⃣ 시스템 실사용 신호 검증 — 섹터사이클 · Bull추세 · 상대강도")
+    st.caption("현재 점수 공식에서 실제로 사용 중인 신호들이 백테스트에서도 작동하는지 검증합니다.")
+
+    _sys_file = RESULTS_DIR / "system_validation.csv"
+    _run_sys  = st.button("▶ 시스템 신호 검증 실행 (약 20초)")
+    if _run_sys or _sys_file.exists():
+        if _run_sys:
+            with st.spinner("H12~H14 검증 중..."):
+                from scripts.signal_validation import run_system_validation
+                _sdf = run_system_validation(RESULTS_DIR)
+                _sdf.to_csv(_sys_file, index=False, encoding="utf-8-sig")
+                st.success("완료!")
+        else:
+            _sdf = pd.read_csv(_sys_file)
+
+        if not _sdf.empty:
+            st.dataframe(
+                _sdf[["id","가설","예측창","IC","t통계","p값","적중률(%)","검증결과"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "IC":     st.column_config.NumberColumn(format="%.4f"),
+                    "t통계":  st.column_config.NumberColumn(format="%.2f"),
+                    "p값":    st.column_config.NumberColumn(format="%.4f"),
+                    "검증결과": st.column_config.TextColumn("결과"),
+                },
+            )
+
+        st.divider()
+
+    # ── 전체 신호 현황판 ───────────────────────────────────────────────────────
+    st.markdown("### 📋 전체 신호 검증 현황 — 시스템 반영 상태")
+    st.caption("항상 백테스트 검증 후 적용. 미검증 신호는 표시만 하고 점수/배분에 반영하지 않음.")
+    st.markdown("""
+| 신호 | 가설 | IC (1M) | p값 | 검증 | 시스템 반영 |
+|---|---|---|---|---|---|
+| **VIX 역발상** | 공포 극단→매수 | +0.14 | <0.001 | ✅ 강력 유효 | ✅ VIX국면 배율 핵심 적용 |
+| **BB 위치** | 상단→수익 낮음 | -0.087 | <0.001 | ✅ 역방향 유효 | ✅ 과열 페널티 적용 |
+| **MA 정렬** | 완전정렬→수익 낮음 | -0.065 | 0.002 | ✅ 역방향 유효 | ✅ 과열 페널티 적용 |
+| **RSI 기울기** | 상승기울기→수익 낮음 | -0.066 | 0.001 | ✅ 역방향 유효 | ✅ 과열 경보 표시 |
+| **거래량 비율** | 급증→수익 양호 | +0.040 | 0.001 | ⚠️ 약한 유효 | ⚠️ 참고 표시만 |
+| **12M 모멘텀** | 고수익→향후도 고수익 | +0.019 | 0.61 | ❌ 예측력 없음 | ❌ 10% 보조만 |
+| **섹터사이클** | 상대강도→향후 수익 | -0.023 | 0.34 | ❌ 예측력 없음 | ❌ ±5%로 축소, 참고만 |
+| **Bull추세 필터** | bull→수익 양호 | -0.047 | 0.010 | ⚠️ 역방향 | ❌ 필터 완화, 참고만 |
+| **MACD** | 양수→수익 양호 | ≈0 | 0.58 | ❌ 예측력 없음 | ❌ 제거됨 |
+""")
+    st.error(
+        "**중요**: 섹터사이클·Bull추세 필터·모멘텀 순위는 모두 백테스트 미검증.  \n"
+        "배분의 실질 드라이버는 **VIX 국면**(강력 검증)과 **과열 회피**(약하게 검증)입니다.  \n"
+        "나머지 신호는 '참고 정보'로 보고, 매수/매도 결정의 근거로 단독 사용하지 마세요."
+    )
+    st.caption(
+        "⚙️ 시스템 반영 원칙: IC≥0.05 + p<0.05 → 점수 반영 / IC역방향 검증 → 과열 경보 / "
+        "IC≈0 or p>0.1 → 참고 표시만. 신호 추가 시 반드시 백테스트 후 이 표 업데이트."
+    )
 

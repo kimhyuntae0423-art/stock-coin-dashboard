@@ -269,12 +269,15 @@ _SECTOR_CYCLES = [
 
 
 def _cycle_multiplier(rel_1m: float) -> float:
-    """섹터 상대강도(1M, %p) → 사이클 배율."""
-    if rel_1m >  6: return 1.25
-    if rel_1m >  3: return 1.12
+    """섹터 상대강도(1M, %p) → 사이클 배율.
+    백테스트 결과(H12): IC=-0.023, p=0.34 — 예측력 없음.
+    배율 범위를 ±25%→±5%로 축소. 참고 정보 역할만 유지.
+    """
+    if rel_1m >  6: return 1.05
+    if rel_1m >  3: return 1.02
     if rel_1m > -3: return 1.00
-    if rel_1m > -6: return 0.88
-    return 0.75
+    if rel_1m > -6: return 0.98
+    return 0.95
 
 
 def _cycle_label(rel_1m: float) -> str:
@@ -531,13 +534,18 @@ def score_etfs(etf_df: pd.DataFrame, summary_df: pd.DataFrame, regime_key: str) 
     valid["r1_rank"]   = valid["return_1m_pct"].rank(pct=True)
     valid["mom_score"] = (valid["r12_rank"] * 0.7 + valid["r1_rank"] * 0.3) * 100
 
-    # 백테스트 결과: ETF 모멘텀 IC=0.019 (p=0.61, 유의성 없음)
-    # → 섹터사이클(cycle_mult)과 VIX 국면(bucket_weight)이 실제 드라이버
-    # 점수 = (중립기준 50 + 모멘텀 25% 보조) × 국면배율 × 섹터사이클배율
-    # 모멘텀은 동률 타이브레이커 수준으로만 반영
+    # 백테스트 검증 결과 요약:
+    #   H8  VIX 역발상    IC=+0.14  p<0.001  ✅ 강력 유효 → bucket_weight 핵심 드라이버
+    #   H10 과열조합      IC=+0.028 p=0.023  ⚠️ 약하게 유효 → overheat penalty 유지
+    #   H12 섹터사이클    IC=-0.023 p=0.34   ❌ 예측력 없음 → 배율 ±5%로 축소
+    #   H13 Bull추세필터  IC=-0.047 p=0.010  ⚠️ 역방향 → 필터 완화
+    #   H1  모멘텀        IC=+0.019 p=0.61   ❌ 예측력 없음 → 10% 보조만
+    #
+    # 점수 = 100(균등 기준) × VIX국면배율 × 섹터사이클배율(±5%) × (모멘텀 10% 보조)
+    # 배분은 VIX 타이밍이 가장 중요, 섹터·모멘텀은 참고 수준
     w = _BUCKET_WEIGHT.get(regime_key, _BUCKET_WEIGHT["mixed"])
     valid["score"] = valid.apply(
-        lambda r: (50 + r["mom_score"] * 0.25) * w.get(r["버킷"], 1.0) * float(r["사이클배율"]),
+        lambda r: (100 + r["mom_score"] * 0.10 - 5) * w.get(r["버킷"], 1.0) * float(r["사이클배율"]),
         axis=1,
     )
 

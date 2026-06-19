@@ -125,12 +125,9 @@ st.info(
 _cy_df = sector_cycles(summary)
 
 if not _valid.empty:
-    # 상위 5개: 섹터사이클 강세 + bull추세 + RSI<70 기준
-    _hot_cycle = _valid[
-        _valid["섹터사이클"].str.contains("🔥", na=False) & (_valid["state"] == "bull")
-    ].head(5)
-    _bull_ok = _hot_cycle if not _hot_cycle.empty else \
-               _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)].head(5)
+    # 상위 5개: 배분점수 상위 (bull추세 필터 제거 — H13 역방향 확인)
+    # RSI<75 정도만 필터 (극단 과열 제외). bear추세도 포함
+    _bull_ok = _valid[_valid["rsi14"] < 75].head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
     # ── Top 5 카드: 섹터사이클 기준 ───────────────────────────────────────────
