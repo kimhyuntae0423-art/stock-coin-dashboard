@@ -48,27 +48,92 @@ if not _cmp_valid.empty:
 
 st.divider()
 
+# ── 시장 국면 판단 ─────────────────────────────────────────────────────────────
+_sig_latest = summary.sort_values("date").groupby("ticker").last().reset_index()
+
+# 1) 시장 브레드스: 전체 종목 중 bull 비율
+_breadth = (_sig_latest["state"] == "bull").mean() * 100
+
+# 2) SPY 1M 수익률 (없으면 0)
+_spy_row  = _sig_latest[_sig_latest["ticker"] == "SPY"]
+_spy_1m   = float(_spy_row["return_1m_pct"].values[0]) if not _spy_row.empty else 0.0
+_spy_12m  = float(_spy_row["return_12m_pct"].values[0]) if not _spy_row.empty else 0.0
+
+# 3) 채권 vs 주식 상대강도 (TLT 1M vs SPY 1M)
+_tlt_row  = _sig_latest[_sig_latest["ticker"] == "TLT"]
+_tlt_1m   = float(_tlt_row["return_1m_pct"].values[0]) if not _tlt_row.empty else 0.0
+_bond_winning = _tlt_1m > _spy_1m   # 채권이 주식보다 강하면 risk-off 신호
+
+# 4) 국면 분류
+if _breadth >= 55 and _spy_1m >= 0 and not _bond_winning:
+    _regime      = "🟢 강세 (Risk-On)"
+    _regime_key  = "bull"
+    _regime_desc = f"시장 브레드스 {_breadth:.0f}% · SPY 1M {_spy_1m:+.1f}% · 주식 > 채권"
+elif _breadth <= 40 or _spy_1m <= -5 or (_bond_winning and _spy_1m < 0):
+    _regime      = "🔴 약세 (Risk-Off)"
+    _regime_key  = "bear"
+    _regime_desc = f"시장 브레드스 {_breadth:.0f}% · SPY 1M {_spy_1m:+.1f}% · {'채권 > 주식' if _bond_winning else '낙폭 과대'}"
+else:
+    _regime      = "🟡 혼조"
+    _regime_key  = "mixed"
+    _regime_desc = f"시장 브레드스 {_breadth:.0f}% · SPY 1M {_spy_1m:+.1f}% · 방향성 불명확"
+
+# 자산군 → 위험 버킷 매핑
+def _risk_bucket(row):
+    cat = str(row.get("category", ""))
+    asc = str(row.get("asset_class", ""))
+    if asc == "bond" or "채권" in cat:         return "방어"
+    if asc == "commodity" or "원자재" in cat:  return "대안"
+    if any(k in cat for k in ["유틸리티", "헬스케어", "현금"]):  return "방어"
+    if any(k in cat for k in ["나스닥", "반도체", "AI", "방산", "테마", "우라늄", "구리", "인프라"]):
+        return "공격"
+    return "핵심"
+
+# 국면별 버킷 가중치
+_bucket_weight = {
+    "bull":  {"공격": 1.30, "핵심": 1.10, "대안": 0.90, "방어": 0.70},
+    "mixed": {"공격": 1.00, "핵심": 1.00, "대안": 1.00, "방어": 1.00},
+    "bear":  {"공격": 0.70, "핵심": 0.90, "대안": 1.20, "방어": 1.30},
+}
+
+# ── 국면 표시 ──────────────────────────────────────────────────────────────────
+st.subheader(f"시장 국면: {_regime}")
+st.caption(_regime_desc)
+_mc1, _mc2, _mc3, _mc4 = st.columns(4)
+_mc1.metric("시장 브레드스", f"{_breadth:.0f}%", help="전체 추적 종목 중 골든크로스(bull) 비율")
+_mc2.metric("SPY 1M",  f"{_spy_1m:+.1f}%")
+_mc3.metric("SPY 12M", f"{_spy_12m:+.1f}%")
+_mc4.metric("채권(TLT) 1M", f"{_tlt_1m:+.1f}%",
+            delta="채권 우세" if _bond_winning else "주식 우세",
+            delta_color="inverse" if _bond_winning else "normal")
+
+st.divider()
+
 # ── 추천 섹션 ──────────────────────────────────────────────────────────────────
-st.subheader("🎯 매수 추천 ETF")
-st.caption("12M 모멘텀 70% + 1M 모멘텀 30% 점수 기준. Bull 추세 + RSI 70 미만 우선.")
+st.subheader("🎯 시장 국면 반영 추천 ETF")
+st.caption("모멘텀(12M 70% + 1M 30%) × 국면 가중치. Bull 추세 + RSI 70 미만 우선.")
 
 if not _cmp_valid.empty:
     _scored = _cmp_valid.copy()
-    _scored["r12_rank"] = _scored["return_12m_pct"].rank(pct=True)
-    _scored["r1_rank"]  = _scored["return_1m_pct"].rank(pct=True)
-    _scored["score"]    = (_scored["r12_rank"] * 0.7 + _scored["r1_rank"] * 0.3) * 100
+    _scored["버킷"] = _scored.apply(_risk_bucket, axis=1)
+    _scored["r12_rank"]  = _scored["return_12m_pct"].rank(pct=True)
+    _scored["r1_rank"]   = _scored["return_1m_pct"].rank(pct=True)
+    _scored["mom_score"] = (_scored["r12_rank"] * 0.7 + _scored["r1_rank"] * 0.3) * 100
+    _w = _bucket_weight[_regime_key]
+    _scored["score"] = _scored.apply(
+        lambda r: r["mom_score"] * _w.get(r["버킷"], 1.0), axis=1
+    )
 
-    # 필터: bull + RSI < 70 → "적극 추천" / 나머지는 "관심"
-    _bull_ok  = _scored[(_scored["state"] == "bull") & (_scored["rsi14"] < 70)].sort_values("score", ascending=False)
-    _watch    = _scored[~_scored.index.isin(_bull_ok.index)].sort_values("score", ascending=False).head(3)
+    _bull_ok = _scored[(_scored["state"] == "bull") & (_scored["rsi14"] < 70)].sort_values("score", ascending=False)
+    _watch   = _scored[~_scored.index.isin(_bull_ok.index)].sort_values("score", ascending=False).head(3)
 
     def _tag(row):
-        reasons = []
-        if row["return_12m_pct"] >= 20:  reasons.append(f"12M +{row['return_12m_pct']:.0f}%")
-        if row["return_1m_pct"]  >= 3:   reasons.append(f"1M +{row['return_1m_pct']:.1f}%")
-        if row["rsi14"] < 50:            reasons.append("RSI 여유")
-        if row["expense_ratio"]  <= 0.1: reasons.append("저보수")
-        return " · ".join(reasons) if reasons else "모멘텀 유지"
+        parts = [f"[{row['버킷']}]"]
+        if row["return_12m_pct"] >= 20: parts.append(f"12M {row['return_12m_pct']:+.0f}%")
+        if row["return_1m_pct"]  >= 3:  parts.append(f"1M {row['return_1m_pct']:+.1f}%")
+        if row["rsi14"] < 50:           parts.append("RSI 여유")
+        if row["expense_ratio"] <= 0.1: parts.append("저보수")
+        return " · ".join(parts)
 
     if not _bull_ok.empty:
         _top = _bull_ok.head(5)
@@ -80,7 +145,7 @@ if not _cmp_valid.empty:
                     value=f"{row['return_12m_pct']:+.1f}%",
                     delta=f"1M {row['return_1m_pct']:+.1f}%",
                 )
-                st.caption(f"{row['name']}")
+                st.caption(row["name"])
                 st.caption(f"RSI {row['rsi14']:.0f} · 점수 {row['score']:.0f}")
                 st.caption(_tag(row))
 
@@ -90,28 +155,24 @@ if not _cmp_valid.empty:
                 reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
                 st.markdown(f"- **{row['ticker']}** {row['name']} — 12M {row['return_12m_pct']:+.1f}% / {reason}")
 
-    # 카테고리별 1위
     st.divider()
-    st.markdown("**카테고리별 모멘텀 1위**")
+    st.markdown("**카테고리별 국면 반영 1위**")
     _cat_best = (
         _scored.sort_values("score", ascending=False)
-               .groupby("category", sort=False)
-               .first()
-               .reset_index()
-               [["category", "ticker", "name", "return_1m_pct", "return_12m_pct", "score", "state"]]
+               .groupby("category", sort=False).first().reset_index()
+               [["category", "버킷", "ticker", "name", "return_1m_pct", "return_12m_pct", "score", "state"]]
                .sort_values("score", ascending=False)
     )
     st.dataframe(
         _cat_best.rename(columns={
-            "category": "카테고리", "ticker": "티커", "name": "종목명",
-            "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)",
-            "score": "점수", "state": "추세",
+            "category": "카테고리", "버킷": "위험도", "ticker": "티커", "name": "종목명",
+            "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)", "score": "점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
             "1M(%)":  st.column_config.NumberColumn(format="%+.2f"),
             "12M(%)": st.column_config.NumberColumn(format="%+.2f"),
-            "점수":   st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=100),
+            "점수":   st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=130),
         },
     )
 
