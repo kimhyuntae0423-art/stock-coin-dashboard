@@ -53,81 +53,71 @@ _m4.metric("채권(TLT) 1M",  f"{_regime['tlt_1m']:+.1f}%",
 
 st.divider()
 
-# ── 섹터 사이클 현황 ──────────────────────────────────────────────────────────
-st.subheader("🔄 섹터 사이클 현황")
-st.caption("각 섹터 대표 ETF의 1M 상대강도 기준. 점수 계산에 자동 반영됩니다.")
+# ── 추천 섹션 ─────────────────────────────────────────────────────────────────
+st.subheader("🎯 ETF 추천")
+st.caption("점수 = 모멘텀(12M×70% + 1M×30%) × 시장 국면 배율 × 섹터 사이클 배율")
 
 _cy_df = sector_cycles(summary)
-if not _cy_df.empty:
-    _cy_show = _cy_df[["섹터", "지표ETF", "벤치마크", "지표 1M", "벤치 1M", "상대강도", "사이클"]].copy()
-    _cy_show = _cy_show.sort_values("상대강도", ascending=False)
-    st.dataframe(
-        _cy_show, hide_index=True, use_container_width=True,
-        column_config={
-            "지표 1M":  st.column_config.NumberColumn("지표 1M(%)", format="%+.1f"),
-            "벤치 1M":  st.column_config.NumberColumn("벤치 1M(%)", format="%+.1f"),
-            "상대강도":  st.column_config.NumberColumn("상대강도(%p)", format="%+.1f"),
-        },
-    )
-
-st.divider()
-
-# ── 추천 섹션 ─────────────────────────────────────────────────────────────────
-st.subheader("🎯 시장 국면 반영 추천 ETF")
-st.caption("모멘텀(12M 70% + 1M 30%) × 시장 국면 × 섹터 사이클. Bull 추세 + RSI 70 미만 우선.")
 
 if not _valid.empty:
-    _bull_ok = _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)]
+    _bull_ok = _valid[(_valid["state"] == "bull") & (_valid["rsi14"] < 70)].head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
-    def _tag(row):
-        parts = [f"[{row['버킷']}]"]
-        if row["return_12m_pct"] >= 20: parts.append(f"12M {row['return_12m_pct']:+.0f}%")
-        if row["return_1m_pct"]  >= 3:  parts.append(f"1M {row['return_1m_pct']:+.1f}%")
-        if row["rsi14"] < 50:           parts.append("RSI 여유")
-        if row["expense_ratio"] <= 0.1: parts.append("저보수")
-        return " · ".join(parts)
-
+    # ── Top 5 추천 카드 ────────────────────────────────────────────────────────
     if not _bull_ok.empty:
-        _top  = _bull_ok.head(5)
-        _cols = st.columns(min(len(_top), 5))
-        for i, (_, row) in enumerate(_top.iterrows()):
+        _cols = st.columns(min(len(_bull_ok), 5))
+        for i, (_, row) in enumerate(_bull_ok.iterrows()):
             with _cols[i]:
                 st.metric(f"**{row['ticker']}**",
                           f"{row['return_12m_pct']:+.1f}%",
                           f"1M {row['return_1m_pct']:+.1f}%")
                 st.caption(row["name"])
-                st.caption(f"RSI {row['rsi14']:.0f} · 점수 {row['score']:.0f}")
-                st.caption(_tag(row))
-                if pd.notna(row.get("섹터사이클")) and row["섹터사이클"] != "—":
-                    st.caption(f"사이클: {row['섹터사이클']}")
-
-    if not _watch.empty:
-        with st.expander("👀 관심 ETF (Bear 또는 RSI ≥ 70)"):
-            for _, row in _watch.iterrows():
-                reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
-                st.markdown(f"- **{row['ticker']}** {row['name']} — 12M {row['return_12m_pct']:+.1f}% / {reason}")
+                cy = row.get("섹터사이클", "—")
+                cy_str = cy if pd.notna(cy) and cy != "—" else "➡️ 중립"
+                st.caption(f"사이클 {cy_str}")
+                st.caption(f"RSI {row['rsi14']:.0f} · 점수 **{row['score']:.0f}**")
 
     st.divider()
-    st.markdown("**카테고리별 국면 반영 1위**")
-    _cat_best = (
-        _valid.sort_values("score", ascending=False)
-              .groupby("category", sort=False).first().reset_index()
-              [["category", "버킷", "ticker", "name", "return_1m_pct", "return_12m_pct", "score", "state"]]
-              .sort_values("score", ascending=False)
+
+    # ── 전체 추천 테이블 (섹터 사이클 통합) ────────────────────────────────────
+    st.markdown("**전체 ETF 점수 · 사이클 현황**")
+
+    _full = _valid.copy()
+    _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
+
+    _tbl_full = _full[[
+        "ticker", "name", "버킷", "사이클상태",
+        "return_1m_pct", "return_12m_pct", "rsi14",
+        "mom_score", "사이클배율", "score", "state",
+    ]].copy()
+    _tbl_full["사이클배율"] = _tbl_full["사이클배율"].apply(
+        lambda x: f"×{x:.2f}" if pd.notna(x) else "×1.00"
     )
     st.dataframe(
-        _cat_best.rename(columns={
-            "category": "카테고리", "버킷": "위험도", "ticker": "티커", "name": "종목명",
-            "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)", "score": "점수", "state": "추세",
+        _tbl_full.rename(columns={
+            "ticker": "티커", "name": "종목명", "버킷": "위험도",
+            "사이클상태": "섹터 사이클", "return_1m_pct": "1M(%)",
+            "return_12m_pct": "12M(%)", "rsi14": "RSI",
+            "mom_score": "모멘텀점수", "사이클배율": "사이클배율",
+            "score": "최종점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
-            "1M(%)":  st.column_config.NumberColumn(format="%+.2f"),
-            "12M(%)": st.column_config.NumberColumn(format="%+.2f"),
-            "점수":   st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=130),
+            "1M(%)":    st.column_config.NumberColumn(format="%+.2f"),
+            "12M(%)":   st.column_config.NumberColumn(format="%+.2f"),
+            "RSI":      st.column_config.NumberColumn(format="%.0f"),
+            "모멘텀점수": st.column_config.NumberColumn(format="%.0f"),
+            "최종점수": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=160),
         },
     )
+
+    if not _watch.empty:
+        with st.expander("👀 제외 ETF (Bear 추세 또는 RSI ≥ 70)"):
+            for _, row in _watch.iterrows():
+                reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
+                cy = row.get("섹터사이클", "—")
+                cy_str = f" · 사이클 {cy}" if pd.notna(cy) and cy != "—" else ""
+                st.markdown(f"- **{row['ticker']}** {row['name']} — 12M {row['return_12m_pct']:+.1f}% / {reason}{cy_str}")
 
 st.divider()
 
