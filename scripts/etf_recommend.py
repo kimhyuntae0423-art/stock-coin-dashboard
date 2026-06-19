@@ -192,36 +192,58 @@ def macro_signals(summary_df: pd.DataFrame) -> dict:
 
 
 def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
-    """score_etfs 결과에 맥락 지표 컬럼을 추가 (점수 계산에는 불포함).
+    """score_etfs 결과에 거래량·기술 지표 추가 + 검증 기반 점수 보정.
 
-    백테스트 결과 (signal_validation.csv):
-      - MA정렬, BB위치, RSI기울기: IC < 0 → 과열 경보로만 해석, 점수 보정 제외
-      - 거래량비율: IC=+0.04, p=0.001 → 약한 양방향 확인 → 거래량 신호만 표시
-      - MACD: IC≈0 → 정보 없음, 제외
-      점수 계산은 모멘텀 × 국면 × 사이클만 유지.
+    백테스트 검증 결과 (signal_validation.csv) 적용:
+      MA정렬·BB위치·RSI기울기 IC < 0  → 과열 경보, 점수 감점
+      거래량비율 IC=+0.04 p=0.001     → 급증 시 점수 완화
+      MACD IC≈0                       → 제거
+
+    점수 보정 규칙:
+      MA=3 + BB>0.85 (과열) → score × 0.88  (12% 감점)
+      MA=3 + BB>0.85 + 거래량급증(>1.3) → score × 0.94  (6% 감점, 거래량이 완화)
+      이 외 → 보정 없음
     """
     out = df.reset_index(drop=True).copy()
     vols  = [volume_signals(str(t), results_dir)    for t in out["ticker"]]
     techs = [technical_signals(str(t), results_dir) for t in out["ticker"]]
-    # 맥락 정보로만 표시 — 점수 보정 없음
-    out["거래량비율"]   = [v.get("vol_ratio")        for v in vols]
-    out["OBV추세"]      = [v.get("obv_slope")        for v in vols]
-    out["거래량신호"]   = [v.get("vol_label", "—")   for v in vols]
-    out["PV다이버전스"] = [v.get("pv_signal", "—")   for v in vols]
-    out["MA정렬"]       = [t.get("ma_score")          for t in techs]
-    out["BB위치"]       = [t.get("bb_pct")            for t in techs]
-    out["RSI기울기"]    = [t.get("rsi_slope")         for t in techs]
-    # 과열 경보 라벨 (역방향 신호 — 높은 MA·BB·RSI기울기는 주의 신호)
-    def _overheat(t):
-        ma, bb, rsi = t.get("ma_score", 0), t.get("bb_pct", 0.5), t.get("rsi_slope", 0)
-        if ma == 3 and bb > 0.8 and rsi > 0.5:
-            return "⚠️ 과열 주의"
+
+    out["거래량비율"]   = [v.get("vol_ratio")       for v in vols]
+    out["OBV추세"]      = [v.get("obv_slope")       for v in vols]
+    out["거래량신호"]   = [v.get("vol_label", "—")  for v in vols]
+    out["PV다이버전스"] = [v.get("pv_signal", "—")  for v in vols]
+    out["MA정렬"]       = [t.get("ma_score")         for t in techs]
+    out["BB위치"]       = [t.get("bb_pct")           for t in techs]
+    out["RSI기울기"]    = [t.get("rsi_slope")        for t in techs]
+
+    def _overheat_label(t, v):
+        ma  = t.get("ma_score", 0) or 0
+        bb  = t.get("bb_pct",   0.5) or 0.5
+        rsi = t.get("rsi_slope", 0) or 0
+        vol = v.get("vol_ratio", 1.0) or 1.0
+        if ma == 3 and bb > 0.85:
+            return "⚠️ 과열" if vol < 1.3 else "🌡️ 과열+거래량"
         if ma >= 2 and bb > 0.7:
             return "🌡️ 상단 근접"
         if ma <= 1 or bb < 0.3:
             return "❄️ 하단 지지"
         return "➡️ 보통"
-    out["과열신호"] = [_overheat(t) for t in techs]
+
+    def _score_adjust(base_score, t, v):
+        """과열 시 감점, 거래량 급증 시 완화 (백테스트 검증 반영)."""
+        if pd.isna(base_score):
+            return base_score
+        ma  = t.get("ma_score", 0) or 0
+        bb  = t.get("bb_pct",   0.5) or 0.5
+        vol = v.get("vol_ratio", 1.0) or 1.0
+        if ma == 3 and bb > 0.85:
+            factor = 0.94 if vol >= 1.3 else 0.88
+            return round(float(base_score) * factor, 1)
+        return base_score
+
+    out["과열신호"] = [_overheat_label(t, v) for t, v in zip(techs, vols)]
+    out["score"]    = [_score_adjust(s, t, v)
+                       for s, t, v in zip(out["score"], techs, vols)]
     return out
 
 # ── 섹터 사이클 정의 ──────────────────────────────────────────────────────────
@@ -278,17 +300,31 @@ def _risk_bucket(row: pd.Series) -> str:
 
 
 _BUCKET_WEIGHT = {
-    "bull":  {"공격": 1.30, "핵심": 1.10, "대안": 0.90, "방어": 0.70},
-    "mixed": {"공격": 1.00, "핵심": 1.00, "대안": 1.00, "방어": 1.00},
-    "bear":  {"공격": 0.70, "핵심": 0.90, "대안": 1.20, "방어": 1.30},
+    # 백테스트 검증 결과 반영 (signal_validation.csv)
+    # VIX 역발상 IC=0.14 — 공포 극단일 때 공격 자산 부스트
+    # 과열 경계일 때 공격 자산 감점
+    "fear":        {"공격": 1.45, "핵심": 1.20, "대안": 0.95, "방어": 0.70},
+    "bull":        {"공격": 1.30, "핵심": 1.10, "대안": 0.90, "방어": 0.70},
+    "mixed":       {"공격": 1.00, "핵심": 1.00, "대안": 1.00, "방어": 1.00},
+    "bear":        {"공격": 0.70, "핵심": 0.90, "대안": 1.20, "방어": 1.30},
+    "complacent":  {"공격": 0.85, "핵심": 0.95, "대안": 1.05, "방어": 1.15},
 }
 
 
 def market_regime(summary_df: pd.DataFrame) -> dict:
-    """summary_signals DataFrame → 시장 국면 반환."""
+    """summary_signals DataFrame → 시장 국면 반환.
+
+    국면 5단계 (백테스트 검증 기반):
+      fear       : VIX>30 + 시장 하락 → 역발상 매수 타이밍 (IC=0.14 검증)
+      bull       : 브레드스 높음 + SPY 상승 + 채권 약세
+      mixed      : 방향성 불명확
+      bear       : 브레드스 낮음 or 급락 + 채권 강세
+      complacent : VIX<15 + 브레드스 매우 높음 → 과열 경계
+    """
     if summary_df.empty:
         return dict(label="🔘 데이터 없음", key="mixed", desc="",
-                    breadth=0, spy_1m=0, spy_12m=0, tlt_1m=0, bond_winning=False)
+                    breadth=0, spy_1m=0, spy_12m=0, tlt_1m=0, bond_winning=False,
+                    vix=None, vix_signal="—")
 
     latest = summary_df.sort_values("date").groupby("ticker").last().reset_index()
     breadth = (latest["state"] == "bull").mean() * 100
@@ -302,22 +338,44 @@ def market_regime(summary_df: pd.DataFrame) -> dict:
     tlt_1m       = _get("TLT", "return_1m_pct")
     bond_winning = tlt_1m > spy_1m
 
-    if breadth >= 55 and spy_1m >= 0 and not bond_winning:
+    # VIX (^VIX가 summary에 있으면 사용)
+    vix_row = latest[latest["ticker"].astype(str).str.upper() == "^VIX"]
+    vix = float(vix_row["close"].values[0]) if not vix_row.empty else None
+    if vix and vix > 30:
+        vix_signal = "🔥 공포 극단 — 역발상 매수 타이밍"
+    elif vix and vix > 20:
+        vix_signal = "⚠️ 변동성 상승"
+    elif vix and vix < 13:
+        vix_signal = "🌡️ 과열 경계 — 신규 매수 신중"
+    else:
+        vix_signal = "✅ 안정"
+
+    # 국면 판정 — VIX 우선
+    if vix and vix > 30 and spy_1m < 0:
+        label = "🔥 공포 극단 (역발상 매수)"
+        key   = "fear"
+        desc  = f"VIX {vix:.0f} 공포 극단 · SPY 1M {spy_1m:+.1f}% · 역발상 매수 타이밍 (IC검증)"
+    elif vix and vix < 13 and breadth >= 65:
+        label = "🌡️ 과열 경계"
+        key   = "complacent"
+        desc  = f"VIX {vix:.0f} 저공포 · 브레드스 {breadth:.0f}% — 신규 매수 신중"
+    elif breadth >= 55 and spy_1m >= 0 and not bond_winning:
         label = "🟢 강세 (Risk-On)"
         key   = "bull"
-        desc  = f"시장 브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · 주식 > 채권"
+        desc  = f"브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · 주식 > 채권"
     elif breadth <= 40 or spy_1m <= -5 or (bond_winning and spy_1m < 0):
         label = "🔴 약세 (Risk-Off)"
         key   = "bear"
-        desc  = f"시장 브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · {'채권 > 주식' if bond_winning else '낙폭 과대'}"
+        desc  = f"브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · {'채권 > 주식' if bond_winning else '낙폭 과대'}"
     else:
         label = "🟡 혼조"
         key   = "mixed"
-        desc  = f"시장 브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · 방향성 불명확"
+        desc  = f"브레드스 {breadth:.0f}% · SPY 1M {spy_1m:+.1f}% · 방향성 불명확"
 
     return dict(label=label, key=key, desc=desc,
                 breadth=breadth, spy_1m=spy_1m, spy_12m=spy_12m,
-                tlt_1m=tlt_1m, bond_winning=bond_winning)
+                tlt_1m=tlt_1m, bond_winning=bond_winning,
+                vix=vix, vix_signal=vix_signal)
 
 
 def sector_cycles(summary_df: pd.DataFrame) -> pd.DataFrame:
@@ -356,8 +414,14 @@ def sector_cycles(summary_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def tactical_alloc(scored_df: pd.DataFrame, total_amount: float) -> pd.DataFrame:
-    """사이클배율 기반 전술적 배분 계산.
+def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
+                   regime: dict = None) -> pd.DataFrame:
+    """사이클배율 + VIX 기반 전술적 배분 계산.
+
+    백테스트 검증 반영:
+      VIX>25 → 공격/핵심 버킷 추가 오버웨이트 (역발상, IC=0.14 검증)
+      VIX<13 → 공격 버킷 소폭 언더웨이트 (과열 경계)
+      과열신호(⚠️) ETF → 전술비중 추가 감점
 
     Returns scored_df에 추가 컬럼:
         기본비중, 전술비중, 기본배분, 전술배분, 배분차이, 전환신호
@@ -366,22 +430,49 @@ def tactical_alloc(scored_df: pd.DataFrame, total_amount: float) -> pd.DataFrame
     if df.empty:
         return df
 
-    n = len(df)
-    df["기본비중"]     = 1 / n
-    mult = df["사이클배율"].fillna(1.0).astype(float)
-    raw  = df["기본비중"] * mult
-    df["전술비중"]     = raw / raw.sum()
-    df["기본배분"]     = (df["기본비중"] * total_amount).round(0)
-    df["전술배분"]     = (df["전술비중"] * total_amount).round(0)
-    df["배분차이"]     = df["전술배분"] - df["기본배분"]
+    vix = (regime or {}).get("vix")
 
-    # 사이클 전환 감지: 12M 강세인데 1M 이 벤치 대비 약해지면 "전환 주의"
+    # VIX 기반 버킷 조정 배율
+    if vix and vix > 25:
+        vix_adj = {"공격": 1.30, "핵심": 1.15, "대안": 0.95, "방어": 0.75}
+        vix_note = f"VIX {vix:.0f} 역발상 → 공격 오버웨이트"
+    elif vix and vix < 13:
+        vix_adj = {"공격": 0.85, "핵심": 0.95, "대안": 1.05, "방어": 1.10}
+        vix_note = f"VIX {vix:.0f} 과열 경계 → 공격 언더웨이트"
+    else:
+        vix_adj = {"공격": 1.0, "핵심": 1.0, "대안": 1.0, "방어": 1.0}
+        vix_note = None
+
+    n = len(df)
+    df["기본비중"] = 1 / n
+
+    # 전술비중 = 기본비중 × 사이클배율 × VIX 버킷 배율
+    def _tact_mult(row):
+        cy  = float(row.get("사이클배율", 1.0) or 1.0)
+        bkt = str(row.get("버킷", "핵심"))
+        vh  = vix_adj.get(bkt, 1.0)
+        # 과열 신호 있으면 추가 언더웨이트
+        overheat = str(row.get("과열신호", ""))
+        oh = 0.90 if "⚠️ 과열" in overheat else 1.0
+        return cy * vh * oh
+
+    raw = df.apply(_tact_mult, axis=1) * df["기본비중"]
+    df["전술비중"] = raw / raw.sum()
+    df["기본배분"] = (df["기본비중"] * total_amount).round(0)
+    df["전술배분"] = (df["전술비중"] * total_amount).round(0)
+    df["배분차이"] = df["전술배분"] - df["기본배분"]
+    if vix_note:
+        df["_vix_note"] = vix_note  # UI 표시용
+
     def _rotation_signal(row):
-        r12 = row.get("return_12m_pct", 0) or 0
-        r1  = row.get("return_1m_pct",  0) or 0
-        cy  = row.get("사이클배율", 1.0) or 1.0
-        rsi = row.get("rsi14", 50) or 50
-        # 강세였던 섹터(12M 높음)인데 최근 1M 둔화 + RSI 하락
+        r12  = row.get("return_12m_pct", 0) or 0
+        r1   = row.get("return_1m_pct",  0) or 0
+        cy   = row.get("사이클배율", 1.0) or 1.0
+        rsi  = row.get("rsi14", 50) or 50
+        over = str(row.get("과열신호", ""))
+        # 과열 + 전환 동시 → 강한 경고
+        if "⚠️ 과열" in over and r12 > 20 and r1 < 0:
+            return "🚨 과열+전환 경고"
         if r12 > 20 and r1 < 0 and rsi < 50:
             return "⚠️ 전환 주의"
         if r12 > 15 and cy < 1.0:

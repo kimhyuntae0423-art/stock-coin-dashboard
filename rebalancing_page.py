@@ -575,14 +575,24 @@ if new_money > 0 and alloc["Total"] > 0:
         _e_regime = market_regime(summary)
         _e_scored = score_etfs(core_etfs, summary, _e_regime["key"])
         _e_scored = enrich_with_volume(_e_scored, ROOT / "results")
-        _e_alloc  = tactical_alloc(_e_scored, core_buy if core_buy > 0 else 1)
+        _e_alloc  = tactical_alloc(_e_scored, core_buy if core_buy > 0 else 1,
+                                   regime=_e_regime)
 
-        # ── 국면 + 전환 요약 ────────────────────────────────────────────────────
+        # ── 국면 + VIX 배지 ──────────────────────────────────────────────────
         st.caption(f"시장 국면: **{_e_regime['label']}** — {_e_regime['desc']}")
+        _vix = _e_regime.get("vix")
+        _vsig = _e_regime.get("vix_signal", "—")
+        if _vix:
+            if _vix > 25:
+                st.success(f"🔥 VIX {_vix:.0f} — {_vsig} (역발상 매수 타이밍, 공격 버킷 부스트 적용)")
+            elif _vix < 13:
+                st.warning(f"🌡️ VIX {_vix:.0f} — {_vsig} (신규 매수 신중, 공격 버킷 감점 적용)")
+            else:
+                st.info(f"VIX {_vix:.0f} — {_vsig}")
 
         if not _e_alloc.empty:
             # 전환 신호 요약 알림
-            _turning = _e_alloc[_e_alloc["전환신호"] == "⚠️ 전환 주의"]
+            _turning = _e_alloc[_e_alloc["전환신호"].str.contains("전환 주의|과열\+전환", na=False)]
             _slowing = _e_alloc[_e_alloc["전환신호"] == "📉 모멘텀 둔화"]
             _hot     = _e_alloc[_e_alloc["전환신호"] == "🔥 강세 유지"]
             if not _hot.empty:

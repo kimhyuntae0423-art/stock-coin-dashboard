@@ -46,7 +46,18 @@ st.divider()
 
 # ── 매크로 레이더 ─────────────────────────────────────────────────────────────
 st.subheader("🌐 매크로 레이더")
-st.caption("경기·공포·채권 신호 — 가격보다 1~4주 선행하는 경향이 있는 지표들")
+st.caption("경기·공포·채권 신호 — 가격보다 1~4주 선행하는 경향이 있는 지표들 (백테스트 IC 검증 기반)")
+
+# VIX 강조 배너 (IC=0.14, 가장 강력한 신호)
+_vix = _regime.get("vix")
+_vsig = _regime.get("vix_signal", "")
+if _vix:
+    if _vix > 25:
+        st.success(f"🔥 VIX {_vix:.0f} — {_vsig}  |  백테스트 검증: VIX>25일 때 향후 1M 평균 수익 최고 (IC=0.14)")
+    elif _vix < 13:
+        st.warning(f"🌡️ VIX {_vix:.0f} — {_vsig}  |  저공포 = 과열 경계, 신규 매수 신중")
+    else:
+        st.info(f"VIX {_vix:.0f} — {_vsig}")
 
 _mr_cols = st.columns(4)
 _mr_idx  = 0
@@ -135,12 +146,14 @@ if not _valid.empty:
     _full = _valid.copy()
     _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
 
+    _extra_cols = ["거래량신호", "과열신호", "MA정렬", "BB위치", "OBV추세"]
+    _has_extra  = "과열신호" in _full.columns
     _tbl_full = _full[[
         "ticker", "name", "버킷", "사이클상태",
         "return_1m_pct", "return_12m_pct", "rsi14",
-        "기술신호", "거래량신호", "MA정렬", "BB위치", "OBV추세",
+        *([c for c in _extra_cols if c in _full.columns]),
         "mom_score", "사이클배율", "score", "state",
-    ]].copy() if "기술신호" in _full.columns else _full[[
+    ]].copy() if _has_extra else _full[[
         "ticker", "name", "버킷", "사이클상태",
         "return_1m_pct", "return_12m_pct", "rsi14",
         "mom_score", "사이클배율", "score", "state",
@@ -153,7 +166,7 @@ if not _valid.empty:
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
             "사이클상태": "섹터사이클", "return_1m_pct": "1M(%)",
             "return_12m_pct": "12M(%)", "rsi14": "RSI",
-            "기술신호": "기술신호", "거래량신호": "거래량",
+            "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
             "mom_score": "모멘텀", "사이클배율": "배율",
@@ -164,12 +177,14 @@ if not _valid.empty:
             "1M(%)":    st.column_config.NumberColumn(format="%+.2f"),
             "12M(%)":   st.column_config.NumberColumn(format="%+.2f"),
             "RSI":      st.column_config.NumberColumn(format="%.0f"),
+            "과열신호": st.column_config.TextColumn(
+                         help="백테스트 IC<0 확인: MA=3+BB>0.85 = 과열. 오히려 점수 감점 적용됨"),
             "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
-                         help="3=MA20>MA50>MA200 완전 정렬(강세), 0=역배열(약세)"),
+                         help="0-3점. 3=완전정렬이나 역방향 신호(IC=-0.065) — 과열 경보"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
-                         help="볼린저밴드 위치. 0.8↑=상단압박, 0.2↓=하단지지"),
+                         help="0.85↑ = 과열 감점 적용(IC=-0.087). 0.3↓ = 하단지지"),
             "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
-                         help="10일 OBV 변화율. 양수=매집, 음수=분배"),
+                         help="10일 OBV 변화율(IC=+0.04). 양수=매집 신호"),
             "모멘텀":   st.column_config.NumberColumn(format="%.0f"),
             "최종점수": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=180),
         },
