@@ -1,6 +1,7 @@
 """리밸런싱 페이지 — 코어-위성 자산배분 + 추천 포트폴리오."""
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from pathlib import Path
 import sys
@@ -1012,6 +1013,137 @@ if new_money > 0 and alloc["Total"] > 0:
                 "모멘텀 수익률은 참고 정보 — ETF에서 예측력 미검증 (IC=0.019, p=0.61).  "
                 "비중차이(+)=전술 대비 언더웨이트 → 추가매수. 최종 결정은 직접 판단."
             )
+
+            # ── H15 기반 목표 배분 ────────────────────────────────────────────
+            st.divider()
+            st.subheader("🎯 H15 기반 목표 배분 (자동 리밸런싱 가이드)")
+            st.caption(
+                "VIX로 자산군 비중(주식/채권/원자재/현금)을 결정하고, "
+                "H15(상대적 저점)으로 자산군 내 ETF별 비중을 결정합니다.  \n"
+                "백테스트 검증 완료 (H15 IC=0.087, p<0.001). 매일 자동 갱신."
+            )
+
+            # VIX → 자산군 목표 비중
+            _vix_now = _vix or 18.0
+            if _vix_now > 25:
+                _bucket_w = {"equity": 0.55, "bond": 0.28, "commodity": 0.12, "cash": 0.05}
+                _regime_hint = f"🔥 VIX {_vix_now:.0f} — 공포 구간: 채권·원자재 확대, 주식 55%"
+            elif _vix_now > 20:
+                _bucket_w = {"equity": 0.62, "bond": 0.23, "commodity": 0.10, "cash": 0.05}
+                _regime_hint = f"⚠️ VIX {_vix_now:.0f} — 주의 구간: 보수적 배분"
+            elif _vix_now < 13:
+                _bucket_w = {"equity": 0.52, "bond": 0.28, "commodity": 0.10, "cash": 0.10}
+                _regime_hint = f"🌡️ VIX {_vix_now:.0f} — 과열 구간: 방어 강화, 현금 확보"
+            else:
+                _bucket_w = {"equity": 0.68, "bond": 0.18, "commodity": 0.09, "cash": 0.05}
+                _regime_hint = f"✅ VIX {_vix_now:.0f} — 중립: 성장 위주 배분"
+            st.info(_regime_hint)
+
+            # asset_class 매핑
+            _ac_map = dict(zip(core_etfs["ticker"].astype(str), core_etfs["asset_class"]))
+
+            # _ranked에 asset_class 추가
+            _rb = _ranked.copy()
+            _rb["asset_class"] = _rb["ticker"].astype(str).map(_ac_map).fillna("equity")
+
+            # 자산군 내 H15 비중 계산
+            _target_rows = []
+            for _ac, _bw in _bucket_w.items():
+                _ac_df = _rb[_rb["asset_class"] == _ac].dropna(subset=["냉각지수"]).copy()
+                if _ac_df.empty:
+                    continue
+                _scores = _ac_df["냉각지수"].values.astype(float)
+                # 선형 정규화 (최하위 ETF도 최소 25% 가중치 유지)
+                _s_min, _s_max = _scores.min(), _scores.max()
+                if _s_max > _s_min:
+                    _norm = 0.25 + 0.75 * (_scores - _s_min) / (_s_max - _s_min)
+                else:
+                    _norm = np.ones(len(_scores))
+                _w = _norm / _norm.sum()
+                for _i, (_, _row) in enumerate(_ac_df.iterrows()):
+                    _t = str(_row["ticker"]).upper()
+                    _cur = _held_map.get(_t, {}).get("현재비중(%)", 0.0)
+                    _tgt = round(float(_bw * _w[_i] * 100), 1)
+                    _target_rows.append({
+                        "ticker":      _row["ticker"],
+                        "name":        _row["name"],
+                        "자산군":      {"equity":"주식","bond":"채권","commodity":"원자재","cash":"현금"}.get(_ac, _ac),
+                        "상대적 저점": _row.get("냉각순위", "—"),
+                        "목표비중(%)": _tgt,
+                        "현재비중(%)": round(_cur, 1),
+                        "차이(%p)":    round(_tgt - _cur, 1),
+                    })
+
+            if _target_rows:
+                _tgt_df = pd.DataFrame(_target_rows).sort_values("목표비중(%)", ascending=False)
+
+                # 요약 지표
+                _tm1, _tm2, _tm3, _tm4 = st.columns(4)
+                _tm1.metric("주식 목표비중",   f"{_bucket_w['equity']*100:.0f}%")
+                _tm2.metric("채권 목표비중",   f"{_bucket_w['bond']*100:.0f}%")
+                _tm3.metric("원자재 목표비중", f"{_bucket_w['commodity']*100:.0f}%")
+                _tm4.metric("현금 목표비중",   f"{_bucket_w['cash']*100:.0f}%")
+
+                # 목표 배분 테이블
+                _tgt_disp = _tgt_df.copy()
+                _tgt_disp["상대적 저점"] = _tgt_disp["상대적 저점"].apply(
+                    lambda x: f"#{int(x)}" if pd.notna(x) and str(x) != "—" else "—"
+                )
+                st.dataframe(
+                    _tgt_disp,
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "ticker":        st.column_config.TextColumn("티커"),
+                        "name":          st.column_config.TextColumn("종목명"),
+                        "자산군":        st.column_config.TextColumn("자산군"),
+                        "상대적 저점":   st.column_config.TextColumn("저점순위",
+                                         help="H15 순위. #1=가장 덜 과열=비중 확대 우선"),
+                        "목표비중(%)":   st.column_config.ProgressColumn(
+                                         "목표비중(%)", format="%.1f%%", min_value=0, max_value=40),
+                        "현재비중(%)":   st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
+                        "차이(%p)":      st.column_config.NumberColumn("차이(%p)", format="%+.1f",
+                                         help="양수=추가 필요, 음수=비중 과다"),
+                    },
+                )
+
+                # 리밸런싱 액션 요약
+                _buy_list  = _tgt_df[_tgt_df["차이(%p)"] >  2].sort_values("차이(%p)", ascending=False)
+                _sell_list = _tgt_df[_tgt_df["차이(%p)"] < -2].sort_values("차이(%p)")
+                _ca1, _ca2 = st.columns(2)
+                with _ca1:
+                    if not _buy_list.empty:
+                        st.success("**확대 필요** (목표 대비 +2%p↑)")
+                        for _, _br in _buy_list.iterrows():
+                            st.markdown(f"- **{_br['ticker']}** {_br['name']} `+{_br['차이(%p)']:.1f}%p`")
+                    else:
+                        st.success("확대 필요 ETF 없음 — 현재 배분 양호")
+                with _ca2:
+                    if not _sell_list.empty:
+                        st.warning("**축소 필요** (목표 대비 -2%p↓)")
+                        for _, _sr in _sell_list.iterrows():
+                            st.markdown(f"- **{_sr['ticker']}** {_sr['name']} `{_sr['차이(%p)']:.1f}%p`")
+                    else:
+                        st.warning("축소 필요 ETF 없음")
+
+                if core_buy > 0:
+                    st.markdown("**추천 금액 배분**")
+                    _tgt_df["추천금액(원)"] = (_tgt_df["목표비중(%)"] / 100 * core_buy).round(0)
+                    st.dataframe(
+                        _tgt_df[["ticker", "name", "목표비중(%)", "추천금액(원)"]].rename(
+                            columns={"ticker": "티커", "name": "종목명"}
+                        ),
+                        hide_index=True, use_container_width=True,
+                        column_config={
+                            "목표비중(%)":  st.column_config.NumberColumn(format="%.1f"),
+                            "추천금액(원)": st.column_config.NumberColumn(format="%,.0f"),
+                        },
+                    )
+
+                st.caption(
+                    "목표비중 = VIX 자산군 배분 × H15 저점 가중치.  "
+                    "최하위 ETF도 최소 25% 가중치 유지 (과도한 집중 방지).  "
+                    "차이(%p) ±2%p 이내는 리밸런싱 생략 권장 (거래비용 고려)."
+                )
 
     with st.expander("🎯 위성 매수 후보"):
         if sat_buy > 0:
