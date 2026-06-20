@@ -19,7 +19,11 @@ st.caption("코어 ETF 수익률 비교 및 기본 정보. 매일 새벽 7시 �
 
 summary_file = RESULTS / "summary_signals.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
-core_etfs = load_core_etfs()
+core_etfs  = load_core_etfs()
+_notes_map = (
+    dict(zip(core_etfs["ticker"], core_etfs["notes"]))
+    if "notes" in core_etfs.columns else {}
+)
 
 if summary.empty:
     st.info("신호 데이터 없음 — 내일 새벽 7시 갱신 후 확인하세요.")
@@ -249,7 +253,11 @@ if not _valid.empty:
                     f"1개월 {row['return_1m_pct']:+.1f}%",
                 )
                 st.caption(row["name"])
-                # 진입 설명 (BB + MA 기반)
+                # ETF 보유 내용 설명 (core_etfs.csv notes)
+                _note = _notes_map.get(row["ticker"], "")
+                if _note:
+                    st.caption(f"📦 {_note}")
+                # 진입 사유 (BB + MA 기반)
                 if pd.notna(bb_v) and pd.notna(ma_v):
                     st.caption(_entry_desc(bb_v, ma_v))
                     bb_str = f"BB={bb_v:.2f}" if pd.notna(bb_v) else ""
