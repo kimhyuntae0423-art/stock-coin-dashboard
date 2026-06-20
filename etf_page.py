@@ -222,7 +222,7 @@ def _entry_desc(bb, ma) -> str:
 
 
 if not _valid.empty:
-    # 매수여건 순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
+    # 상대적 저점 순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
     # RSI<75 필터 (극단 과열 제외)
     if "냉각지수" in _valid.columns:
         _cool_sorted = _valid[_valid["rsi14"] < 75].sort_values(
@@ -233,7 +233,7 @@ if not _valid.empty:
     _bull_ok = _cool_sorted.head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
-    # ── Top 5 카드: 매수여건 순위 기준 (H15 검증) ────────────────────────────
+    # ── Top 5 카드: 상대적 저점 순위 기준 (H15 검증) ────────────────────────
     if not _bull_ok.empty:
         _cols = st.columns(min(len(_bull_ok), 5))
         for i, (_, row) in enumerate(_bull_ok.iterrows()):
@@ -245,7 +245,7 @@ if not _valid.empty:
                 ma_v = row.get("MA정렬")
                 st.metric(
                     f"**{row['ticker']}**",
-                    f"매수여건 {cr_str}",
+                    f"상대적 저점 {cr_str}",
                     f"1개월 {row['return_1m_pct']:+.1f}%",
                 )
                 st.caption(row["name"])
@@ -261,11 +261,11 @@ if not _valid.empty:
     st.divider()
 
     # ── 전체 테이블 ────────────────────────────────────────────────────────────
-    st.markdown("**전체 ETF 매수여건 순위**")
+    st.markdown("**전체 ETF 상대적 저점 순위**")
     st.caption(
-        "**매수여건순위** = 백테스트 검증 (H15 IC=0.087, p<0.001). "
+        "**상대적 저점순위** = 백테스트 검증 (H15 IC=0.087, p<0.001). "
         "낮은 BB + 낮은 MA정렬 ETF가 향후 1개월 평균 2.82% vs 과열 ETF 1.03%. "
-        "VIX>25 구간에서 매수여건 1~3위 ETF 매수 = 두 검증 신호의 교집합."
+        "VIX>25 구간에서 저점순위 1~3위 ETF 매수 = 두 검증 신호의 교집합."
     )
 
     _full = _valid.copy()
@@ -290,16 +290,16 @@ if not _valid.empty:
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
             "사이클상태": "섹터사이클", "return_1m_pct": "1개월(%)",
             "return_12m_pct": "12개월(%)", "rsi14": "RSI",
-            "냉각순위": "매수여건", "거래량신호": "거래량", "과열신호": "과열신호",
+            "냉각순위": "상대적 저점", "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
             "사이클배율": "사이클배율", "score": "배분점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
-            "매수여건": st.column_config.TextColumn("매수여건 ✅",
+            "상대적 저점": st.column_config.TextColumn("상대적 저점 ✅",
                          help="백테스트 검증 (H15 IC=0.087 p<0.001). "
-                              "#1 = 가장 덜 과열 = 향후 수익 좋은 경향. "
+                              "#1 = 최근 가격 범위 기준 가장 낮은 위치 = 향후 수익 좋은 경향. "
                               "낮은 BB위치 + 낮은 MA정렬 = 좋은 순위. "
                               "VIX>25 구간에서 이 순위대로 매수."),
             "1개월(%)":  st.column_config.NumberColumn("1개월(%)", format="%+.2f",
@@ -312,16 +312,16 @@ if not _valid.empty:
             "과열신호": st.column_config.TextColumn("과열",
                          help="IC 역방향 검증: 과열 = 향후 수익 낮은 경향. 신규 매수 자제"),
             "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
-                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 매수여건 구성 요소"),
+                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 상대적 저점 구성 요소"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
-                         help="0.85↑ = 과열. 0↓ = 밴드 이탈(극단 조정). 매수여건 구성 요소"),
+                         help="0.85↑ = 과열. 0↓ = 밴드 이탈(극단 조정). 상대적 저점 구성 요소"),
             "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
                          help="IC=+0.04 (약한 양방향). 매집 신호 참고용"),
             "사이클배율": st.column_config.TextColumn("사이클배율",
                          help="IC=-0.023, p=0.34 → ±5% 참고만"),
             "배분점수": st.column_config.ProgressColumn("배분점수",
                          format="%.0f", min_value=0, max_value=180,
-                         help="섹터사이클×VIX국면 기반. 매수여건 순위를 함께 참고하세요"),
+                         help="섹터사이클×VIX국면 기반. 상대적 저점 순위를 함께 참고하세요"),
         },
     )
 
