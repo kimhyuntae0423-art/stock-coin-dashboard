@@ -20,6 +20,25 @@ FWD_WINDOWS = [22, 66]   # 1개월, 3개월
 
 
 # ── 가설 정의 ────────────────────────────────────────────────────────────────
+HYPOTHESES_VALIDATED = [
+    {
+        "id":        "H15",
+        "name":      "검증신호 복합점수 (BB+MA+RSI+Vol)",
+        "signal":    "h15_composite",
+        "direction": "higher_is_better",
+        "desc":      "개별 검증 신호(BB역방향·MA역방향·RSI역방향·거래량정방향) 결합 복합점수가 향후 수익을 예측한다",
+        "ref":       "H2·H4·H5·H6 검증 결과 결합. IC 가중 합산.",
+    },
+    {
+        "id":        "H16",
+        "name":      "H15 Top33% vs Bottom33% 격차",
+        "signal":    "_quantile_spread",
+        "direction": "higher_is_better",
+        "desc":      "H15 복합점수 상위 33%가 하위 33%보다 향후 수익이 유의하게 높다",
+        "ref":       "H15 실용성 검증 (H11 대응)",
+    },
+]
+
 HYPOTHESES_SYSTEM = [
     {
         "id":        "H12",
@@ -264,6 +283,104 @@ def _cross_ic_monthly(panel: pd.DataFrame, sig_col: str, fwd_col: str) -> dict:
         "p_value": round(p_val, 4),
         "hit_rate": round(float(hit), 1),
     }
+
+
+def run_validated_composite(results_dir=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    H15~H16: 개별 검증된 신호만 결합한 복합 점수 예측력 검증.
+
+    복합점수 = IC 가중 역방향 합산:
+      - BB위치 × 0.34  (역방향 — IC=-0.087)
+      - MA정렬 × 0.25  (역방향 — IC=-0.065)
+      - RSI기울기 × 0.26 (역방향 — IC=-0.066)
+      - 거래량비율 × 0.15 (정방향 — IC=+0.040)
+    모두 월별 단면 퍼센타일 랭크로 정규화 → 스케일 통일.
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    panel = _load_signals_df(results_dir)
+    if panel.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    # D방식 확정: BB + MA 원시값 역방향 가중합
+    # 백테스트 탐색 결과: z-score/rank 정규화는 신호를 소멸시킴 (IC≈0)
+    # 원시값 사용이 최적: BB(IC=0.087)·MA(IC=0.065) 비율 가중, RSI·Vol은 미미하게 기여
+    panel["h15_composite"] = (
+        -panel["bb_pct"]            * 0.57 +   # BB 역방향 (IC=0.087)
+        -(panel["ma_score"] / 3.0)  * 0.43     # MA 역방향 (IC=0.065)
+    )
+
+    ic_rows    = []
+    spread_rows = []
+
+    for hyp in HYPOTHESES_VALIDATED:
+        sig_col = hyp["signal"]
+        for fwd_days in FWD_WINDOWS:
+            fwd_col   = f"fwd_{fwd_days}d"
+            fwd_label = f"{fwd_days // 22}M"
+
+            if sig_col == "_quantile_spread":
+                # H16: Top33% vs Bottom33%
+                comp_col = "h15_composite"
+                sub = panel[["date", "ticker", comp_col, fwd_col]].dropna().copy()
+                sub["ym"] = sub["date"].dt.to_period("M")
+                monthly_spreads, top_rets, bot_rets = [], [], []
+                for _, grp in sub.groupby("ym"):
+                    if len(grp) < 6:
+                        continue
+                    q33 = grp[comp_col].quantile(0.33)
+                    q67 = grp[comp_col].quantile(0.67)
+                    top = grp[grp[comp_col] >= q67][fwd_col].mean()
+                    bot = grp[grp[comp_col] <= q33][fwd_col].mean()
+                    if pd.notna(top) and pd.notna(bot):
+                        monthly_spreads.append(top - bot)
+                        top_rets.append(top)
+                        bot_rets.append(bot)
+                if not monthly_spreads:
+                    continue
+                sp   = np.array(monthly_spreads)
+                sp_m = float(np.mean(sp))
+                t_s  = sp_m / (float(np.std(sp, ddof=1)) / np.sqrt(len(sp)))
+                p_v  = float(2 * (1 - stats.t.cdf(abs(t_s), df=len(sp) - 1)))
+                spread_rows.append({
+                    "예측창":          fwd_label,
+                    "추천평균수익(%)":  round(float(np.mean(top_rets)), 3),
+                    "비추천평균수익(%)": round(float(np.mean(bot_rets)), 3),
+                    "격차(%p)":        round(sp_m, 3),
+                    "t통계":           round(t_s, 2),
+                    "p값":             round(p_v, 4),
+                    "격차양수비율(%)":  round(float(np.mean(sp > 0) * 100), 1),
+                    "월수":            len(monthly_spreads),
+                    "검증결과": (
+                        "✅ 상위가 하위를 유의하게 이겼다" if p_v < 0.05 and sp_m > 0
+                        else "⚠️ 역방향 (하위>상위)" if p_v < 0.05 and sp_m < 0
+                        else "⚠️ 방향성 있으나 비유의" if float(np.mean(sp > 0)) >= 0.55
+                        else "❌ 격차 없음"
+                    ),
+                })
+                continue
+
+            if sig_col not in panel.columns:
+                continue
+            d = _cross_ic_monthly(panel, sig_col, fwd_col)
+            if not d:
+                continue
+            ic_rows.append({
+                "id":        hyp["id"],
+                "가설":      hyp["name"],
+                "예측창":    fwd_label,
+                "IC":        d["ic"],
+                "t통계":     d["t_stat"],
+                "p값":       d["p_value"],
+                "적중률(%)": d["hit_rate"],
+                "표본수":    d["n"],
+                "검증결과":  _verdict(d["ic"], d["p_value"]),
+                "설명":      hyp["desc"],
+            })
+
+    return pd.DataFrame(ic_rows), pd.DataFrame(spread_rows)
 
 
 def run_system_validation(results_dir=None) -> pd.DataFrame:

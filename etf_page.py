@@ -189,27 +189,37 @@ st.info(
 _cy_df = sector_cycles(summary)
 
 if not _valid.empty:
-    # 상위 5개: 배분점수 상위 (bull추세 필터 제거 — H13 역방향 확인)
-    # RSI<75 정도만 필터 (극단 과열 제외). bear추세도 포함
-    _bull_ok = _valid[_valid["rsi14"] < 75].head(5)
+    # 냉각순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
+    # RSI<75 필터 (극단 과열 제외)
+    if "냉각지수" in _valid.columns:
+        _cool_sorted = _valid[_valid["rsi14"] < 75].sort_values(
+            "냉각지수", ascending=False, na_position="last"
+        )
+    else:
+        _cool_sorted = _valid[_valid["rsi14"] < 75]
+    _bull_ok = _cool_sorted.head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
-    # ── Top 5 카드: 섹터사이클 기준 ───────────────────────────────────────────
+    # ── Top 5 카드: 냉각순위 기준 (H15 검증) ─────────────────────────────────
     if not _bull_ok.empty:
         _cols = st.columns(min(len(_bull_ok), 5))
         for i, (_, row) in enumerate(_bull_ok.iterrows()):
             with _cols[i]:
-                cy = row.get("섹터사이클", "—")
-                cy_str = cy if pd.notna(cy) and cy != "—" else "➡️ 중립"
+                cr = row.get("냉각순위")
+                cr_str = f"#{int(cr)}" if pd.notna(cr) else "—"
+                oh = str(row.get("과열신호", ""))
                 st.metric(
                     f"**{row['ticker']}**",
-                    cy_str,
+                    f"냉각순위 {cr_str}",
                     f"1개월 {row['return_1m_pct']:+.1f}%",
                 )
                 st.caption(row["name"])
-                st.caption(f"12개월 {row['return_12m_pct']:+.1f}% · RSI {row['rsi14']:.0f}")
-                oh = row.get("과열신호", "")
-                if oh and "⚠️" in str(oh):
+                bb_v = row.get("BB위치")
+                ma_v = row.get("MA정렬")
+                bb_str = f"BB={bb_v:.2f}" if pd.notna(bb_v) else ""
+                ma_str = f"MA={int(ma_v)}/3" if pd.notna(ma_v) else ""
+                st.caption(f"{bb_str} · {ma_str}" if bb_str else "")
+                if "⚠️" in oh:
                     st.caption(f"⚠️ 과열 주의")
 
     st.divider()
@@ -217,61 +227,65 @@ if not _valid.empty:
     # ── 전체 테이블 ────────────────────────────────────────────────────────────
     st.markdown("**전체 ETF 배분 점수 현황**")
     st.caption(
-        "배분점수 = (섹터사이클배율 × VIX국면배율) 기반. "
-        "모멘텀 수익률은 참고 정보 (ETF에서 예측력 미검증). "
-        "**섹터사이클**과 **과열신호**를 우선 확인."
+        "**냉각순위** = 백테스트 검증 (H15 IC=0.087, p<0.001). "
+        "낮은 BB + 낮은 MA정렬 ETF가 향후 1개월 평균 2.82% vs 과열 ETF 1.03%. "
+        "VIX>25 구간에서 냉각순위 1~3위 ETF 매수 = 두 검증 신호의 교집합."
     )
 
     _full = _valid.copy()
     _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
 
-    _extra_cols = ["거래량신호", "과열신호", "MA정렬", "BB위치", "OBV추세"]
+    _extra_cols = ["냉각순위", "거래량신호", "과열신호", "MA정렬", "BB위치", "OBV추세"]
     _has_extra  = "과열신호" in _full.columns
-    _tbl_full = _full[[
-        "ticker", "name", "버킷", "사이클상태",
-        "return_1m_pct", "return_12m_pct", "rsi14",
-        *([c for c in _extra_cols if c in _full.columns]),
-        "사이클배율", "score", "state",
-    ]].copy() if _has_extra else _full[[
-        "ticker", "name", "버킷", "사이클상태",
-        "return_1m_pct", "return_12m_pct", "rsi14",
-        "사이클배율", "score", "state",
-    ]].copy()
+    _base_cols  = ["ticker", "name", "버킷", "사이클상태",
+                   "return_1m_pct", "return_12m_pct", "rsi14"]
+    _opt_cols   = [c for c in _extra_cols if c in _full.columns]
+    _tbl_full   = _full[_base_cols + _opt_cols + ["사이클배율", "score", "state"]].copy()
+
     _tbl_full["사이클배율"] = _tbl_full["사이클배율"].apply(
         lambda x: f"×{x:.2f}" if pd.notna(x) else "×1.00"
     )
+    # 냉각순위 정수 표시
+    if "냉각순위" in _tbl_full.columns:
+        _tbl_full["냉각순위"] = _tbl_full["냉각순위"].apply(
+            lambda x: f"#{int(x)}" if pd.notna(x) else "—"
+        )
+
     st.dataframe(
         _tbl_full.rename(columns={
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
             "사이클상태": "섹터사이클", "return_1m_pct": "1개월(%)",
             "return_12m_pct": "12개월(%)", "rsi14": "RSI",
-            "거래량신호": "거래량", "과열신호": "과열신호",
+            "냉각순위": "냉각순위", "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
             "사이클배율": "사이클배율", "score": "배분점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
+            "냉각순위": st.column_config.TextColumn("냉각순위 ✅",
+                         help="백테스트 검증 (H15 IC=0.087 p<0.001). #1 = 가장 덜 과열 = 향후 수익 좋은 경향."
+                              " 낮은 BB위치 + 낮은 MA정렬 = 높은 순위. VIX>25 구간에서 매수 우선 순서."),
             "1개월(%)":  st.column_config.NumberColumn("1개월(%)", format="%+.2f",
                          help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
             "12개월(%)": st.column_config.NumberColumn("12개월(%)", format="%+.2f",
                          help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
             "RSI":      st.column_config.NumberColumn(format="%.0f"),
             "섹터사이클": st.column_config.TextColumn("섹터사이클",
-                         help="배분점수의 핵심 드라이버. 🔥강세섹터 = 오버웨이트"),
+                         help="참고만. 섹터사이클 IC=-0.023, p=0.34 → 예측력 없음"),
             "과열신호": st.column_config.TextColumn("과열",
                          help="IC 역방향 검증: 과열 = 향후 수익 낮은 경향. 신규 매수 자제"),
             "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
-                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향)"),
+                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 냉각지수 구성 요소"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
-                         help="0.85↑ = 과열 감점 적용(IC=-0.087). 0.3↓ = 하단지지"),
+                         help="0.85↑ = 과열 감점 적용(IC=-0.087). 냉각지수 구성 요소"),
             "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
                          help="IC=+0.04 (약한 양방향). 매집 신호 참고용"),
             "사이클배율": st.column_config.TextColumn("사이클배율",
-                         help="배분점수 핵심 드라이버. ×1.25=강세, ×0.75=약세"),
+                         help="IC=-0.023, p=0.34 → ±5% 참고만"),
             "배분점수": st.column_config.ProgressColumn("배분점수",
                          format="%.0f", min_value=0, max_value=180,
-                         help="섹터사이클×VIX국면 기반. 모멘텀 순위는 25% 보조만"),
+                         help="섹터사이클×VIX국면 기반. 냉각순위를 함께 참고하세요"),
         },
     )
 

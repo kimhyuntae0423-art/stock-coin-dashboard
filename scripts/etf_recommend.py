@@ -244,6 +244,26 @@ def enrich_with_volume(df: pd.DataFrame, results_dir) -> pd.DataFrame:
     out["과열신호"] = [_overheat_label(t, v) for t, v in zip(techs, vols)]
     out["score"]    = [_score_adjust(s, t, v)
                        for s, t, v in zip(out["score"], techs, vols)]
+
+    # H15 냉각지수 (검증됨: IC=0.087, p<0.001, Quantile Spread 1.79%p p=0.001)
+    # = -(BB위치)*0.57 - (MA정렬/3)*0.43  → 높을수록 "덜 과열" = 향후 수익 좋은 경향
+    def _cooling(t: dict) -> float | None:
+        bb = t.get("bb_pct")
+        ma = t.get("ma_score")
+        if bb is None or ma is None:
+            return None
+        return round(-float(bb) * 0.57 - (float(ma) / 3.0) * 0.43, 3)
+
+    out["냉각지수"] = [_cooling(t) for t in techs]
+
+    # 냉각지수 → 순위 레이블 (1위가 가장 덜 과열)
+    valid_cool = out["냉각지수"].dropna()
+    if not valid_cool.empty:
+        ranks = valid_cool.rank(ascending=False).astype(int)
+        out["냉각순위"] = ranks.reindex(out.index)
+    else:
+        out["냉각순위"] = None
+
     return out
 
 # ── 섹터 사이클 정의 ──────────────────────────────────────────────────────────

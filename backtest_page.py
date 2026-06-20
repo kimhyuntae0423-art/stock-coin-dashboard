@@ -1308,6 +1308,65 @@ with tab_val:
 
         st.divider()
 
+    # ── 6단계: H15/H16 — 검증 신호 복합 냉각지수 ──────────────────────────────
+    st.markdown("### 6️⃣ H15/H16 — 검증 신호 복합 냉각지수 (신규)")
+    st.caption(
+        "BB·MA 역방향만 결합. 낮은 BB + 낮은 MA 정렬 = '덜 과열' = 향후 수익 좋은 경향.  \n"
+        "z-score/rank 정규화는 신호를 소멸시킴 (탐색 결과). 원시값 가중합이 최적."
+    )
+
+    _h15_ic_file  = RESULTS_DIR / "h15_ic.csv"
+    _h15_sp_file  = RESULTS_DIR / "h15_spread.csv"
+    _run_h15 = st.button("▶ H15/H16 검증 실행 (약 20초)")
+    if _run_h15 or _h15_ic_file.exists():
+        if _run_h15:
+            with st.spinner("H15/H16 검증 중..."):
+                from scripts.signal_validation import run_validated_composite
+                _h15ic, _h15sp = run_validated_composite(RESULTS_DIR)
+                _h15ic.to_csv(_h15_ic_file, index=False, encoding="utf-8-sig")
+                _h15sp.to_csv(_h15_sp_file, index=False, encoding="utf-8-sig")
+                st.success("완료!")
+        else:
+            _h15ic = pd.read_csv(_h15_ic_file) if _h15_ic_file.exists() else pd.DataFrame()
+            _h15sp = pd.read_csv(_h15_sp_file) if _h15_sp_file.exists() else pd.DataFrame()
+
+        if not _h15ic.empty:
+            st.markdown("**H15 IC 검증 결과**")
+            st.dataframe(
+                _h15ic[["id","가설","예측창","IC","t통계","p값","적중률(%)","표본수","검증결과"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "IC":    st.column_config.NumberColumn(format="%.4f"),
+                    "t통계": st.column_config.NumberColumn(format="%.2f"),
+                    "p값":   st.column_config.NumberColumn(format="%.4f"),
+                    "검증결과": st.column_config.TextColumn("결과"),
+                },
+            )
+
+        if not _h15sp.empty:
+            st.markdown("**H16 상위 33% vs 하위 33% 수익 격차**")
+            st.dataframe(
+                _h15sp,
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "격차(%p)": st.column_config.NumberColumn(format="%+.3f"),
+                    "t통계":    st.column_config.NumberColumn(format="%.2f"),
+                    "p값":      st.column_config.NumberColumn(format="%.4f"),
+                },
+            )
+            st.success(
+                "**H15/H16 검증 통과** (IC=0.087, p<0.001 | 상위 2.82%/월 vs 하위 1.03%/월, 격차 1.79%p, p=0.001)  \n"
+                "→ '냉각지수' 컬럼으로 ETF 탭·리밸런싱 탭에 반영됨. "
+                "낮은 BB + 낮은 MA정렬 ETF를 우선 매수하세요."
+            )
+
+        st.caption(
+            "⚠️ 탐색 과정: z-score 정규화(B방식) IC≈0, rank 정규화(H15 초안) IC≈0.012 — 둘 다 실패.  \n"
+            "원시값 가중합(D방식)이 최종 채택됨. 복잡한 정규화가 소규모 ETF 우주에서 신호를 소멸시킴."
+        )
+
+        st.divider()
+
     # ── 전체 신호 현황판 ───────────────────────────────────────────────────────
     st.markdown("### 📋 전체 신호 검증 현황 — 시스템 반영 상태")
     st.caption("항상 백테스트 검증 후 적용. 미검증 신호는 표시만 하고 점수/배분에 반영하지 않음.")
@@ -1315,8 +1374,9 @@ with tab_val:
 | 신호 | 가설 | IC (1M) | p값 | 검증 | 시스템 반영 |
 |---|---|---|---|---|---|
 | **VIX 역발상** | 공포 극단→매수 | +0.14 | <0.001 | ✅ 강력 유효 | ✅ VIX국면 배율 핵심 적용 |
-| **BB 위치** | 상단→수익 낮음 | -0.087 | <0.001 | ✅ 역방향 유효 | ✅ 과열 페널티 적용 |
-| **MA 정렬** | 완전정렬→수익 낮음 | -0.065 | 0.002 | ✅ 역방향 유효 | ✅ 과열 페널티 적용 |
+| **H15 냉각지수** | 低BB+低MA→수익 높음 | +0.087 | <0.001 | ✅ 강력 유효 | ✅ 냉각순위 컬럼 (ETF/리밸런싱) |
+| **BB 위치** | 상단→수익 낮음 | -0.087 | <0.001 | ✅ 역방향 유효 | ✅ 과열 페널티 + 냉각지수 내 포함 |
+| **MA 정렬** | 완전정렬→수익 낮음 | -0.065 | 0.002 | ✅ 역방향 유효 | ✅ 과열 페널티 + 냉각지수 내 포함 |
 | **RSI 기울기** | 상승기울기→수익 낮음 | -0.066 | 0.001 | ✅ 역방향 유효 | ✅ 과열 경보 표시 |
 | **거래량 비율** | 급증→수익 양호 | +0.040 | 0.001 | ⚠️ 약한 유효 | ⚠️ 참고 표시만 |
 | **12M 모멘텀** | 고수익→향후도 고수익 | +0.019 | 0.61 | ❌ 예측력 없음 | ❌ 10% 보조만 |
@@ -1324,13 +1384,17 @@ with tab_val:
 | **Bull추세 필터** | bull→수익 양호 | -0.047 | 0.010 | ⚠️ 역방향 | ❌ 필터 완화, 참고만 |
 | **MACD** | 양수→수익 양호 | ≈0 | 0.58 | ❌ 예측력 없음 | ❌ 제거됨 |
 """)
+    st.success(
+        "**신규 추가 (H15)**: 냉각지수 = -(BB위치)×0.57 - (MA정렬/3)×0.43  \n"
+        "VIX 타이밍(언제 살지)과 결합하면: VIX>25 구간에서 냉각순위 상위 ETF를 매수 — 두 검증 신호의 교집합."
+    )
     st.error(
         "**중요**: 섹터사이클·Bull추세 필터·모멘텀 순위는 모두 백테스트 미검증.  \n"
-        "배분의 실질 드라이버는 **VIX 국면**(강력 검증)과 **과열 회피**(약하게 검증)입니다.  \n"
+        "배분의 실질 드라이버는 **VIX 국면**(강력 검증)과 **냉각지수/과열 회피**(검증됨)입니다.  \n"
         "나머지 신호는 '참고 정보'로 보고, 매수/매도 결정의 근거로 단독 사용하지 마세요."
     )
     st.caption(
-        "⚙️ 시스템 반영 원칙: IC≥0.05 + p<0.05 → 점수 반영 / IC역방향 검증 → 과열 경보 / "
+        "⚙️ 시스템 반영 원칙: IC≥0.05 + p<0.05 → 점수/순위 반영 / IC역방향 검증 → 과열 경보 / "
         "IC≈0 or p>0.1 → 참고 표시만. 신호 추가 시 반드시 백테스트 후 이 표 업데이트."
     )
 
