@@ -57,7 +57,7 @@ def volume_signals(ticker: str, results_dir) -> dict:
     elif vol_ratio < 0.8 and obv_slope < 0:
         label = "❄️ 거래량 위축"
     elif "약세다이버전스" in pv or "분배신호" in pv:
-        label = "⚠️ 다이버전스"
+        label = "⚠️ 가격↑·거래량↓"
     else:
         label = "➡️ 보통"
 

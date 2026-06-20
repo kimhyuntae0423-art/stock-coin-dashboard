@@ -33,6 +33,70 @@ _macro   = macro_signals(summary)
 _valid   = _scored.dropna(subset=["close", "score"]).sort_values("score", ascending=False)
 _all     = _scored.sort_values("return_12m_pct", ascending=False, na_position="last")
 
+# ── 오늘의 핵심 인사이트 ─────────────────────────────────────────────────────
+_ins_vix  = _regime.get("vix", 0.0)
+_ins_lbl  = _regime.get("label", "—")
+_ins_1m   = _regime.get("spy_1m", 0.0)
+_ins_12m  = _regime.get("spy_12m", 0.0)
+_ins_br   = _regime.get("breadth", 0.0)
+
+_oh_list  = [
+    f"{r['ticker']} ({r.get('과열신호','')})"
+    for _, r in _valid.iterrows()
+    if "⚠️" in str(r.get("과열신호", "")) or "🔥" in str(r.get("과열신호", ""))
+] if not _valid.empty and "과열신호" in _valid.columns else []
+
+if _ins_vix > 25:
+    _vc, _vtxt = "#dcfce7", f"🔥 VIX {_ins_vix:.0f} — **공포 구간. 백테스트 최고 수익 구간 (IC=0.14 ✅)** — 분할 매수 적극 검토"
+elif _ins_vix > 20:
+    _vc, _vtxt = "#fef3c7", f"⚠️ VIX {_ins_vix:.0f} — 불안 구간. 신중하게 진입 가능"
+elif _ins_vix < 13:
+    _vc, _vtxt = "#fef2f2", f"🌡️ VIX {_ins_vix:.0f} — 저공포 과열 경계. 신규 대량 매수 자제"
+else:
+    _vc, _vtxt = "#f0f9ff", f"VIX {_ins_vix:.0f} — 보통 구간. 급격한 공포/탐욕 없음"
+
+st.markdown(
+    f"<div style='background:{_vc};border-radius:8px;padding:14px 16px;margin-bottom:10px'>"
+    f"<div style='font-size:14px;line-height:1.8'>"
+    f"{_vtxt}<br>"
+    f"📊 국면: <b>{_ins_lbl}</b> &nbsp;|&nbsp; "
+    f"SPY 1개월 {_ins_1m:+.1f}% · 12개월 {_ins_12m:+.1f}% &nbsp;|&nbsp; "
+    f"{'🟢' if _ins_br > 50 else '🔴'} 시장의 {_ins_br:.0f}%가 상승 추세"
+    f"</div></div>",
+    unsafe_allow_html=True,
+)
+
+_ci1, _ci2 = st.columns(2)
+with _ci1:
+    st.markdown(
+        "<div style='background:#f0fdf4;border-left:3px solid #22c55e;"
+        "border-radius:6px;padding:12px;margin-bottom:10px'>"
+        "<div style='font-size:12px;font-weight:700;color:#15803d;margin-bottom:6px'>"
+        "✅ 백테스트 검증된 신호 — 이것만 믿어라</div>"
+        "<div style='font-size:12px;color:#374151;line-height:1.9'>"
+        "• <b>VIX&gt;25</b> = 분할 매수 타이밍 (IC=0.14, 가장 강력한 신호 ★★★)<br>"
+        "• <b>BB 위치 0.85↑ + MA 완전정렬</b> = 과열 → 신규 매수 자제 (IC=-0.087)<br>"
+        "• <b>거래량 급증(매집)</b> = 기관 개입 추정, 참고 (IC=0.04 ★)"
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+with _ci2:
+    st.markdown(
+        "<div style='background:#fef2f2;border-left:3px solid #ef4444;"
+        "border-radius:6px;padding:12px;margin-bottom:10px'>"
+        "<div style='font-size:12px;font-weight:700;color:#b91c1c;margin-bottom:6px'>"
+        "❌ 백테스트 미검증 신호 — 믿지 마라</div>"
+        "<div style='font-size:12px;color:#374151;line-height:1.9'>"
+        "• <b>배분점수 순위</b> = 미래 수익 예측 안 됨 (IC=0.019, p=0.61 ❌)<br>"
+        "• <b>12개월 많이 오른 ETF</b> = 앞으로도 오른다 ❌ (ETF는 모멘텀 효과 없음)<br>"
+        "• <b>섹터사이클 순위</b> = 예측력 없음 (IC=−0.023, p=0.34 ❌)"
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+
+if _oh_list:
+    st.warning(f"⚠️ 과열 ETF — 신규 매수 자제: {', '.join(_oh_list[:5])}")
+
 # ── 요약 메트릭 ───────────────────────────────────────────────────────────────
 _c1, _c2, _c3, _c4 = st.columns(4)
 _c1.metric("📊 데이터 수집", f"{len(_valid)} / {len(_all)}개")
@@ -53,7 +117,7 @@ _vix = _regime.get("vix")
 _vsig = _regime.get("vix_signal", "")
 if _vix:
     if _vix > 25:
-        st.success(f"🔥 VIX {_vix:.0f} — {_vsig}  |  백테스트 검증: VIX>25일 때 향후 1M 평균 수익 최고 (IC=0.14)")
+        st.success(f"🔥 VIX {_vix:.0f} — {_vsig}  |  백테스트 검증: VIX>25일 때 향후 1개월 평균 수익 최고 (IC=0.14)")
     elif _vix < 13:
         st.warning(f"🌡️ VIX {_vix:.0f} — {_vsig}  |  저공포 = 과열 경계, 신규 매수 신중")
     else:
@@ -68,7 +132,7 @@ if "경기신호" in _macro:
         "구리/금 비율 (경기 선행)",
         _macro["경기신호"],
         cu_str,
-        help="COPX 1M - GLD 1M. 구리 > 금 = 경기 기대, 반대 = 위험회피. 경기에 2~4주 선행."
+        help="COPX 1개월 - GLD 1개월. 구리 > 금 = 경기 기대, 반대 = 위험회피. 경기에 2~4주 선행."
     )
     _mr_idx += 1
 
@@ -78,7 +142,7 @@ if "곡선신호" in _macro:
         "수익률 곡선 (채권 흐름)",
         _macro["곡선신호"],
         cv_str,
-        help="장기채(TLT) vs 단기채(SHY) 1M 성과. 장기채 우위 = 안전자산 선호."
+        help="장기채(TLT) vs 단기채(SHY) 1개월 성과. 장기채 우위 = 안전자산 선호."
     )
     _mr_idx += 1
 
@@ -106,9 +170,9 @@ st.caption(_regime["desc"])
 _m1, _m2, _m3, _m4 = st.columns(4)
 _m1.metric("시장 브레드스", f"{_regime['breadth']:.0f}%",
            help="전체 추적 종목 중 골든크로스(bull) 비율")
-_m2.metric("SPY 1M",        f"{_regime['spy_1m']:+.1f}%")
-_m3.metric("SPY 12M",       f"{_regime['spy_12m']:+.1f}%")
-_m4.metric("채권(TLT) 1M",  f"{_regime['tlt_1m']:+.1f}%",
+_m2.metric("SPY 1개월",        f"{_regime['spy_1m']:+.1f}%")
+_m3.metric("SPY 12개월",       f"{_regime['spy_12m']:+.1f}%")
+_m4.metric("채권(TLT) 1개월",  f"{_regime['tlt_1m']:+.1f}%",
            delta="채권 우세" if _regime["bond_winning"] else "주식 우세",
            delta_color="inverse" if _regime["bond_winning"] else "normal")
 
@@ -140,10 +204,10 @@ if not _valid.empty:
                 st.metric(
                     f"**{row['ticker']}**",
                     cy_str,
-                    f"1M {row['return_1m_pct']:+.1f}%",
+                    f"1개월 {row['return_1m_pct']:+.1f}%",
                 )
                 st.caption(row["name"])
-                st.caption(f"12M {row['return_12m_pct']:+.1f}% · RSI {row['rsi14']:.0f}")
+                st.caption(f"12개월 {row['return_12m_pct']:+.1f}% · RSI {row['rsi14']:.0f}")
                 oh = row.get("과열신호", "")
                 if oh and "⚠️" in str(oh):
                     st.caption(f"⚠️ 과열 주의")
@@ -179,8 +243,8 @@ if not _valid.empty:
     st.dataframe(
         _tbl_full.rename(columns={
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
-            "사이클상태": "섹터사이클", "return_1m_pct": "1M(%)",
-            "return_12m_pct": "12M(%)", "rsi14": "RSI",
+            "사이클상태": "섹터사이클", "return_1m_pct": "1개월(%)",
+            "return_12m_pct": "12개월(%)", "rsi14": "RSI",
             "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
@@ -188,9 +252,9 @@ if not _valid.empty:
         }),
         hide_index=True, use_container_width=True,
         column_config={
-            "1M(%)":    st.column_config.NumberColumn("1M(%)", format="%+.2f",
+            "1개월(%)":  st.column_config.NumberColumn("1개월(%)", format="%+.2f",
                          help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
-            "12M(%)":   st.column_config.NumberColumn("12M(%)", format="%+.2f",
+            "12개월(%)": st.column_config.NumberColumn("12개월(%)", format="%+.2f",
                          help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
             "RSI":      st.column_config.NumberColumn(format="%.0f"),
             "섹터사이클": st.column_config.TextColumn("섹터사이클",
@@ -217,7 +281,7 @@ if not _valid.empty:
                 reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
                 cy = row.get("섹터사이클", "—")
                 cy_str = f" · 사이클 {cy}" if pd.notna(cy) and cy != "—" else ""
-                st.markdown(f"- **{row['ticker']}** {row['name']} — 12M {row['return_12m_pct']:+.1f}% / {reason}{cy_str}")
+                st.markdown(f"- **{row['ticker']}** {row['name']} — 12개월 {row['return_12m_pct']:+.1f}% / {reason}{cy_str}")
 
 st.divider()
 
@@ -253,15 +317,15 @@ _tbl = _all[["ticker", "name", "category", "asset_class", "close",
              "expense_ratio", "state", "notes"]].rename(columns={
     "ticker": "티커", "name": "종목명", "category": "카테고리",
     "asset_class": "자산군", "close": "현재가",
-    "return_1m_pct": "1M(%)", "return_12m_pct": "12M(%)",
+    "return_1m_pct": "1개월(%)", "return_12m_pct": "12개월(%)",
     "rsi14": "RSI", "expense_ratio": "운용보수(%)", "state": "추세", "notes": "비고",
 })
 st.dataframe(
     _tbl, hide_index=True, use_container_width=True,
     column_config={
         "현재가":     st.column_config.NumberColumn("현재가", format="%,.2f"),
-        "1M(%)":      st.column_config.NumberColumn("1M(%)", format="%+.2f"),
-        "12M(%)":     st.column_config.NumberColumn("12M(%)", format="%+.2f"),
+        "1개월(%)":   st.column_config.NumberColumn("1개월(%)", format="%+.2f"),
+        "12개월(%)":  st.column_config.NumberColumn("12개월(%)", format="%+.2f"),
         "RSI":        st.column_config.NumberColumn("RSI", format="%.1f"),
         "운용보수(%)": st.column_config.NumberColumn("운용보수(%)", format="%.2f"),
     },
