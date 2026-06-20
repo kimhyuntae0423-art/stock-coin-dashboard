@@ -626,6 +626,126 @@ def run_validation(results_dir=None) -> pd.DataFrame:
     return pd.DataFrame(output_rows)
 
 
+def run_etf_strategy_backtest(results_dir=None, n_top: int = 3) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    ETF 상대적 저점 전략 백테스트.
+    매월 말 H15 상위 n_top개 ETF 균등 보유 → 다음 달 수익률.
+    벤치마크: VOO 동기간 매수보유.
+    Returns: (equity_df, metrics_df)
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    panel = _load_signals_df(results_dir)
+    if panel.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    panel["h15"] = (
+        -panel["bb_pct"] * 0.57 +
+        -(panel["ma_score"] / 3.0) * 0.43
+    )
+
+    # 투자 대상: core_etfs.csv 티커만
+    core_path = results_dir.parent / "core_etfs.csv"
+    if core_path.exists():
+        core_tickers = pd.read_csv(core_path)["ticker"].tolist()
+        panel = panel[panel["ticker"].isin(core_tickers)]
+
+    panel["ym"] = panel["date"].dt.to_period("M")
+
+    # 월말 종가 + H15 점수
+    month_end = (
+        panel.sort_values("date")
+             .groupby(["ym", "ticker"])
+             .agg(close=("Close", "last"), h15=("h15", "last"))
+             .reset_index()
+    )
+
+    months = sorted(month_end["ym"].unique())
+    equity_rows = []
+
+    for i in range(len(months) - 1):
+        sig_ym  = months[i]
+        hold_ym = months[i + 1]
+
+        sig_data  = month_end[month_end["ym"] == sig_ym].dropna(subset=["h15", "close"])
+        hold_data = month_end[month_end["ym"] == hold_ym].set_index("ticker")["close"]
+
+        if len(sig_data) < n_top:
+            continue
+
+        top_tickers = sig_data.nlargest(n_top, "h15")["ticker"].tolist()
+        sig_prices  = sig_data.set_index("ticker")["close"]
+
+        rets = []
+        for t in top_tickers:
+            if t in hold_data.index and t in sig_prices.index:
+                buy  = sig_prices[t]
+                sell = hold_data[t]
+                if buy > 0:
+                    rets.append((sell / buy - 1) * 100)
+
+        if not rets:
+            continue
+
+        # VOO 벤치마크
+        bench_ret = None
+        if "VOO" in sig_prices.index and "VOO" in hold_data.index and sig_prices["VOO"] > 0:
+            bench_ret = (hold_data["VOO"] / sig_prices["VOO"] - 1) * 100
+
+        equity_rows.append({
+            "ym":           str(hold_ym),
+            "선택ETF":      ", ".join(top_tickers),
+            "strategy_ret": round(float(np.mean(rets)), 3),
+            "benchmark_ret": round(float(bench_ret), 3) if bench_ret is not None else None,
+        })
+
+    if not equity_rows:
+        return pd.DataFrame(), pd.DataFrame()
+
+    eq = pd.DataFrame(equity_rows).dropna(subset=["benchmark_ret"]).reset_index(drop=True)
+    eq["strategy_cum"]  = (1 + eq["strategy_ret"]  / 100).cumprod() * 100
+    eq["benchmark_cum"] = (1 + eq["benchmark_ret"] / 100).cumprod() * 100
+
+    n = len(eq)
+
+    def _cagr(cum):
+        return ((cum.iloc[-1] / 100) ** (12 / n) - 1) * 100
+
+    def _mdd(cum):
+        return ((cum - cum.cummax()) / cum.cummax() * 100).min()
+
+    def _sharpe(rets, cagr_val):
+        vol = rets.std() * (12 ** 0.5)
+        return (cagr_val - 2.0) / vol if vol > 0 else 0.0
+
+    s_cagr = _cagr(eq["strategy_cum"])
+    b_cagr = _cagr(eq["benchmark_cum"])
+
+    metrics = pd.DataFrame({
+        "지표": ["CAGR (%)", "월평균수익 (%)", "변동성 (연환산)", "Sharpe", "최대낙폭 (%)", "월승률 (%)"],
+        f"전략 (H15 Top{n_top})": [
+            f"{s_cagr:+.1f}%",
+            f"{eq['strategy_ret'].mean():+.2f}%",
+            f"{eq['strategy_ret'].std() * 12**0.5:.1f}%",
+            f"{_sharpe(eq['strategy_ret'], s_cagr):.2f}",
+            f"{_mdd(eq['strategy_cum']):.1f}%",
+            f"{(eq['strategy_ret'] > 0).mean()*100:.0f}%",
+        ],
+        "벤치마크 (VOO)": [
+            f"{b_cagr:+.1f}%",
+            f"{eq['benchmark_ret'].mean():+.2f}%",
+            f"{eq['benchmark_ret'].std() * 12**0.5:.1f}%",
+            f"{_sharpe(eq['benchmark_ret'], b_cagr):.2f}",
+            f"{_mdd(eq['benchmark_cum']):.1f}%",
+            f"{(eq['benchmark_ret'] > 0).mean()*100:.0f}%",
+        ],
+    })
+
+    return eq, metrics
+
+
 if __name__ == "__main__":
     print("신호 예측력 검증 실행 중...")
     result = run_validation()
