@@ -823,6 +823,95 @@ with tab4:
     with st.expander("전략별 상세 통계"):
         st.dataframe(cr_stat, use_container_width=True, hide_index=True)
 
+    st.divider()
+
+    # ── ETF 전략 백테스트 ─────────────────────────────────────────────────────
+    st.subheader("📈 ETF 전략 백테스트 — 상대적 저점 Top 3 보유 전략")
+    st.caption(
+        "매월 말 H15(상대적 저점) 상위 3개 ETF를 균등 보유 → 다음 달 반복.  \n"
+        "벤치마크: VOO 동기간 매수보유. 수수료·슬리피지·세금 미반영."
+    )
+
+    _strat_eq_file = RESULTS_DIR / "strategy_equity.csv"
+    _strat_mt_file = RESULTS_DIR / "strategy_metrics.csv"
+    _run_strat = st.button("▶ ETF 전략 백테스트 실행 (약 30초)")
+
+    if _run_strat or _strat_eq_file.exists():
+        if _run_strat:
+            with st.spinner("ETF 전략 백테스트 중..."):
+                from scripts.signal_validation import run_etf_strategy_backtest
+                _eq_df, _mt_df = run_etf_strategy_backtest(RESULTS_DIR, n_top=3)
+                if not _eq_df.empty:
+                    _eq_df.to_csv(_strat_eq_file, index=False, encoding="utf-8-sig")
+                    _mt_df.to_csv(_strat_mt_file, index=False, encoding="utf-8-sig")
+                    st.success("완료!")
+                else:
+                    st.error("데이터 부족 — ETF signals 파일을 확인하세요.")
+        else:
+            _eq_df = pd.read_csv(_strat_eq_file) if _strat_eq_file.exists() else pd.DataFrame()
+            _mt_df = pd.read_csv(_strat_mt_file) if _strat_mt_file.exists() else pd.DataFrame()
+
+        if not _eq_df.empty:
+            import plotly.graph_objects as _pgo
+
+            _fig_eq = _pgo.Figure()
+            _fig_eq.add_trace(_pgo.Scatter(
+                x=_eq_df["ym"], y=_eq_df["strategy_cum"],
+                mode="lines", name="H15 Top3 전략",
+                line=dict(color="#2563eb", width=2.5),
+            ))
+            _fig_eq.add_trace(_pgo.Scatter(
+                x=_eq_df["ym"], y=_eq_df["benchmark_cum"],
+                mode="lines", name="VOO 매수보유",
+                line=dict(color="#9ca3af", width=2, dash="dash"),
+            ))
+            _fig_eq.update_layout(
+                title="누적 수익률 (시작=100)",
+                xaxis_title="월", yaxis_title="누적 수익",
+                legend=dict(x=0.01, y=0.99), height=380,
+                margin=dict(t=40, b=30),
+            )
+            st.plotly_chart(_fig_eq, use_container_width=True)
+
+            if not _mt_df.empty:
+                st.dataframe(_mt_df, hide_index=True, use_container_width=True)
+
+            _fig_bar = _pgo.Figure()
+            _fig_bar.add_trace(_pgo.Bar(
+                x=_eq_df["ym"], y=_eq_df["strategy_ret"],
+                name="전략", marker_color="#2563eb", opacity=0.75,
+            ))
+            _fig_bar.add_trace(_pgo.Bar(
+                x=_eq_df["ym"], y=_eq_df["benchmark_ret"],
+                name="VOO", marker_color="#9ca3af", opacity=0.5,
+            ))
+            _fig_bar.update_layout(
+                title="월별 수익률 비교",
+                barmode="group", height=260,
+                margin=dict(t=40, b=20),
+                yaxis_title="월 수익률 (%)",
+            )
+            st.plotly_chart(_fig_bar, use_container_width=True)
+
+            with st.expander("📋 매월 선택된 ETF 목록 보기"):
+                st.dataframe(
+                    _eq_df[["ym", "선택ETF", "strategy_ret", "benchmark_ret"]].rename(columns={
+                        "ym": "월",
+                        "strategy_ret": "전략 수익(%)",
+                        "benchmark_ret": "VOO 수익(%)",
+                    }),
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "전략 수익(%)": st.column_config.NumberColumn(format="%+.2f"),
+                        "VOO 수익(%)":  st.column_config.NumberColumn(format="%+.2f"),
+                    },
+                )
+
+            st.caption(
+                "⚠️ 주의: 월말 신호 → 다음 달 첫 거래일 매수 가정 (실제 실행 시 1~2일 차이). "
+                "수수료·슬리피지·환율 미반영. 과거 결과가 미래를 보장하지 않습니다."
+            )
+
 
 # ════════════════════════════════════════════════════════
 # TAB_SUM — 요약
@@ -1397,97 +1486,4 @@ with tab_val:
         "⚙️ 시스템 반영 원칙: IC≥0.05 + p<0.05 → 점수/순위 반영 / IC역방향 검증 → 과열 경보 / "
         "IC≈0 or p>0.1 → 참고 표시만. 신호 추가 시 반드시 백테스트 후 이 표 업데이트."
     )
-
-    st.divider()
-
-    # ── 7단계: ETF 전략 백테스트 ───────────────────────────────────────────────
-    st.markdown("### 7️⃣ ETF 전략 백테스트 — 상대적 저점 Top 3 보유 전략")
-    st.caption(
-        "매월 말 H15(상대적 저점) 상위 3개 ETF를 균등 보유 → 다음 달 반복.  \n"
-        "벤치마크: VOO 동기간 매수보유. 수수료·슬리피지·세금 미반영."
-    )
-
-    _strat_eq_file = RESULTS_DIR / "strategy_equity.csv"
-    _strat_mt_file = RESULTS_DIR / "strategy_metrics.csv"
-    _run_strat = st.button("▶ 전략 백테스트 실행 (약 30초)")
-
-    if _run_strat or _strat_eq_file.exists():
-        if _run_strat:
-            with st.spinner("ETF 전략 백테스트 중..."):
-                from scripts.signal_validation import run_etf_strategy_backtest
-                _eq_df, _mt_df = run_etf_strategy_backtest(RESULTS_DIR, n_top=3)
-                if not _eq_df.empty:
-                    _eq_df.to_csv(_strat_eq_file, index=False, encoding="utf-8-sig")
-                    _mt_df.to_csv(_strat_mt_file, index=False, encoding="utf-8-sig")
-                    st.success("완료!")
-                else:
-                    st.error("데이터 부족 — ETF signals 파일을 확인하세요.")
-        else:
-            _eq_df = pd.read_csv(_strat_eq_file) if _strat_eq_file.exists() else pd.DataFrame()
-            _mt_df = pd.read_csv(_strat_mt_file) if _strat_mt_file.exists() else pd.DataFrame()
-
-        if not _eq_df.empty:
-            import plotly.graph_objects as _pgo
-
-            # 누적 수익률 차트
-            _fig_eq = _pgo.Figure()
-            _fig_eq.add_trace(_pgo.Scatter(
-                x=_eq_df["ym"], y=_eq_df["strategy_cum"],
-                mode="lines", name="H15 Top3 전략",
-                line=dict(color="#2563eb", width=2.5),
-            ))
-            _fig_eq.add_trace(_pgo.Scatter(
-                x=_eq_df["ym"], y=_eq_df["benchmark_cum"],
-                mode="lines", name="VOO 매수보유",
-                line=dict(color="#9ca3af", width=2, dash="dash"),
-            ))
-            _fig_eq.update_layout(
-                title="누적 수익률 (시작=100)",
-                xaxis_title="월", yaxis_title="누적 수익",
-                legend=dict(x=0.01, y=0.99), height=380,
-                margin=dict(t=40, b=30),
-            )
-            st.plotly_chart(_fig_eq, use_container_width=True)
-
-            # 성과 지표 테이블
-            if not _mt_df.empty:
-                st.dataframe(_mt_df, hide_index=True, use_container_width=True)
-
-            # 월별 수익률 바 차트
-            _fig_bar = _pgo.Figure()
-            _fig_bar.add_trace(_pgo.Bar(
-                x=_eq_df["ym"], y=_eq_df["strategy_ret"],
-                name="전략", marker_color="#2563eb", opacity=0.75,
-            ))
-            _fig_bar.add_trace(_pgo.Bar(
-                x=_eq_df["ym"], y=_eq_df["benchmark_ret"],
-                name="VOO", marker_color="#9ca3af", opacity=0.5,
-            ))
-            _fig_bar.update_layout(
-                title="월별 수익률 비교",
-                barmode="group", height=260,
-                margin=dict(t=40, b=20),
-                yaxis_title="월 수익률 (%)",
-            )
-            st.plotly_chart(_fig_bar, use_container_width=True)
-
-            # 매월 선택 ETF 목록
-            with st.expander("📋 매월 선택된 ETF 목록 보기"):
-                st.dataframe(
-                    _eq_df[["ym", "선택ETF", "strategy_ret", "benchmark_ret"]].rename(columns={
-                        "ym": "월",
-                        "strategy_ret": "전략 수익(%)",
-                        "benchmark_ret": "VOO 수익(%)",
-                    }),
-                    hide_index=True, use_container_width=True,
-                    column_config={
-                        "전략 수익(%)": st.column_config.NumberColumn(format="%+.2f"),
-                        "VOO 수익(%)":  st.column_config.NumberColumn(format="%+.2f"),
-                    },
-                )
-
-            st.caption(
-                "⚠️ 주의: 월말 신호 → 다음 달 첫 거래일 매수 가정 (실제 실행 시 1~2일 차이). "
-                "수수료·슬리피지·환율 미반영. 과거 결과가 미래를 보장하지 않습니다."
-            )
 
