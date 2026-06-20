@@ -171,6 +171,22 @@ def run_coin_backtests():
     _run_coin()
 
 
+def run_h15_strategy():
+    print("\n=== H15 ETF 전략 백테스트 (상대적 저점 Top3) ===")
+    try:
+        from scripts.signal_validation import run_etf_strategy_backtest
+        results_dir = Path(__file__).resolve().parent / "results"
+        eq_df, mt_df = run_etf_strategy_backtest(results_dir, n_top=3)
+        if not eq_df.empty:
+            eq_df.to_csv(results_dir / "strategy_equity.csv",  index=False, encoding="utf-8-sig")
+            mt_df.to_csv(results_dir / "strategy_metrics.csv", index=False, encoding="utf-8-sig")
+            print(f"  → {len(eq_df)}개월 백테스트 완료")
+        else:
+            print("  → 데이터 부족, 스킵")
+    except Exception as e:
+        print(f"  → H15 전략 백테스트 실패: {e}")
+
+
 def run_all():
     base = Path(__file__).resolve().parent
     out_dir = base / "results"
@@ -180,6 +196,7 @@ def run_all():
     run_factor_backtests()
     run_etf_backtests()
     run_coin_backtests()
+    run_h15_strategy()
     print("\n완료. 결과는 results/ 폴더를 확인하세요.")
 
 
