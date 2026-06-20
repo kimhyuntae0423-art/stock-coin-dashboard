@@ -188,8 +188,41 @@ st.info(
 
 _cy_df = sector_cycles(summary)
 
+def _entry_desc(bb, ma) -> str:
+    """BB + MA 상태를 한 줄 진입 설명으로 변환."""
+    bb = float(bb) if pd.notna(bb) else 0.5
+    ma = int(ma)   if pd.notna(ma) else 1
+    # BB 상태
+    if bb < 0:
+        bb_txt = "밴드 아래 이탈 (극단 조정)"
+    elif bb < 0.20:
+        bb_txt = "하단 지지 구간"
+    elif bb < 0.40:
+        bb_txt = "과열 해소됨"
+    elif bb < 0.60:
+        bb_txt = "중립 구간"
+    elif bb < 0.80:
+        bb_txt = "상단 근접 (주의)"
+    else:
+        bb_txt = "상단 과열"
+    # MA 추세 보조
+    ma_txt = ["추세 없음", "약세 추세", "추세 형성 중", "완전 상승 추세"][ma]
+    # 종합 한줄 코멘트
+    if bb < 0.40 and ma <= 1:
+        verdict = "→ 조정 구간, 반등 여지"
+    elif bb < 0.40 and ma >= 2:
+        verdict = "→ 매수 여건 양호"
+    elif bb >= 0.80 and ma == 3:
+        verdict = "→ 신규 매수 자제"
+    elif bb >= 0.60:
+        verdict = "→ 추가 진입 신중"
+    else:
+        verdict = ""
+    return f"{bb_txt} · {ma_txt} {verdict}".strip()
+
+
 if not _valid.empty:
-    # 냉각순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
+    # 매수여건 순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
     # RSI<75 필터 (극단 과열 제외)
     if "냉각지수" in _valid.columns:
         _cool_sorted = _valid[_valid["rsi14"] < 75].sort_values(
@@ -200,7 +233,7 @@ if not _valid.empty:
     _bull_ok = _cool_sorted.head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
-    # ── Top 5 카드: 냉각순위 기준 (H15 검증) ─────────────────────────────────
+    # ── Top 5 카드: 매수여건 순위 기준 (H15 검증) ────────────────────────────
     if not _bull_ok.empty:
         _cols = st.columns(min(len(_bull_ok), 5))
         for i, (_, row) in enumerate(_bull_ok.iterrows()):
@@ -208,35 +241,37 @@ if not _valid.empty:
                 cr = row.get("냉각순위")
                 cr_str = f"#{int(cr)}" if pd.notna(cr) else "—"
                 oh = str(row.get("과열신호", ""))
+                bb_v = row.get("BB위치")
+                ma_v = row.get("MA정렬")
                 st.metric(
                     f"**{row['ticker']}**",
-                    f"냉각순위 {cr_str}",
+                    f"매수여건 {cr_str}",
                     f"1개월 {row['return_1m_pct']:+.1f}%",
                 )
                 st.caption(row["name"])
-                bb_v = row.get("BB위치")
-                ma_v = row.get("MA정렬")
-                bb_str = f"BB={bb_v:.2f}" if pd.notna(bb_v) else ""
-                ma_str = f"MA={int(ma_v)}/3" if pd.notna(ma_v) else ""
-                st.caption(f"{bb_str} · {ma_str}" if bb_str else "")
+                # 진입 설명 (BB + MA 기반)
+                if pd.notna(bb_v) and pd.notna(ma_v):
+                    st.caption(_entry_desc(bb_v, ma_v))
+                    bb_str = f"BB={bb_v:.2f}" if pd.notna(bb_v) else ""
+                    ma_str = f"MA={int(ma_v)}/3" if pd.notna(ma_v) else ""
+                    st.caption(f"{bb_str} · {ma_str}")
                 if "⚠️" in oh:
-                    st.caption(f"⚠️ 과열 주의")
+                    st.caption("⚠️ 과열 주의")
 
     st.divider()
 
     # ── 전체 테이블 ────────────────────────────────────────────────────────────
-    st.markdown("**전체 ETF 배분 점수 현황**")
+    st.markdown("**전체 ETF 매수여건 순위**")
     st.caption(
-        "**냉각순위** = 백테스트 검증 (H15 IC=0.087, p<0.001). "
+        "**매수여건순위** = 백테스트 검증 (H15 IC=0.087, p<0.001). "
         "낮은 BB + 낮은 MA정렬 ETF가 향후 1개월 평균 2.82% vs 과열 ETF 1.03%. "
-        "VIX>25 구간에서 냉각순위 1~3위 ETF 매수 = 두 검증 신호의 교집합."
+        "VIX>25 구간에서 매수여건 1~3위 ETF 매수 = 두 검증 신호의 교집합."
     )
 
     _full = _valid.copy()
     _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
 
     _extra_cols = ["냉각순위", "거래량신호", "과열신호", "MA정렬", "BB위치", "OBV추세"]
-    _has_extra  = "과열신호" in _full.columns
     _base_cols  = ["ticker", "name", "버킷", "사이클상태",
                    "return_1m_pct", "return_12m_pct", "rsi14"]
     _opt_cols   = [c for c in _extra_cols if c in _full.columns]
@@ -245,7 +280,6 @@ if not _valid.empty:
     _tbl_full["사이클배율"] = _tbl_full["사이클배율"].apply(
         lambda x: f"×{x:.2f}" if pd.notna(x) else "×1.00"
     )
-    # 냉각순위 정수 표시
     if "냉각순위" in _tbl_full.columns:
         _tbl_full["냉각순위"] = _tbl_full["냉각순위"].apply(
             lambda x: f"#{int(x)}" if pd.notna(x) else "—"
@@ -256,16 +290,18 @@ if not _valid.empty:
             "ticker": "티커", "name": "종목명", "버킷": "위험도",
             "사이클상태": "섹터사이클", "return_1m_pct": "1개월(%)",
             "return_12m_pct": "12개월(%)", "rsi14": "RSI",
-            "냉각순위": "냉각순위", "거래량신호": "거래량", "과열신호": "과열신호",
+            "냉각순위": "매수여건", "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
             "OBV추세": "OBV(%)",
             "사이클배율": "사이클배율", "score": "배분점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
         column_config={
-            "냉각순위": st.column_config.TextColumn("냉각순위 ✅",
-                         help="백테스트 검증 (H15 IC=0.087 p<0.001). #1 = 가장 덜 과열 = 향후 수익 좋은 경향."
-                              " 낮은 BB위치 + 낮은 MA정렬 = 높은 순위. VIX>25 구간에서 매수 우선 순서."),
+            "매수여건": st.column_config.TextColumn("매수여건 ✅",
+                         help="백테스트 검증 (H15 IC=0.087 p<0.001). "
+                              "#1 = 가장 덜 과열 = 향후 수익 좋은 경향. "
+                              "낮은 BB위치 + 낮은 MA정렬 = 좋은 순위. "
+                              "VIX>25 구간에서 이 순위대로 매수."),
             "1개월(%)":  st.column_config.NumberColumn("1개월(%)", format="%+.2f",
                          help="참고 정보. ETF 모멘텀은 백테스트 유의성 없음 (p=0.61)"),
             "12개월(%)": st.column_config.NumberColumn("12개월(%)", format="%+.2f",
@@ -276,16 +312,16 @@ if not _valid.empty:
             "과열신호": st.column_config.TextColumn("과열",
                          help="IC 역방향 검증: 과열 = 향후 수익 낮은 경향. 신규 매수 자제"),
             "MA(0-3)":  st.column_config.NumberColumn(format="%.0f",
-                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 냉각지수 구성 요소"),
+                         help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 매수여건 구성 요소"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
-                         help="0.85↑ = 과열 감점 적용(IC=-0.087). 냉각지수 구성 요소"),
+                         help="0.85↑ = 과열. 0↓ = 밴드 이탈(극단 조정). 매수여건 구성 요소"),
             "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
                          help="IC=+0.04 (약한 양방향). 매집 신호 참고용"),
             "사이클배율": st.column_config.TextColumn("사이클배율",
                          help="IC=-0.023, p=0.34 → ±5% 참고만"),
             "배분점수": st.column_config.ProgressColumn("배분점수",
                          format="%.0f", min_value=0, max_value=180,
-                         help="섹터사이클×VIX국면 기반. 냉각순위를 함께 참고하세요"),
+                         help="섹터사이클×VIX국면 기반. 매수여건 순위를 함께 참고하세요"),
         },
     )
 
