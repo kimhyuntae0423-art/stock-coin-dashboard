@@ -10,59 +10,67 @@ import pandas as pd
 # ── 8역할 코어 정의 ─────────────────────────────────────────────────────────
 CORE_ROLES = [
     {
-        "role": "미국 주식",
-        "us":   "VOO",
-        "kr":   "360750.KS",
-        "desc": "S&P500 지수 추종. 경기 회복~확장기 핵심.",
+        "role":    "미국 주식",
+        "us":      "VOO",
+        "kr":      "360750.KS",
+        "kr_name": "TIGER 미국S&P500",
+        "desc":    "S&P500 지수 추종. 경기 회복~확장기 핵심.",
         "weights": {"fear": 0.18, "recovery": 0.32, "expansion": 0.38, "overheated": 0.28},
     },
     {
-        "role": "배당/가치",
-        "us":   "SCHD",
-        "kr":   "314250.KS",
-        "desc": "고배당 우량주. 확장 후반~침체 전환기 방어.",
+        "role":    "배당/가치",
+        "us":      "SCHD",
+        "kr":      "314250.KS",
+        "kr_name": "KODEX 미국배당귀족",
+        "desc":    "고배당 우량주. 확장 후반~침체 전환기 방어.",
         "weights": {"fear": 0.15, "recovery": 0.08, "expansion": 0.10, "overheated": 0.20},
     },
     {
-        "role": "성장/반도체",
-        "us":   "SOXX",
-        "kr":   "469170.KS",
-        "desc": "반도체·AI 성장. 회복 초기~확장 중기 집중.",
+        "role":    "성장/반도체",
+        "us":      "SOXX",
+        "kr":      "469170.KS",
+        "kr_name": "KODEX 미국AI테크TOP10",
+        "desc":    "반도체·AI 성장. 회복 초기~확장 중기 집중.",
         "weights": {"fear": 0.04, "recovery": 0.14, "expansion": 0.16, "overheated": 0.08},
     },
     {
-        "role": "장기 국채",
-        "us":   "TLT",
-        "kr":   "476760.KS",
-        "desc": "미국 20년 국채. 공포·금리 하락기 최고.",
+        "role":    "장기 국채",
+        "us":      "TLT",
+        "kr":      "476760.KS",
+        "kr_name": "ACE 미국30년국채액티브",
+        "desc":    "미국 20년 국채. 공포·금리 하락기 최고.",
         "weights": {"fear": 0.25, "recovery": 0.14, "expansion": 0.06, "overheated": 0.15},
     },
     {
-        "role": "금",
-        "us":   "GLD",
-        "kr":   "0072R0.KS",
-        "desc": "금 현물. 인플레·지정학·공포 헷지.",
+        "role":    "금",
+        "us":      "GLD",
+        "kr":      "0072R0.KS",
+        "kr_name": "TIGER KRX금현물",
+        "desc":    "금 현물. 인플레·지정학·공포 헷지.",
         "weights": {"fear": 0.16, "recovery": 0.10, "expansion": 0.06, "overheated": 0.12},
     },
     {
-        "role": "원자재/구리",
-        "us":   "COPX",
-        "kr":   None,
-        "desc": "구리 채굴. 경기 확장 중기, 인프라·EV 수요.",
+        "role":    "원자재/구리",
+        "us":      "COPX",
+        "kr":      None,
+        "kr_name": None,
+        "desc":    "구리 채굴. 경기 확장 중기, 인프라·EV 수요.",
         "weights": {"fear": 0.04, "recovery": 0.08, "expansion": 0.14, "overheated": 0.05},
     },
     {
-        "role": "헬스케어/방어",
-        "us":   "XLV",
-        "kr":   None,
-        "desc": "미국 헬스케어. 사이클 무관 방어. 침체 전환기.",
+        "role":    "헬스케어/방어",
+        "us":      "XLV",
+        "kr":      None,
+        "kr_name": None,
+        "desc":    "미국 헬스케어. 사이클 무관 방어. 침체 전환기.",
         "weights": {"fear": 0.10, "recovery": 0.06, "expansion": 0.06, "overheated": 0.07},
     },
     {
-        "role": "현금/단기채",
-        "us":   "SHY",
-        "kr":   "448290.KS",
-        "desc": "단기채·CD금리. 과열기 현금 확보. 다음 매수 재원.",
+        "role":    "현금/단기채",
+        "us":      "SHY",
+        "kr":      "448290.KS",
+        "kr_name": "KODEX CD금리액티브",
+        "desc":    "단기채·CD금리. 과열기 현금 확보. 다음 매수 재원.",
         "weights": {"fear": 0.08, "recovery": 0.08, "expansion": 0.04, "overheated": 0.05},
     },
 ]
@@ -135,14 +143,17 @@ def rotation_target(
         else:
             tilt = 1.0
 
+        has_isa = role["kr"] is not None
         rows.append({
-            "역할":      role["role"],
-            "US ETF":   role["us"],
-            "ISA ETF":  role["kr"] or "—",
-            "설명":      role["desc"],
-            "_base_w":  base_w,
-            "_tilt":    tilt,
-            "_raw_w":   base_w * tilt,
+            "역할":        role["role"],
+            "US ETF":     role["us"],
+            "ISA(원화)":  f"{role['kr_name']}\n({role['kr']})" if has_isa else "—",
+            "계좌":        "✅ ISA 우선" if has_isa else "⚠️ 일반계좌",
+            "설명":        role["desc"],
+            "_base_w":    base_w,
+            "_tilt":      tilt,
+            "_raw_w":     base_w * tilt,
+            "_has_isa":   has_isa,
         })
 
     total = sum(r["_raw_w"] for r in rows)
@@ -150,5 +161,5 @@ def rotation_target(
         r["목표비중(%)"] = round(r["_raw_w"] / total * 100, 1)
         r["기본비중(%)"] = round(r["_base_w"] * 100, 1)
 
-    df = pd.DataFrame(rows).drop(columns=["_base_w", "_tilt", "_raw_w"])
+    df = pd.DataFrame(rows).drop(columns=["_base_w", "_tilt", "_raw_w", "_has_isa"])
     return df, phase
