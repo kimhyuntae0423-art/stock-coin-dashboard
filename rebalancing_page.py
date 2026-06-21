@@ -955,6 +955,14 @@ if new_money > 0 and alloc["Total"] > 0:
         else:
             st.success(f"**{_phase_label}** — {_phase_desc}")
 
+        # KR 티커 → US 역할 alias: 사용자가 KR ETF 보유 시에도 현재비중 매핑
+        from scripts.etf_rotation import CORE_ROLES as _CORE_ROLES
+        for _r in _CORE_ROLES:
+            _kr = str(_r.get("kr") or "").upper()
+            _us = str(_r["us"]).upper()
+            if _kr and _kr in _held_map and _us not in _held_map:
+                _held_map[_us] = _held_map[_kr]
+
         _rot_df["현재비중(%)"] = _rot_df["US ETF"].apply(
             lambda t: round(_held_map.get(str(t).upper(), {}).get("현재비중(%)", 0.0), 1)
         )
