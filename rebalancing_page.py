@@ -1002,6 +1002,22 @@ if new_money > 0 and alloc["Total"] > 0:
         )
         st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
 
+        # US 역할 → 실제 보유 KR 티커 역방향 맵 (표시용)
+        _role_to_held_kr: dict = {}
+        if "rotation_role" in core_etfs.columns and _held_map:
+            _rm = (
+                core_etfs[["ticker", "rotation_role", "name"]]
+                .dropna(subset=["rotation_role"])
+                .assign(ticker=lambda d: d["ticker"].astype(str).str.upper(),
+                        rotation_role=lambda d: d["rotation_role"].astype(str).str.upper())
+                .query("rotation_role != '' and rotation_role != 'NAN'")
+            )
+            for _, _row in _rm.iterrows():
+                if _row["ticker"] in _held_map:
+                    _role_to_held_kr.setdefault(_row["rotation_role"], []).append(
+                        f"{_row['ticker']} ({_row['name'].split('★')[0].strip()})"
+                    )
+
         _guide_df = _rot_df[_rot_df["가이드"] == True].copy()
         _r_buy  = _guide_df[_guide_df["차이(%p)"] >  3].sort_values("차이(%p)", ascending=False)
         _r_sell = _guide_df[_guide_df["차이(%p)"] < -3].sort_values("차이(%p)")
@@ -1011,14 +1027,18 @@ if new_money > 0 and alloc["Total"] > 0:
                 st.success("**확대 필요** (+3%p↑)")
                 for _, _rr in _r_buy.iterrows():
                     _isa_txt = _rr["ISA(원화)"].split("\n")[0]
-                    st.markdown(f"- **{_rr['US ETF']}** / ISA: {_isa_txt} `+{_rr['차이(%p)']:.1f}%p`")
+                    _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
+                    _held_str = f" — 보유: {', '.join(_held_kr)}" if _held_kr else ""
+                    st.markdown(f"- **{_rr['US ETF']}** / ISA: {_isa_txt}{_held_str} `+{_rr['차이(%p)']:.1f}%p`")
             else:
                 st.success("확대 필요 역할 없음")
         with _rc2:
             if not _r_sell.empty:
                 st.warning("**축소 필요** (−3%p↓)")
                 for _, _rr in _r_sell.iterrows():
-                    st.markdown(f"- **{_rr['US ETF']}** `{_rr['차이(%p)']:.1f}%p`")
+                    _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
+                    _held_str = f" ({', '.join(_held_kr)})" if _held_kr else ""
+                    st.markdown(f"- **{_rr['US ETF']}**{_held_str} `{_rr['차이(%p)']:.1f}%p`")
             else:
                 st.warning("축소 필요 역할 없음")
 
