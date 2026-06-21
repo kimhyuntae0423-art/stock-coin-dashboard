@@ -51,9 +51,19 @@ def download_prices(tickers: list, period: str = "5y", interval: str = "1d") -> 
             df.dropna(how="all", inplace=True)
 
             # 코인(-USD)이고 yfinance 데이터가 30일 이상 오래됐거나 가격 오류가 알려진 종목은 Binance로 교체
-            _BINANCE_FORCE = {"ID-USD"}  # yfinance 가격이 10배 낮게 잘못 수집되는 종목
+            _BINANCE_FORCE = {
+                "ID-USD",     # yfinance 가격이 10배 낮게 잘못 수집됨
+                "TRUMP-USD",  # yfinance 오매핑 ($0.0003, 2026-02 이후 멈춤)
+                "MASK-USD",   # yfinance 추적 중단 (2022-08 이후 멈춤, 가격 $814 오류)
+            }
             if "-USD" in t:
-                yf_stale = df.empty or (pd.Timestamp.now() - df.index[-1]).days > 30
+                try:
+                    last_dt = df.index[-1]
+                    # timezone-aware 인덱스 대응
+                    now = pd.Timestamp.now(tz=last_dt.tzinfo) if last_dt.tzinfo else pd.Timestamp.now()
+                    yf_stale = df.empty or (now - last_dt).days > 30
+                except Exception:
+                    yf_stale = True
                 if yf_stale or t in _BINANCE_FORCE:
                     print(f"{t}: yfinance 데이터 오래됨 → Binance fallback 시도...")
                     try:
