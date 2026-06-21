@@ -1046,35 +1046,79 @@ if new_money > 0 and alloc["Total"] > 0:
             else:
                 st.warning("축소 필요 역할 없음")
 
+        # ── 점진적 매도 계획 (3개월 분할) ───────────────────────────────────
+        _SELL_MONTHS = 3
+        _this_month_proceeds = 0.0
+
         if not _r_sell.empty:
-            st.markdown("**이번 정리 필요** (비중 초과 — 초과분 매도 권장)")
+            _sell_name_list = []
+            for _, _rr in _r_sell.iterrows():
+                _kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [_rr["US ETF"]])
+                _sell_name_list.append(_kr[0] if _kr else _rr["US ETF"])
+            st.markdown(f"**1단계 — 매도** ({', '.join(_sell_name_list)} 비중 초과 · 3개월 분할)")
             _r_sell_disp = _r_sell.copy()
             _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
                 lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
             )
-            _r_sell_disp["매도 권장금액(원)"] = (
+            _r_sell_disp["총 초과금(원)"] = (
                 _r_sell_disp["차이(%p)"].abs() / 100 * _total_held
             ).round(0)
+            _r_sell_disp["1차(이번 달)"] = (_r_sell_disp["총 초과금(원)"] / _SELL_MONTHS).round(0)
+            _r_sell_disp["2차(다음 달)"] = _r_sell_disp["1차(이번 달)"]
+            _r_sell_disp["3차(그 다음)"] = (
+                _r_sell_disp["총 초과금(원)"] - _r_sell_disp["1차(이번 달)"] * 2
+            ).round(0)
             st.dataframe(
-                _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "매도 권장금액(원)"]],
+                _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "총 초과금(원)", "1차(이번 달)", "2차(다음 달)", "3차(그 다음)"]],
                 hide_index=True, use_container_width=True,
                 column_config={
-                    "차이(%p)":          st.column_config.NumberColumn(format="%+.1f"),
-                    "매도 권장금액(원)":  st.column_config.NumberColumn(format="%,.0f"),
+                    "차이(%p)":       st.column_config.NumberColumn(format="%+.1f"),
+                    "총 초과금(원)":  st.column_config.NumberColumn(format="%,.0f"),
+                    "1차(이번 달)":   st.column_config.NumberColumn(format="%,.0f"),
+                    "2차(다음 달)":   st.column_config.NumberColumn(format="%,.0f"),
+                    "3차(그 다음)":   st.column_config.NumberColumn(format="%,.0f"),
                 },
             )
+            _this_month_proceeds = float(_r_sell_disp["1차(이번 달)"].sum())
 
-        if core_buy > 0:
-            st.markdown("**이번 매수 배분** (ISA 역할 기준)")
-            _guide_df["추천금액(원)"] = (_guide_df["가이드비중(%)"] / 100 * core_buy).round(0)
-            st.dataframe(
-                _guide_df[["역할", "US ETF", "ISA(원화)", "가이드비중(%)", "추천금액(원)"]],
-                hide_index=True, use_container_width=True,
-                column_config={
-                    "가이드비중(%)": st.column_config.NumberColumn("배분비중(%)", format="%.1f"),
-                    "추천금액(원)":  st.column_config.NumberColumn(format="%,.0f"),
-                },
-            )
+        # ── 매수 배분 (신규 투입 + 이번 달 판돈) ─────────────────────────────
+        _total_deploy = core_buy + _this_month_proceeds
+        if _total_deploy > 0:
+            _sell_roles_upper = set(_r_sell["US ETF"].str.upper()) if not _r_sell.empty else set()
+            _buy_guide = _guide_df[~_guide_df["US ETF"].str.upper().isin(_sell_roles_upper)].copy()
+
+            if not _buy_guide.empty:
+                _w_sum = _buy_guide["가이드비중(%)"].sum() or 1.0
+                _buy_guide["배분비중(%)"] = (_buy_guide["가이드비중(%)"] / _w_sum * 100).round(1)
+                _buy_guide["추천금액(원)"] = (_buy_guide["배분비중(%)"] / 100 * _total_deploy).round(0)
+
+                if _this_month_proceeds > 0 and core_buy > 0:
+                    _step_label = "2단계 — 판돈 재배분"
+                    _fund_desc = (
+                        f"신규 투입 {core_buy:,.0f}원  +  1차 판돈 {_this_month_proceeds:,.0f}원"
+                        f"  =  합계 **{_total_deploy:,.0f}원** 을 비중 부족 역할에 재배분"
+                    )
+                elif _this_month_proceeds > 0:
+                    _step_label = "2단계 — 판돈 재배분"
+                    _fund_desc = (
+                        f"1차 판돈 {_this_month_proceeds:,.0f}원을 비중 부족 역할에 재배분"
+                        f" (매도 역할 제외)"
+                    )
+                else:
+                    _step_label = "이번 매수 배분"
+                    _fund_desc = ""
+
+                st.markdown(f"**{_step_label}**")
+                if _fund_desc:
+                    st.caption(_fund_desc)
+                st.dataframe(
+                    _buy_guide[["역할", "US ETF", "ISA(원화)", "배분비중(%)", "추천금액(원)"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "배분비중(%)": st.column_config.NumberColumn("배분비중(%)", format="%.1f"),
+                        "추천금액(원)": st.column_config.NumberColumn(format="%,.0f"),
+                    },
+                )
         st.caption(
             "목표비중 = VIX 경기국면 기본비중 × H15 상대저점 tilt(±20%).  "
             "차이(%p) ±3%p 이내는 리밸런싱 생략 권장."
