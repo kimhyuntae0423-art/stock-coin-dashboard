@@ -118,6 +118,7 @@ target_core      = int(st.session_state.get("tgt_core_", 70))
 target_satellite = int(st.session_state.get("tgt_sat_",  20))
 target_cash      = int(st.session_state.get("tgt_cash_", 10))
 cash_amount      = float(st.session_state.get("cash_amt_", 0))
+new_money        = float(st.session_state.get("new_money_input", 1_000_000))
 
 view_alloc = holdings.copy()
 if not summary.empty:
@@ -417,49 +418,6 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
     )
 
 st.divider()
-
-# ── 배분 현황 & 리밸런싱 ─────────────────────────────────────────
-st.subheader("📊 배분 현황 & 리밸런싱")
-
-ic1, ic2, ic3, ic4, ic5 = st.columns(5)
-with ic1:
-    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
-with ic2:
-    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
-with ic3:
-    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
-with ic4:
-    cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
-                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
-with ic5:
-    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=1_000_000,
-                                step=100_000, key="new_money_input")
-
-if target_core + target_satellite + target_cash != 100:
-    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
-
-
-aa1, aa2, aa3, aa4 = st.columns(4)
-aa1.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
-           delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-aa2.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
-           delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
-           delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
-
-# ── 백테스트 기반 시장 신호 ─────────────────────────────────────
-_h_regime = market_regime(summary)
-_h_vix    = _h_regime.get("vix")
-_h_vsig   = _h_regime.get("vix_signal", "")
-if _h_vix:
-    if _h_vix > 25:
-        st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
-    elif _h_vix < 13:
-        st.warning(f"🌡️ VIX {_h_vix:.0f} — {_h_vsig}  ·  과열 경계, 신규 매수 신중")
-    else:
-        st.info(f"VIX {_h_vix:.0f} — {_h_vsig}")
-
 st.subheader("💼 보유 현황")
 if not holdings.empty:
     # portfolio_page.py와 동일한 방식으로 가격 합산 (주식 + 코인 KRW 변환)
@@ -815,16 +773,56 @@ if not holdings.empty:
                 "최종 매수·매도 결정은 공식 공시·실적·본인 위험 감내 범위 확인 후 내리세요."
             )
 
+st.divider()
+st.subheader("📊 배분 현황 & 리밸런싱")
+
+ic1, ic2, ic3, ic4, ic5 = st.columns(5)
+with ic1:
+    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
+with ic2:
+    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
+with ic3:
+    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
+with ic4:
+    cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
+                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
+with ic5:
+    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=1_000_000,
+                                step=100_000, key="new_money_input")
+
+if target_core + target_satellite + target_cash != 100:
+    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
+
+aa1, aa2, aa3, aa4 = st.columns(4)
+aa1.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
+           delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
+aa2.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
+           delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
+aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
+           delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
+aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
+
+_h_regime = market_regime(summary)
+_h_vix    = _h_regime.get("vix")
+_h_vsig   = _h_regime.get("vix_signal", "")
+if _h_vix:
+    if _h_vix > 25:
+        st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
+    elif _h_vix < 13:
+        st.warning(f"🌡️ VIX {_h_vix:.0f} — {_h_vsig}  ·  과열 경계, 신규 매수 신중")
+    else:
+        st.info(f"VIX {_h_vix:.0f} — {_h_vsig}")
+
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if not actions_alloc:
     st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
 
+core_buy = sat_buy = cash_res = 0
 if new_money > 0 and alloc["Total"] > 0:
     total_after = alloc["Total"] + new_money
     core_deficit  = max(0.0, total_after * target_core      / 100 - alloc["Core_value"])
     sat_deficit   = max(0.0, total_after * target_satellite / 100 - alloc["Satellite_value"])
     cash_deficit  = max(0.0, total_after * target_cash      / 100 - cash_amount)
-
     total_deficit = core_deficit + sat_deficit + cash_deficit
     if total_deficit > 0:
         scale    = min(1.0, new_money / total_deficit)
@@ -834,12 +832,10 @@ if new_money > 0 and alloc["Total"] > 0:
     else:
         core_buy = sat_buy = 0
         cash_res = new_money
-
     mc1, mc2, mc3 = st.columns(3)
     mc1.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
     mc2.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
     mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
-
     new_core_pct = (alloc["Core_value"] + core_buy) / total_after * 100
     new_sat_pct  = (alloc["Satellite_value"] + sat_buy) / total_after * 100
     new_cash_pct = (cash_amount + cash_res) / total_after * 100
@@ -848,7 +844,7 @@ if new_money > 0 and alloc["Total"] > 0:
         f"(목표: {target_core}% / {target_satellite}% / {target_cash}%)"
     )
 
-    # ── 데이터 계산 (expander 밖으로) ───────────────────────────────────────
+# ── 데이터 계산 ──────────────────────────────────────────────────────────
     _e_regime = market_regime(summary)
     _e_scored = score_etfs(core_etfs, summary, _e_regime["key"])
     _e_scored = enrich_with_volume(_e_scored, ROOT / "results")
@@ -939,8 +935,8 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _ranked["리밸런싱"] = _ranked.apply(_reb_action, axis=1)
 
-    # ── 코어 ETF 로테이션 가이드 (expander 밖) ───────────────────────────────
-    st.subheader("🎯 코어 ETF 로테이션 가이드")
+    # ── 코어 ETF 로테이션 가이드 ──────────────────────────────────────────────
+    st.markdown("---")
     if _e_alloc.empty:
         st.info("현재가 데이터 없음.")
     else:
