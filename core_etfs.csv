@@ -35,6 +35,7 @@ DXJ,WisdomTree Japan Hedged Equity,주식 - 일본(환헷지),equity,JP,0.48,USD
 314250.KS,KODEX 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.3,KRW,SCHD 가까운 한국 ETF. ISA 가능
 091160.KS,KODEX 반도체,섹터 - 한국 반도체,equity,KR,0.45,KRW,한국 반도체 직접
 381180.KS,TIGER 미국AI빅테크10 INDXX,테마 - AI 빅테크(원화),equity,US,0.49,KRW,미국 AI 빅테크 10종 원화
+466950.KS,TIGER 글로벌AI액티브,테마 - AI 글로벌(원화),equity,Global,0.49,KRW,글로벌AI 액티브 운용. ★사용자편입(원래: KODEX 미국AI테크TOP10 469170.KS)
 469170.KS,KODEX 미국AI테크TOP10,테마 - AI 테크(원화),equity,US,0.21,KRW,저보수 AI ETF. ISA 가능
 360200.KS,ACE 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무
 476760.KS,ACE 미국30년국채액티브,채권 - 미국 장기국채(원화),bond,US,0.3,KRW,장기 국채 액티브. 금리 하락기 헷지

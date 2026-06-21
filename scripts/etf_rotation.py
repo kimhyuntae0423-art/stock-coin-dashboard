@@ -33,8 +33,9 @@ CORE_ROLES = [
     {
         "role":    "성장/반도체",
         "us":      "SOXX",
-        "kr":      "469170.KS",
-        "kr_name": "KODEX 미국AI테크TOP10",
+        "kr":      "466950.KS",
+        "kr_name": "TIGER 글로벌AI액티브 ★사용자편입",
+        # 원래 추천: KODEX 미국AI테크TOP10 (469170.KS) — 추세 확인 후 복귀 가능
         "desc":    "반도체·AI 성장. 회복 초기~확장 중기 집중.",
         "guide":   True,
         "weights": {"fear": 0.04, "recovery": 0.15, "expansion": 0.17, "overheated": 0.09},
