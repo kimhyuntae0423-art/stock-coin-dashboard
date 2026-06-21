@@ -1015,9 +1015,9 @@ if new_money > 0 and alloc["Total"] > 0:
                 "비중차이(+)=전술 대비 언더웨이트 → 추가매수. 최종 결정은 직접 판단."
             )
 
-            # ── 8역할 코어 로테이션 ───────────────────────────────────────────
+            # ── 코어 ETF 로테이션 ────────────────────────────────────────────
             st.divider()
-            st.subheader("🎯 코어 로테이션 가이드 (8역할)")
+            st.subheader("🎯 코어 ETF 로테이션 가이드")
 
             _spy_1m  = _e_regime.get("spy_1m",  0)
             _spy_12m = _e_regime.get("spy_12m", 0)
@@ -1043,7 +1043,7 @@ if new_money > 0 and alloc["Total"] > 0:
             )
             _rot_df["차이(%p)"] = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).round(1)
 
-            # 전체 7역할 테이블 (COPX·XLV 포함 — 참고용)
+            # 전체 테이블 (COPX·XLV 참고용 포함)
             st.dataframe(
                 _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)"]],
                 hide_index=True, use_container_width=True,
