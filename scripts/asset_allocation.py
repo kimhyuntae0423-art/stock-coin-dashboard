@@ -14,12 +14,48 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 CORE_ETF_FILE = ROOT / "core_etfs.csv"
 
+# 순서 중요: 더 구체적인 규칙(SCHD, GLD, TLT)이 VOO보다 먼저 평가됨
+_ROLE_RULES: list[tuple[str, list[str]]] = [
+    ("SCHD", ["배당귀족", "배당가치", "SCHD", "dividend equity"]),
+    ("GLD",  ["금현물", "KRX금", "SPDR Gold", "GLD"]),
+    ("TLT",  ["장기국채", "30년국채", "미국30년", "20+ Year Treasury", "TLT"]),
+    ("SOXX", ["반도체", "semiconductor", "글로벌AI", "AI액티브", "AI빅테크", "AI테크",
+              "AI/로봇", "AI/기술", "AI 글로벌", "SOXX", "SMH"]),
+    ("COPX", ["구리 채굴", "copper miner", "COPX"]),
+    ("XLV",  ["헬스케어", "Health Care", "XLV"]),
+    ("VOO",  ["미국S&P500", "미국 S&P500", "미국대형주", "S&P 500", "S&P500 추종",
+              "VOO", "VTI", "SPY"]),
+]
+
+
+def infer_rotation_role(ticker: str, name: str, category: str, notes: str = "") -> str:
+    """ETF 특성에서 rotation_role 자동 추론. 확실하지 않으면 '' 반환."""
+    combined = f"{ticker} {name} {category} {notes}".upper()
+    for role, patterns in _ROLE_RULES:
+        if any(p.upper() in combined for p in patterns):
+            return role
+    return ""
+
 
 def load_core_etfs() -> pd.DataFrame:
-    """Core 버킷 후보 ETF 목록 로드."""
+    """Core 버킷 후보 ETF 목록 로드. rotation_role이 비어있으면 자동 추론."""
     if not CORE_ETF_FILE.exists():
         return pd.DataFrame(columns=["ticker", "name", "category", "asset_class"])
-    return pd.read_csv(CORE_ETF_FILE)
+    df = pd.read_csv(CORE_ETF_FILE)
+    if "rotation_role" not in df.columns:
+        df["rotation_role"] = ""
+    mask = df["rotation_role"].isna() | (df["rotation_role"].astype(str).str.strip() == "")
+    if mask.any():
+        df.loc[mask, "rotation_role"] = df[mask].apply(
+            lambda r: infer_rotation_role(
+                str(r.get("ticker", "")),
+                str(r.get("name", "")),
+                str(r.get("category", "")),
+                str(r.get("notes", "")),
+            ),
+            axis=1,
+        )
+    return df
 
 
 def classify_holdings(holdings_df: pd.DataFrame,

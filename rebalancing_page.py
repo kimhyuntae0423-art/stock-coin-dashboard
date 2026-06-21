@@ -955,6 +955,9 @@ if new_money > 0 and alloc["Total"] > 0:
         else:
             st.success(f"**{_phase_label}** — {_phase_desc}")
 
+        # 총 보유금액 (역할 합산 전 기준 — 비중 분모)
+        _total_held = sum(v.get("보유금액", 0) for v in _held_map.values()) or 1.0
+
         # 동일 역할 ETF 자동 인식: core_etfs rotation_role로 역할별 보유금액 합산
         if "rotation_role" in core_etfs.columns and _held_map:
             _role_map_dict = (
@@ -966,7 +969,6 @@ if new_money > 0 and alloc["Total"] > 0:
                 .set_index("ticker")["rotation_role"]
                 .to_dict()
             )
-            _total_held = sum(v["보유금액"] for v in _held_map.values()) or 1.0
             _role_amounts: dict = {}
             for _t, _role in _role_map_dict.items():
                 if _t in _held_map:
@@ -1002,11 +1004,11 @@ if new_money > 0 and alloc["Total"] > 0:
         )
         st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
 
-        # US 역할 → 실제 보유 KR 티커 역방향 맵 (표시용)
+        # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
         if "rotation_role" in core_etfs.columns and _held_map:
             _rm = (
-                core_etfs[["ticker", "rotation_role", "name"]]
+                core_etfs[["ticker", "rotation_role", "name", "notes"]]
                 .dropna(subset=["rotation_role"])
                 .assign(ticker=lambda d: d["ticker"].astype(str).str.upper(),
                         rotation_role=lambda d: d["rotation_role"].astype(str).str.upper())
@@ -1014,8 +1016,10 @@ if new_money > 0 and alloc["Total"] > 0:
             )
             for _, _row in _rm.iterrows():
                 if _row["ticker"] in _held_map:
+                    _notes_str = str(_row.get("notes", ""))
+                    _tag = " ★사용자편입" if "★사용자편입" in _notes_str else ""
                     _role_to_held_kr.setdefault(_row["rotation_role"], []).append(
-                        f"{_row['ticker']} ({_row['name'].split('★')[0].strip()})"
+                        f"{_row['name']}{_tag}"
                     )
 
         _guide_df = _rot_df[_rot_df["가이드"] == True].copy()
@@ -1041,6 +1045,24 @@ if new_money > 0 and alloc["Total"] > 0:
                     st.markdown(f"- **{_rr['US ETF']}**{_held_str} `{_rr['차이(%p)']:.1f}%p`")
             else:
                 st.warning("축소 필요 역할 없음")
+
+        if not _r_sell.empty:
+            st.markdown("**이번 정리 필요** (비중 초과 — 초과분 매도 권장)")
+            _r_sell_disp = _r_sell.copy()
+            _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
+                lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
+            )
+            _r_sell_disp["매도 권장금액(원)"] = (
+                _r_sell_disp["차이(%p)"].abs() / 100 * _total_held
+            ).round(0)
+            st.dataframe(
+                _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "매도 권장금액(원)"]],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "차이(%p)":          st.column_config.NumberColumn(format="%+.1f"),
+                    "매도 권장금액(원)":  st.column_config.NumberColumn(format="%,.0f"),
+                },
+            )
 
         if core_buy > 0:
             st.markdown("**이번 매수 배분** (ISA 역할 기준)")
