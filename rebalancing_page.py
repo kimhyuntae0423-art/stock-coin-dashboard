@@ -419,6 +419,9 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 st.subheader("💼 보유 현황")
+_h_regime = market_regime(summary)
+_h_vix    = _h_regime.get("vix")
+_h_vsig   = _h_regime.get("vix_signal", "")
 if not holdings.empty:
     # portfolio_page.py와 동일한 방식으로 가격 합산 (주식 + 코인 KRW 변환)
     _ph_parts = []
@@ -802,9 +805,6 @@ aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
            delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
 
-_h_regime = market_regime(summary)
-_h_vix    = _h_regime.get("vix")
-_h_vsig   = _h_regime.get("vix_signal", "")
 if _h_vix:
     if _h_vix > 25:
         st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
