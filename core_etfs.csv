@@ -1,42 +1,42 @@
-ticker,name,category,asset_class,region,expense_ratio,currency,notes
-VOO,Vanguard S&P 500,주식 - 미국 대형주,equity,US,0.03,USD,S&P 500 추종. 저비용 대표
-VTI,Vanguard Total Stock Market,주식 - 미국 전체,equity,US,0.03,USD,미국 전체 시장. 중소형주 포함
-QQQ,Invesco QQQ Trust (Nasdaq-100),주식 - 미국 나스닥,equity,US,0.2,USD,나스닥 100. 기술주 편중
-SPY,SPDR S&P 500,주식 - 미국 대형주,equity,US,0.09,USD,S&P 500. 거래량 최대
-VT,Vanguard Total World,주식 - 전세계,equity,Global,0.07,USD,전세계 분산. 한 종목 글로벌 노출
-VEU,Vanguard FTSE All-World ex-US,주식 - 미국 제외,equity,Global,0.07,USD,미국 외 분산용
-BND,Vanguard Total Bond Market,채권 - 미국 종합,bond,US,0.03,USD,미국 채권 종합. 저비용 채권 대표
-TLT,iShares 20+ Year Treasury,채권 - 미국 장기국채,bond,US,0.15,USD,장기 국채. 디플레 헷지
-SHY,iShares 1-3 Year Treasury,채권 - 미국 단기국채,bond,US,0.15,USD,단기 국채. 현금 대용
-GLD,SPDR Gold Shares,원자재 - 금,commodity,Global,0.4,USD,금 노출. 인플레 헷지
-069500.KS,KODEX 200,주식 - 한국 대형주,equity,KR,0.15,KRW,코스피 200 추종
-360750.KS,TIGER 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무
-379800.KS,KODEX 미국나스닥100 TR,주식 - 미국 나스닥(원화),equity,US,0.07,KRW,나스닥 100 원화 노출
-448290.KS,KODEX CD금리액티브(합성),현금성 - 한국,cash,KR,0.04,KRW,단기 금리. Cash 버킷 대용
-305080.KS,ACE 미국30년국채액티브(H),채권 - 미국 장기국채(헷지),bond,US,0.3,KRW,장기 국채 환헷지
-130730.KS,KOSEF 국고채10년,채권 - 한국 국채,bond,KR,0.15,KRW,한국 10년 국채
-XLU,Utilities Select Sector SPDR,섹터 - 미국 유틸리티,equity,US,0.09,USD,AI 데이터센터 전력 수요 베네피셔리
-VPU,Vanguard Utilities,섹터 - 미국 유틸리티,equity,US,0.1,USD,XLU 대안 · 저보수
-URA,Global X Uranium,섹터 - 우라늄/원자력,equity,Global,0.69,USD,AI 24/7 전력 -> 원자력 르네상스
-URNM,Sprott Uranium Miners,섹터 - 우라늄 채굴,equity,Global,0.75,USD,순수 우라늄 채굴 노출
-COPX,Global X Copper Miners,섹터 - 구리 채굴,equity,Global,0.65,USD,전력 그리드 + EV 구리 수요
-PAVE,Global X US Infrastructure Dev,섹터 - 미국 인프라,equity,US,0.47,USD,리쇼어링 + AI 인프라 + 전력망
-ITA,iShares US Aerospace & Defense,섹터 - 미국 방산,equity,US,0.4,USD,글로벌 군비 증가 + 지정학
-XAR,SPDR S&P Aerospace & Defense,섹터 - 미국 방산,equity,US,0.35,USD,ITA 대안
-XLV,Health Care Select Sector SPDR,섹터 - 미국 헬스케어,equity,US,0.1,USD,고령화 + AI 신약. 사이클 방어
-SCHD,Schwab US Dividend Equity,주식 - 미국 배당가치,equity,US,0.06,USD,배당 + 가치주. 사이클 후반부 방어
-VTV,Vanguard Value,주식 - 미국 대형 가치,equity,US,0.04,USD,성장주 정점 후 회전 베타
-SOXX,iShares Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,AI 직접 인프라
-SMH,VanEck Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,SOXX 대안. NVIDIA 비중 큼
-IRBO,iShares Robotics & AI,테마 - AI/로봇,equity,Global,0.47,USD,저보수 AI ETF
-AIQ,Global X AI & Tech,테마 - AI/기술,equity,US,0.68,USD,빅테크 편중
-INDA,iShares MSCI India,주식 - 인도,equity,IN,0.65,USD,신흥 메가 마켓 · 중국 대안
-DXJ,WisdomTree Japan Hedged Equity,주식 - 일본(환헷지),equity,JP,0.48,USD,일본 정책 + 환율 + 거버넌스
-314250.KS,KODEX 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.3,KRW,SCHD 가까운 한국 ETF. ISA 가능
-091160.KS,KODEX 반도체,섹터 - 한국 반도체,equity,KR,0.45,KRW,한국 반도체 직접
-381180.KS,TIGER 미국AI빅테크10 INDXX,테마 - AI 빅테크(원화),equity,US,0.49,KRW,미국 AI 빅테크 10종 원화
-466950.KS,TIGER 글로벌AI액티브,테마 - AI 글로벌(원화),equity,Global,0.49,KRW,글로벌AI 액티브 운용. ★사용자편입(원래: KODEX 미국AI테크TOP10 469170.KS)
-469170.KS,KODEX 미국AI테크TOP10,테마 - AI 테크(원화),equity,US,0.21,KRW,저보수 AI ETF. ISA 가능
-360200.KS,ACE 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무
-476760.KS,ACE 미국30년국채액티브,채권 - 미국 장기국채(원화),bond,US,0.3,KRW,장기 국채 액티브. 금리 하락기 헷지
-0072R0.KS,TIGER KRX금현물,원자재 - 금(원화),commodity,Global,0.35,KRW,금 현물 원화 노출. 인플레·지정학 헷지
+ticker,name,category,asset_class,region,expense_ratio,currency,notes,rotation_role
+VOO,Vanguard S&P 500,주식 - 미국 대형주,equity,US,0.03,USD,S&P 500 추종. 저비용 대표,VOO
+VTI,Vanguard Total Stock Market,주식 - 미국 전체,equity,US,0.03,USD,미국 전체 시장. 중소형주 포함,VOO
+QQQ,Invesco QQQ Trust (Nasdaq-100),주식 - 미국 나스닥,equity,US,0.2,USD,나스닥 100. 기술주 편중,
+SPY,SPDR S&P 500,주식 - 미국 대형주,equity,US,0.09,USD,S&P 500. 거래량 최대,VOO
+VT,Vanguard Total World,주식 - 전세계,equity,Global,0.07,USD,전세계 분산. 한 종목 글로벌 노출,
+VEU,Vanguard FTSE All-World ex-US,주식 - 미국 제외,equity,Global,0.07,USD,미국 외 분산용,
+BND,Vanguard Total Bond Market,채권 - 미국 종합,bond,US,0.03,USD,미국 채권 종합. 저비용 채권 대표,
+TLT,iShares 20+ Year Treasury,채권 - 미국 장기국채,bond,US,0.15,USD,장기 국채. 디플레 헷지,TLT
+SHY,iShares 1-3 Year Treasury,채권 - 미국 단기국채,bond,US,0.15,USD,단기 국채. 현금 대용,
+GLD,SPDR Gold Shares,원자재 - 금,commodity,Global,0.4,USD,금 노출. 인플레 헷지,GLD
+069500.KS,KODEX 200,주식 - 한국 대형주,equity,KR,0.15,KRW,코스피 200 추종,
+360750.KS,TIGER 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무,VOO
+379800.KS,KODEX 미국나스닥100 TR,주식 - 미국 나스닥(원화),equity,US,0.07,KRW,나스닥 100 원화 노출,
+448290.KS,KODEX CD금리액티브(합성),현금성 - 한국,cash,KR,0.04,KRW,단기 금리. Cash 버킷 대용,
+305080.KS,ACE 미국30년국채액티브(H),채권 - 미국 장기국채(헷지),bond,US,0.3,KRW,장기 국채 환헷지,TLT
+130730.KS,KOSEF 국고채10년,채권 - 한국 국채,bond,KR,0.15,KRW,한국 10년 국채,
+XLU,Utilities Select Sector SPDR,섹터 - 미국 유틸리티,equity,US,0.09,USD,AI 데이터센터 전력 수요 베네피셔리,
+VPU,Vanguard Utilities,섹터 - 미국 유틸리티,equity,US,0.1,USD,XLU 대안 · 저보수,
+URA,Global X Uranium,섹터 - 우라늄/원자력,equity,Global,0.69,USD,AI 24/7 전력 -> 원자력 르네상스,
+URNM,Sprott Uranium Miners,섹터 - 우라늄 채굴,equity,Global,0.75,USD,순수 우라늄 채굴 노출,
+COPX,Global X Copper Miners,섹터 - 구리 채굴,equity,Global,0.65,USD,전력 그리드 + EV 구리 수요,COPX
+PAVE,Global X US Infrastructure Dev,섹터 - 미국 인프라,equity,US,0.47,USD,리쇼어링 + AI 인프라 + 전력망,
+ITA,iShares US Aerospace & Defense,섹터 - 미국 방산,equity,US,0.4,USD,글로벌 군비 증가 + 지정학,
+XAR,SPDR S&P Aerospace & Defense,섹터 - 미국 방산,equity,US,0.35,USD,ITA 대안,
+XLV,Health Care Select Sector SPDR,섹터 - 미국 헬스케어,equity,US,0.1,USD,고령화 + AI 신약. 사이클 방어,XLV
+SCHD,Schwab US Dividend Equity,주식 - 미국 배당가치,equity,US,0.06,USD,배당 + 가치주. 사이클 후반부 방어,SCHD
+VTV,Vanguard Value,주식 - 미국 대형 가치,equity,US,0.04,USD,성장주 정점 후 회전 베타,SCHD
+SOXX,iShares Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,AI 직접 인프라,SOXX
+SMH,VanEck Semiconductor,섹터 - 미국 반도체,equity,US,0.35,USD,SOXX 대안. NVIDIA 비중 큼,SOXX
+IRBO,iShares Robotics & AI,테마 - AI/로봇,equity,Global,0.47,USD,저보수 AI ETF,
+AIQ,Global X AI & Tech,테마 - AI/기술,equity,US,0.68,USD,빅테크 편중,
+INDA,iShares MSCI India,주식 - 인도,equity,IN,0.65,USD,신흥 메가 마켓 · 중국 대안,
+DXJ,WisdomTree Japan Hedged Equity,주식 - 일본(환헷지),equity,JP,0.48,USD,일본 정책 + 환율 + 거버넌스,
+314250.KS,KODEX 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.3,KRW,SCHD 가까운 한국 ETF. ISA 가능,SCHD
+091160.KS,KODEX 반도체,섹터 - 한국 반도체,equity,KR,0.45,KRW,한국 반도체 직접,SOXX
+381180.KS,TIGER 미국AI빅테크10 INDXX,테마 - AI 빅테크(원화),equity,US,0.49,KRW,미국 AI 빅테크 10종 원화,SOXX
+466950.KS,TIGER 글로벌AI액티브,테마 - AI 글로벌(원화),equity,Global,0.49,KRW,글로벌AI 액티브 운용. ★사용자편입(원래: KODEX 미국AI테크TOP10 469170.KS),SOXX
+469170.KS,KODEX 미국AI테크TOP10,테마 - AI 테크(원화),equity,US,0.21,KRW,저보수 AI ETF. ISA 가능,SOXX
+360200.KS,ACE 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무,VOO
+476760.KS,ACE 미국30년국채액티브,채권 - 미국 장기국채(원화),bond,US,0.3,KRW,장기 국채 액티브. 금리 하락기 헷지,TLT
+0072R0.KS,TIGER KRX금현물,원자재 - 금(원화),commodity,Global,0.35,KRW,금 현물 원화 노출. 인플레·지정학 헷지,GLD

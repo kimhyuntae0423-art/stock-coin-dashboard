@@ -955,13 +955,28 @@ if new_money > 0 and alloc["Total"] > 0:
         else:
             st.success(f"**{_phase_label}** — {_phase_desc}")
 
-        # KR 티커 → US 역할 alias: 사용자가 KR ETF 보유 시에도 현재비중 매핑
-        from scripts.etf_rotation import CORE_ROLES as _CORE_ROLES
-        for _r in _CORE_ROLES:
-            _kr = str(_r.get("kr") or "").upper()
-            _us = str(_r["us"]).upper()
-            if _kr and _kr in _held_map and _us not in _held_map:
-                _held_map[_us] = _held_map[_kr]
+        # 동일 역할 ETF 자동 인식: core_etfs rotation_role로 역할별 보유금액 합산
+        if "rotation_role" in core_etfs.columns and _held_map:
+            _role_map_dict = (
+                core_etfs[["ticker", "rotation_role"]]
+                .dropna(subset=["rotation_role"])
+                .assign(ticker=lambda d: d["ticker"].astype(str).str.upper(),
+                        rotation_role=lambda d: d["rotation_role"].astype(str).str.upper())
+                .query("rotation_role != '' and rotation_role != 'NAN'")
+                .set_index("ticker")["rotation_role"]
+                .to_dict()
+            )
+            _total_held = sum(v["보유금액"] for v in _held_map.values()) or 1.0
+            _role_amounts: dict = {}
+            for _t, _role in _role_map_dict.items():
+                if _t in _held_map:
+                    _role_amounts[_role] = _role_amounts.get(_role, 0.0) + _held_map[_t]["보유금액"]
+            for _role, _amt in _role_amounts.items():
+                _held_map[_role] = {
+                    "보유금액":    _amt,
+                    "수익률(%)":   0.0,
+                    "현재비중(%)": round(_amt / _total_held * 100, 1),
+                }
 
         _rot_df["현재비중(%)"] = _rot_df["US ETF"].apply(
             lambda t: round(_held_map.get(str(t).upper(), {}).get("현재비중(%)", 0.0), 1)
