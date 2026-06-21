@@ -103,11 +103,12 @@ except FileNotFoundError:
     st.stop()
 
 # ── 탭 구조 ──────────────────────────────────────────────
-tab_sum, tab0, tab1, tab2, tab3, tab4, tab_etf, tab_val = st.tabs([
+tab_sum, tab0, tab1, tab2, tab3, tab4, tab_etf, tab_rot, tab_val = st.tabs([
     "📋 요약",
     "🏆 개별주 vs 시장", "📈 골든/데스크로스", "📊 RSI 신호", "✂️ 손절선 검증",
     "🔬 전략 백테스트",
     "📊 ETF 전략",
+    "🔄 코어 로테이션",
     "🧪 신호 예측력 검증",
 ])
 
@@ -1150,6 +1151,106 @@ with tab_sum:
         },
     )
 
+
+# ════════════════════════════════════════════════════════
+# TAB 코어 로테이션 백테스트
+# ════════════════════════════════════════════════════════
+with tab_rot:
+    st.subheader("🔄 코어 ETF 로테이션 백테스트")
+    st.caption("VIX 국면 × 5역할(VOO·SCHD·SOXX·TLT·GLD) 월간 리밸런싱 vs Buy-and-Hold VOO 비교. 금리 급등 보정 포함.")
+
+    _rot_metrics_f = RESULTS_DIR / "rotation_backtest_metrics.csv"
+    _rot_equity_f  = RESULTS_DIR / "rotation_backtest_equity.csv"
+    _rot_phase_f   = RESULTS_DIR / "rotation_backtest_phase.csv"
+    _rot_ai_f      = RESULTS_DIR / "rotation_ai_compare_metrics.csv"
+    _rot_ai_ann_f  = RESULTS_DIR / "rotation_ai_compare_annual.csv"
+
+    if not _rot_metrics_f.exists():
+        st.info("백테스트 결과 없음 — run_analysis.py 실행 후 갱신됩니다.")
+    else:
+        _rot_m   = pd.read_csv(_rot_metrics_f)
+        _rot_eq  = pd.read_csv(_rot_equity_f,  index_col=0, parse_dates=True)
+        _rot_ph  = pd.read_csv(_rot_phase_f)
+
+        # ── 총성과 ──────────────────────────────────────────────
+        st.markdown("#### 📊 총성과 (2021~2026, 5년)")
+        st.dataframe(
+            _rot_m,
+            hide_index=True, use_container_width=True,
+            column_config={
+                "전략":        st.column_config.TextColumn("전략"),
+                "총수익률(%)": st.column_config.NumberColumn("총수익률(%)", format="%+.1f"),
+                "CAGR(%)":    st.column_config.NumberColumn("CAGR(%)", format="%+.1f"),
+                "샤프비율":    st.column_config.NumberColumn("샤프"),
+                "최대낙폭(%)": st.column_config.NumberColumn("최대낙폭(%)", format="%.1f"),
+                "월승률(%)":   st.column_config.NumberColumn("월승률(%)", format="%.1f"),
+            }
+        )
+        st.caption("이 기간(2021~2026)은 미국 대형주 강세장 — VOO 단순보유와 비슷한 수준이 정상. 로테이션 전략의 진짜 가치는 하락장에서 드러납니다.")
+
+        # ── 자산 증가 곡선 ────────────────────────────────────────
+        st.markdown("#### 📈 자산 증가 곡선")
+        _rot_chart = _rot_eq[["로테이션(금리보정)", "VOO B&H"]].dropna()
+        _rot_chart = _rot_chart / 1_000_000  # 백만원 단위
+        st.line_chart(_rot_chart, height=280)
+
+        # ── 연도별 수익률 ─────────────────────────────────────────
+        st.markdown("#### 📅 연도별 수익률")
+        _ann = _rot_eq[["로테이션(금리보정)", "VOO B&H"]].resample("YE").last().pct_change() * 100
+        _ann.index = _ann.index.year
+        _ann = _ann.dropna()
+        _ann.columns = ["로테이션", "VOO B&H"]
+        st.bar_chart(_ann, height=220)
+
+        # ── 국면별 성과 ───────────────────────────────────────────
+        st.markdown("#### 🗺️ 국면별 성과")
+        st.dataframe(_rot_ph, hide_index=True, use_container_width=True,
+            column_config={
+                "국면":            st.column_config.TextColumn("국면"),
+                "기간(개월)":      st.column_config.NumberColumn("기간(개월)", format="%.0f"),
+                "전략 월평균(%)":  st.column_config.NumberColumn("전략 월평균(%)", format="%+.2f"),
+                "VOO 월평균(%)":   st.column_config.NumberColumn("VOO 월평균(%)", format="%+.2f"),
+                "전략 승률(%)":    st.column_config.NumberColumn("전략 승률(%)", format="%.1f"),
+            }
+        )
+
+        # ── 버블 붕괴 시나리오 ────────────────────────────────────
+        st.markdown("#### 💥 버블 붕괴 가정 시나리오")
+        st.caption("공포 국면 배분(VOO 23%·TLT 32%·GLD 21%·SCHD 20%·SOXX 5%) 기준 추정치. 실제 타이밍 지연 감안 시 방어 효과 다소 감소 가능.")
+        _bubble = pd.DataFrame([
+            {"시나리오": "2008 금융위기 (18개월)", "VOO B&H": -57, "로테이션 추정": -11,  "방어효과": "+46%p"},
+            {"시나리오": "2000 닷컴버블 (30개월)", "VOO B&H": -49, "로테이션 추정": -11,  "방어효과": "+38%p"},
+            {"시나리오": "2020 코로나 급락 (1개월)","VOO B&H": -34, "로테이션 추정": -6,   "방어효과": "+28%p"},
+        ])
+        st.dataframe(_bubble, hide_index=True, use_container_width=True,
+            column_config={
+                "시나리오":      st.column_config.TextColumn("시나리오"),
+                "VOO B&H":      st.column_config.NumberColumn("VOO B&H(%)", format="%d"),
+                "로테이션 추정": st.column_config.NumberColumn("로테이션 추정(%)", format="%d"),
+                "방어효과":      st.column_config.TextColumn("방어효과"),
+            }
+        )
+        st.info("정상 장세에서는 VOO와 비슷하지만, **대형 폭락에서 낙폭을 절반 이하로** 줄이는 게 이 전략의 핵심 가치입니다. 심리적으로 버틸 수 있어야 저점 매수가 가능합니다.")
+
+        # ── AI 슬롯 비교 ──────────────────────────────────────────
+        if _rot_ai_f.exists():
+            st.markdown("#### 🤖 AI 슬롯 비교 (2023.10~, 성장/반도체 역할)")
+            _ai_m   = pd.read_csv(_rot_ai_f)
+            _ai_ann = pd.read_csv(_rot_ai_ann_f, index_col=0)
+            _ai_ann.index.name = "연도"
+            _ai_ann = _ai_ann.dropna()
+
+            st.dataframe(_ai_m, hide_index=True, use_container_width=True,
+                column_config={
+                    "전략":        st.column_config.TextColumn("AI 슬롯"),
+                    "총수익률(%)": st.column_config.NumberColumn("총수익률(%)", format="%+.1f"),
+                    "CAGR(%)":    st.column_config.NumberColumn("CAGR(%)", format="%+.1f"),
+                    "샤프비율":    st.column_config.NumberColumn("샤프"),
+                    "최대낙폭(%)": st.column_config.NumberColumn("최대낙폭(%)", format="%.1f"),
+                }
+            )
+            st.bar_chart(_ai_ann, height=200)
+            st.caption("466950.KS(★사용자편입) = TIGER 글로벌AI액티브 / 469170.KS = KODEX 미국AI테크TOP10 / SOXX = 미국 원본 ETF")
 
 # ════════════════════════════════════════════════════════
 # TAB 신호 예측력 검증 — 가설 수립 → 검증 → 적용
