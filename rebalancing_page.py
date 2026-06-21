@@ -1043,46 +1043,37 @@ if new_money > 0 and alloc["Total"] > 0:
             )
             _rot_df["차이(%p)"] = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).round(1)
 
-            # 세금 경고 (ISA 불가 역할)
-            _no_isa = _rot_df[_rot_df["계좌"] == "⚠️ 일반계좌"]["역할"].tolist()
-            if _no_isa:
-                st.warning(
-                    f"**{' · '.join(_no_isa)}** — 국내 ISA 대체 ETF 없음. "
-                    "외화증권계좌(일반)에서만 매수 가능. "
-                    "**양도소득세 22%** 적용 (연 수익 250만원 초과분). "
-                    "비중을 작게 유지하거나 과세 계획을 세워두세요."
-                )
-
-            # 8역할 테이블
+            # 전체 7역할 테이블 (COPX·XLV 포함 — 참고용)
             st.dataframe(
                 _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)"]],
                 hide_index=True, use_container_width=True,
                 column_config={
                     "역할":        st.column_config.TextColumn("역할"),
-                    "US ETF":     st.column_config.TextColumn("US ETF (일반/ISA)"),
+                    "US ETF":     st.column_config.TextColumn("US ETF"),
                     "ISA(원화)":  st.column_config.TextColumn("ISA 원화 ETF",
-                                   help="ISA 계좌에서 매수할 국내 상장 ETF. '—'이면 ISA 불가."),
-                    "계좌":        st.column_config.TextColumn("계좌 추천"),
+                                   help="ISA 계좌에서 매수할 국내 상장 ETF. '—'이면 ISA 불가(세금 22%)."),
+                    "계좌":        st.column_config.TextColumn("계좌"),
                     "기본비중(%)": st.column_config.NumberColumn("기본비중(%)", format="%.1f"),
                     "목표비중(%)": st.column_config.ProgressColumn(
                                    "목표비중(%)", format="%.1f%%", min_value=0, max_value=50),
                     "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
                     "차이(%p)":    st.column_config.NumberColumn("차이(%p)", format="%+.1f",
-                                   help="양수=추가 필요, 음수=비중 과다. ±3%p 이내는 유지"),
+                                   help="ISA 역할만 가이드 제공. 양수=추가 필요, 음수=비중 과다."),
                 },
             )
+            st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 표시 — ISA 불가(양도세 22%)로 리밸런싱 가이드 제외.")
 
-            # 리밸런싱 액션
-            _r_buy  = _rot_df[_rot_df["차이(%p)"] >  3].sort_values("차이(%p)", ascending=False)
-            _r_sell = _rot_df[_rot_df["차이(%p)"] < -3].sort_values("차이(%p)")
+            # 리밸런싱 액션 — guide=True(ISA 가능) 역할만
+            _guide_df = _rot_df[_rot_df["가이드"] == True].copy()
+            _r_buy  = _guide_df[_guide_df["차이(%p)"] >  3].sort_values("차이(%p)", ascending=False)
+            _r_sell = _guide_df[_guide_df["차이(%p)"] < -3].sort_values("차이(%p)")
             _rc1, _rc2 = st.columns(2)
             with _rc1:
                 if not _r_buy.empty:
                     st.success("**확대 필요** (+3%p↑)")
                     for _, _rr in _r_buy.iterrows():
-                        _isa_txt = _rr["ISA(원화)"].split("\n")[0] if _rr["ISA(원화)"] != "—" else ""
-                        _isa_suffix = f" / ISA: {_isa_txt}" if _isa_txt else " ⚠️ 일반계좌"
-                        st.markdown(f"- **{_rr['US ETF']}**{_isa_suffix} `+{_rr['차이(%p)']:.1f}%p`")
+                        _isa_txt = _rr["ISA(원화)"].split("\n")[0]
+                        st.markdown(f"- **{_rr['US ETF']}** / ISA: {_isa_txt} `+{_rr['차이(%p)']:.1f}%p`")
                 else:
                     st.success("확대 필요 역할 없음")
             with _rc2:
@@ -1093,21 +1084,22 @@ if new_money > 0 and alloc["Total"] > 0:
                 else:
                     st.warning("축소 필요 역할 없음")
 
+            # 금액 배분 — guide 역할만, 가이드비중(%) 기준으로 100% 재분배
             if core_buy > 0:
-                st.markdown("**이번 매수 배분**")
-                _rot_df["추천금액(원)"] = (_rot_df["목표비중(%)"] / 100 * core_buy).round(0)
+                st.markdown("**이번 매수 배분** (ISA 역할 기준)")
+                _guide_df["추천금액(원)"] = (_guide_df["가이드비중(%)"] / 100 * core_buy).round(0)
                 st.dataframe(
-                    _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "추천금액(원)"]],
+                    _guide_df[["역할", "US ETF", "ISA(원화)", "가이드비중(%)", "추천금액(원)"]],
                     hide_index=True, use_container_width=True,
                     column_config={
-                        "목표비중(%)":  st.column_config.NumberColumn(format="%.1f"),
-                        "추천금액(원)": st.column_config.NumberColumn(format="%,.0f"),
+                        "가이드비중(%)": st.column_config.NumberColumn("배분비중(%)", format="%.1f"),
+                        "추천금액(원)":  st.column_config.NumberColumn(format="%,.0f"),
                     },
                 )
 
             st.caption(
                 "목표비중 = VIX 경기국면 기본비중 × H15 상대저점 tilt(±20%).  "
-                "ISA 우선: 국내 상장 ETF로 세금 최소화. 차이(%p) ±3%p 이내는 리밸런싱 생략 권장."
+                "차이(%p) ±3%p 이내는 리밸런싱 생략 권장."
             )
 
     with st.expander("🎯 위성 매수 후보"):
