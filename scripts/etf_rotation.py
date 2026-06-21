@@ -174,16 +174,13 @@ def rotation_target(
     4단계: 전체·가이드 정규화
     """
     regime_key = (regime_dict or {}).get("key")
-    # regime_dict에 VIX가 있으면 그 값 사용 (일관성)
+    tlt_1m     = float((regime_dict or {}).get("tlt_1m") or 0)
     if regime_dict and regime_dict.get("vix") is not None:
         vix = float(regime_dict["vix"])
 
-    # 표시용 주 국면
     phase = get_phase(vix, spy_1m, spy_12m, regime_key=regime_key)
-    # 실제 비중 계산용 연성 혼합
     blend = _phase_blend(vix)
 
-    # H15 분위수 맵 (ticker → 전체 중 상위 비율 0~1)
     h15_pctile: dict[str, float] = {}
     if scored_df is not None and not scored_df.empty and "냉각지수" in scored_df.columns:
         _h = scored_df[["ticker", "냉각지수"]].dropna()
@@ -191,12 +188,20 @@ def rotation_target(
         for _, row in _h.iterrows():
             h15_pctile[str(row["ticker"])] = float((all_vals < row["냉각지수"]).mean())
 
+    # 금리 급등 보정 계수 (TLT 1M -3% 이하 시 작동)
+    rate_sev = min(max((-tlt_1m - 3) / 7, 0.0), 1.0) if tlt_1m < -3 else 0.0
+
     rows = []
     for role in CORE_ROLES:
-        # 블렌딩된 기본 비중
         base_w = sum(w * role["weights"].get(p, 0) for p, w in blend.items())
 
-        # H15 tilt: 역할 대표 ETF의 평균 냉각지수 분위
+        # 금리 급등 시 TLT 최대 40% 감소 / GLD 최대 50% 증가
+        if rate_sev > 0:
+            if role["us"] == "TLT":
+                base_w *= (1 - 0.40 * rate_sev)
+            elif role["us"] == "GLD":
+                base_w *= (1 + 0.50 * rate_sev)
+
         tickers = [role["us"]] + ([role["kr"]] if role["kr"] else [])
         pctiles = [h15_pctile[t] for t in tickers if t in h15_pctile]
         tilt = (0.8 + 0.4 * (sum(pctiles) / len(pctiles))) if pctiles else 1.0
