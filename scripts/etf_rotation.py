@@ -1,8 +1,10 @@
 """
 코어 ETF 로테이션 — 7역할 사이클 기반 배분.
 
-경기 국면(VIX + 시장 모멘텀)으로 역할별 비중을 결정하고,
-H15(상대적 저점)으로 미세 조정한다.
+개선사항:
+  1. 국면 판단 통일: market_regime() key를 1차로 사용, VIX는 보조
+  2. 연성 국면 전환: VIX ±2 버퍼존에서 인접 국면 가중 혼합
+     → VIX 25±2 구간에서 fear↔recovery 블렌딩, 절벽 제거
 
 guide=True  : ISA 계좌 매수 가능 → 리밸런싱 가이드 제공
 guide=False : ISA 불가(세금 이슈) → 테이블 표시만, 가이드 제외
@@ -10,7 +12,7 @@ guide=False : ISA 불가(세금 이슈) → 테이블 표시만, 가이드 제�
 from __future__ import annotations
 import pandas as pd
 
-# ── 7역할 코어 정의 (SHY 제거 — 현금은 외부 CMA/파킹으로 관리) ─────────────
+# ── 7역할 코어 정의 ─────────────────────────────────────────────────────────
 CORE_ROLES = [
     {
         "role":    "미국 주식",
@@ -92,15 +94,67 @@ PHASE_DESCS = {
     "overheated": "VIX<13 — 방어·배당 강화. 현금(CMA/파킹)으로 다음 조정 대비.",
 }
 
+# ── market_regime() key → 로테이션 국면 매핑 ────────────────────────────────
+# market_regime 5단계와 rotation 4단계를 일치시켜 두 시스템 통일
+_REGIME_TO_PHASE: dict[str, str] = {
+    "fear":       "fear",       # VIX>30 + 시장 하락 → 공포
+    "bear":       "recovery",   # risk-off이지만 패닉 수준 아님 → 회복 방어 배분
+    "mixed":      "expansion",  # 방향성 불명확 → 중립(확장) 유지
+    "bull":       "expansion",  # risk-on → 확장 배분
+    "complacent": "overheated", # VIX<13 저공포 → 과열 경계
+}
 
-def get_phase(vix: float, spy_1m: float, spy_12m: float) -> str:
-    """VIX + 모멘텀으로 경기 국면 판단."""
-    if vix > 25:
-        return "fear"
-    if vix < 13:
-        return "overheated"
-    if vix >= 20 or spy_1m < -3:
-        return "recovery"
+
+def _phase_blend(vix: float) -> dict[str, float]:
+    """
+    VIX 기반 연성 국면 혼합 비율 (각 임계치 ±2 VIX 버퍼).
+
+    예시:
+      VIX 27 → fear 100%
+      VIX 26 → fear 75%  + recovery 25%
+      VIX 25 → fear 50%  + recovery 50%
+      VIX 23 → fear 0%   + recovery 100%
+      VIX 21 → recovery 75% + expansion 25%
+
+    버퍼 없이 VIX 25.1 vs 24.9로 배분이 급변하는 절벽 제거.
+    """
+    TRANSITIONS = [
+        (25, "fear",      "recovery"),
+        (20, "recovery",  "expansion"),
+        (13, "expansion", "overheated"),
+    ]
+    B = 2.0
+    for thresh, upper, lower in TRANSITIONS:
+        lo, hi = thresh - B, thresh + B
+        if vix > hi:
+            continue
+        if vix >= lo:
+            alpha = (vix - lo) / (2 * B)
+            return {upper: alpha, lower: 1 - alpha}
+    # 순수 구간 (버퍼 밖)
+    if vix >= 25: return {"fear": 1.0}
+    if vix >= 20: return {"recovery": 1.0}
+    if vix >= 13: return {"expansion": 1.0}
+    return {"overheated": 1.0}
+
+
+def get_phase(
+    vix: float,
+    spy_1m: float = 0,
+    spy_12m: float = 0,
+    regime_key: str | None = None,
+) -> str:
+    """
+    국면 판단 — regime_key 우선, VIX fallback.
+
+    regime_key가 있으면 market_regime() 결과를 신뢰하고 그에 맞는 국면 반환.
+    없으면 기존 VIX + 모멘텀 로직 사용.
+    """
+    if regime_key and regime_key in _REGIME_TO_PHASE:
+        return _REGIME_TO_PHASE[regime_key]
+    if vix > 25: return "fear"
+    if vix < 13: return "overheated"
+    if vix >= 20 or spy_1m < -3: return "recovery"
     return "expansion"
 
 
@@ -109,21 +163,25 @@ def rotation_target(
     spy_1m: float,
     spy_12m: float,
     scored_df: pd.DataFrame | None = None,
+    regime_dict: dict | None = None,
 ) -> tuple[pd.DataFrame, str]:
     """
     7역할 코어 로테이션 목표 비중 계산.
 
-    1단계: VIX 국면으로 역할별 기본 비중 결정
-    2단계: H15(냉각지수)로 역할별 ±20% tilt
-    3단계: 전체 합계 100% 정규화 (display용)
-    4단계: guide=True 역할만 별도 100% 정규화 (가이드/금액배분용)
-
-    Returns
-    -------
-    df : 역할·목표비중·가이드비중·설명 등 포함 DataFrame
-    phase : "fear" | "recovery" | "expansion" | "overheated"
+    1단계: regime_dict.key → 주 국면 레이블 결정 (시스템 통일)
+    2단계: VIX 연성 블렌딩 → 국면 경계 완충 (절벽 제거)
+    3단계: H15(냉각지수) ±20% tilt
+    4단계: 전체·가이드 정규화
     """
-    phase = get_phase(vix, spy_1m, spy_12m)
+    regime_key = (regime_dict or {}).get("key")
+    # regime_dict에 VIX가 있으면 그 값 사용 (일관성)
+    if regime_dict and regime_dict.get("vix") is not None:
+        vix = float(regime_dict["vix"])
+
+    # 표시용 주 국면
+    phase = get_phase(vix, spy_1m, spy_12m, regime_key=regime_key)
+    # 실제 비중 계산용 연성 혼합
+    blend = _phase_blend(vix)
 
     # H15 분위수 맵 (ticker → 전체 중 상위 비율 0~1)
     h15_pctile: dict[str, float] = {}
@@ -135,33 +193,32 @@ def rotation_target(
 
     rows = []
     for role in CORE_ROLES:
-        base_w = role["weights"][phase]
+        # 블렌딩된 기본 비중
+        base_w = sum(w * role["weights"].get(p, 0) for p, w in blend.items())
 
-        # H15 tilt: 역할 대표 ETF (US + KR 중 있는 것의 평균)
+        # H15 tilt: 역할 대표 ETF의 평균 냉각지수 분위
         tickers = [role["us"]] + ([role["kr"]] if role["kr"] else [])
         pctiles = [h15_pctile[t] for t in tickers if t in h15_pctile]
         tilt = (0.8 + 0.4 * (sum(pctiles) / len(pctiles))) if pctiles else 1.0
 
         has_isa = role["kr"] is not None
         rows.append({
-            "역할":       role["role"],
-            "US ETF":    role["us"],
-            "ISA(원화)": f"{role['kr_name']}\n({role['kr']})" if has_isa else "—",
-            "계좌":       "✅ ISA 우선" if has_isa else "⚠️ 일반계좌",
-            "설명":       role["desc"],
-            "가이드":     role["guide"],
-            "_base_w":   base_w,
-            "_raw_w":    base_w * tilt,
+            "역할":        role["role"],
+            "US ETF":     role["us"],
+            "ISA(원화)":  f"{role['kr_name']}\n({role['kr']})" if has_isa else "—",
+            "계좌":        "✅ ISA 우선" if has_isa else "⚠️ 일반계좌",
+            "설명":        role["desc"],
+            "가이드":      role["guide"],
+            "_base_w":    base_w,
+            "_raw_w":     base_w * tilt,
         })
 
-    # 전체 정규화 (테이블 표시용 목표비중)
-    total_all = sum(r["_raw_w"] for r in rows)
-    # guide=True만 정규화 (리밸런싱 가이드·금액배분용)
+    total_all   = sum(r["_raw_w"] for r in rows)
     total_guide = sum(r["_raw_w"] for r in rows if r["가이드"])
 
     for r in rows:
-        r["목표비중(%)"]  = round(r["_raw_w"] / total_all * 100, 1)
-        r["기본비중(%)"]  = round(r["_base_w"] * 100, 1)
+        r["목표비중(%)"]   = round(r["_raw_w"] / total_all   * 100, 1)
+        r["기본비중(%)"]   = round(r["_base_w"]              * 100, 1)
         r["가이드비중(%)"] = round(r["_raw_w"] / total_guide * 100, 1) if r["가이드"] else None
 
     df = pd.DataFrame(rows).drop(columns=["_base_w", "_raw_w"])

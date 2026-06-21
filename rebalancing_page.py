@@ -942,7 +942,7 @@ if new_money > 0 and alloc["Total"] > 0:
     else:
         _spy_1m  = _e_regime.get("spy_1m",  0)
         _spy_12m = _e_regime.get("spy_12m", 0)
-        _rot_df, _phase = rotation_target(_vix or 18.0, _spy_1m, _spy_12m, _e_scored)
+        _rot_df, _phase = rotation_target(_vix or 18.0, _spy_1m, _spy_12m, _e_scored, regime_dict=_e_regime)
 
         _phase_label = PHASE_LABELS.get(_phase, _phase)
         _phase_desc  = PHASE_DESCS.get(_phase, "")
