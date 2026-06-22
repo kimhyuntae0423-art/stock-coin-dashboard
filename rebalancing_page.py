@@ -114,8 +114,8 @@ _i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
         if not summary.empty else {}
 
 # alloc 사전 계산 — Core-Satellite 슬라이더 세션 상태로 읽기 (첫 렌더 시 기본값 사용)
-target_core      = int(st.session_state.get("tgt_core_", 70))
-target_satellite = int(st.session_state.get("tgt_sat_",  20))
+target_core      = int(st.session_state.get("tgt_core_", 80))
+target_satellite = int(st.session_state.get("tgt_sat_",  10))
 target_cash      = int(st.session_state.get("tgt_cash_", 10))
 cash_amount      = float(st.session_state.get("cash_amt_", 0))
 new_money        = float(st.session_state.get("new_money_input", 1_000_000))
@@ -781,16 +781,16 @@ st.subheader("📊 배분 현황 & 리밸런싱")
 
 ic1, ic2, ic3, ic4, ic5 = st.columns(5)
 with ic1:
-    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=70, step=5, key="tgt_core_")
+    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=80, step=5, key="tgt_core_")
 with ic2:
-    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=20, step=5, key="tgt_sat_")
+    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_sat_")
 with ic3:
     target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
 with ic4:
     cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
                                   help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
 with ic5:
-    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=1_000_000,
+    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=2_000_000,
                                 step=100_000, key="new_money_input")
 
 if target_core + target_satellite + target_cash != 100:
