@@ -1111,8 +1111,17 @@ if new_money > 0 and alloc["Total"] > 0:
                 st.markdown(f"**{_step_label}**")
                 if _fund_desc:
                     st.caption(_fund_desc)
+                _buy_disp = _buy_guide[["역할", "US ETF", "ISA(원화)", "배분비중(%)", "추천금액(원)"]].copy()
+                _total_row = pd.DataFrame([{
+                    "역할": "합계",
+                    "US ETF": "",
+                    "ISA(원화)": "",
+                    "배분비중(%)": round(_buy_disp["배분비중(%)"].sum(), 1),
+                    "추천금액(원)": _buy_disp["추천금액(원)"].sum(),
+                }])
+                _buy_disp = pd.concat([_buy_disp, _total_row], ignore_index=True)
                 st.dataframe(
-                    _buy_guide[["역할", "US ETF", "ISA(원화)", "배분비중(%)", "추천금액(원)"]],
+                    _buy_disp,
                     hide_index=True, use_container_width=True,
                     column_config={
                         "배분비중(%)": st.column_config.NumberColumn("배분비중(%)", format="%.1f"),
