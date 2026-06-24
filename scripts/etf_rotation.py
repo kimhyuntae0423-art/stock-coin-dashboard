@@ -72,14 +72,14 @@ _ROLES_DEF: list[dict] = [
     {
         "role":    "원자재/구리",
         "us":      "COPX",
-        "desc":    "구리 채굴. 경기 확장 중기, 인프라·EV 수요. ISA 불가(세금 22%).",
-        "weights": {"fear": 0.05, "recovery": 0.09, "expansion": 0.10, "overheated": 0.03},
+        "desc":    "구리 채굴. 경기 확장 중기, 인프라·EV 수요. ISA 불가(세금 22%) — 배분 제외.",
+        "weights": {"fear": 0, "recovery": 0, "expansion": 0, "overheated": 0},
     },
     {
         "role":    "헬스케어/방어",
         "us":      "XLV",
-        "desc":    "미국 헬스케어. 사이클 무관 방어. 침체 전환기. ISA 불가(세금 22%).",
-        "weights": {"fear": 0.08, "recovery": 0.05, "expansion": 0.06, "overheated": 0.03},
+        "desc":    "미국 헬스케어. 사이클 무관 방어. 침체 전환기. ISA 불가(세금 22%) — 배분 제외.",
+        "weights": {"fear": 0, "recovery": 0, "expansion": 0, "overheated": 0},
     },
 ]
 
