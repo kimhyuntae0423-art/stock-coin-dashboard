@@ -1483,46 +1483,39 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             st.warning(f"종목명을 찾지 못해 저장 제외: {', '.join(_rb_skipped)}")
         st.rerun()
 
+_BAD_TICKERS = {"NONE", "NAN", ""}
+
 if _rb_hist:
     for _rb_ev in _rb_hist:
         _rb_ev_date  = _rb_ev.get("date", "")
         _rb_ev_phase = _rb_ev.get("phase", "")
         _rb_ev_memo  = _rb_ev.get("memo", "")
-        _rb_ev_buys  = _rb_ev.get("buys", [])
-        _rb_ev_sells = _rb_ev.get("sells", [])
+        _rb_ev_buys  = [b for b in _rb_ev.get("buys",  []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
+        _rb_ev_sells = [s for s in _rb_ev.get("sells", []) if str(s.get("ticker","")).upper() not in _BAD_TICKERS]
+
+        # 한 줄 컴팩트 렌더링
+        _rb_lines = [f"**{_rb_ev_date}** &nbsp; `{_rb_ev_phase}`"]
+        if _rb_ev_memo:
+            _rb_lines.append(f"<span style='color:gray;font-size:0.85em'>{_rb_ev_memo}</span>")
+        if _rb_ev_buys:
+            _parts = []
+            for _b in _rb_ev_buys:
+                _bname = NAMES.get(str(_b["ticker"]).upper(), _b["ticker"])
+                _bqty  = _b.get("qty") or _b.get("amount", "")
+                _bup   = f" @{_b['unit_price']:,.0f}원" if _b.get("unit_price") else ""
+                _parts.append(f"📈 {_bname} {_bqty}{_bup}")
+            _rb_lines.append("&nbsp;&nbsp;".join(_parts))
+        if _rb_ev_sells:
+            _parts = []
+            for _s in _rb_ev_sells:
+                _sname = NAMES.get(str(_s["ticker"]).upper(), _s["ticker"])
+                _sqty  = _s.get("qty") or _s.get("amount", "")
+                _sup   = f" @{_s['unit_price']:,.0f}원" if _s.get("unit_price") else ""
+                _parts.append(f"📉 {_sname} {_sqty}{_sup}")
+            _rb_lines.append("&nbsp;&nbsp;".join(_parts))
 
         with st.container(border=True):
-            _h1, _h2 = st.columns([2, 3])
-            _h1.markdown(f"**{_rb_ev_date}**  `{_rb_ev_phase}`")
-            if _rb_ev_memo:
-                _h2.caption(_rb_ev_memo)
-
-            if _rb_ev_buys or _rb_ev_sells:
-                _both = bool(_rb_ev_buys) and bool(_rb_ev_sells)
-                _t1, _t2 = (st.columns(2) if _both else (st, None))
-                _BAD_TICKERS = {"NONE", "NAN", ""}
-                if _rb_ev_buys:
-                    _tc = _t1
-                    _tc.markdown("**매수**")
-                    for _b in _rb_ev_buys:
-                        _btk = str(_b.get("ticker", "")).upper()
-                        if _btk in _BAD_TICKERS:
-                            continue
-                        _bname = NAMES.get(_btk, _btk)
-                        _bqty  = _b.get("qty") or _b.get("amount", "")
-                        _bup   = f'  @{_b["unit_price"]:,.0f}원' if _b.get("unit_price") else ""
-                        _tc.caption(f"📈 {_bname}  {_bqty}{_bup}")
-                if _rb_ev_sells:
-                    _tc = _t2 if _both else _t1
-                    _tc.markdown("**매도**")
-                    for _s in _rb_ev_sells:
-                        _stk = str(_s.get("ticker", "")).upper()
-                        if _stk in _BAD_TICKERS:
-                            continue
-                        _sname = NAMES.get(_stk, _stk)
-                        _sqty  = _s.get("qty") or _s.get("amount", "")
-                        _sup   = f'  @{_s["unit_price"]:,.0f}원' if _s.get("unit_price") else ""
-                        _tc.caption(f"📉 {_sname}  {_sqty}{_sup}")
+            st.markdown("  \n".join(_rb_lines), unsafe_allow_html=True)
 else:
     st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
 
