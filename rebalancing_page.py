@@ -1257,10 +1257,12 @@ _RB_GH_OWNER  = "kimhyuntae0423-art"
 _RB_GH_REPO   = "stock-coin-dashboard"
 
 def _rb_gh_token() -> str | None:
-    try:
-        return st.secrets["GH_PAT"]
-    except Exception:
-        return None
+    for key in ("GH_PAT", "GITHUB_TOKEN"):
+        try:
+            return st.secrets[key]
+        except Exception:
+            continue
+    return None
 
 def _rb_gh_get(path: str) -> tuple[str | None, str | None]:
     """GitHub API에서 파일 내용(str)과 SHA를 반환. 없으면 (None, None)."""
