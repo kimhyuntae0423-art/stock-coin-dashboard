@@ -145,6 +145,12 @@ st.caption("코어-위성 자산배분 추적 · 추천 분산 포트폴리오."
 
 holdings = _load_holdings()
 
+# ── CASH 먼저 추출 (person 필터 전) ───────────────────────────────
+# CASH 행은 person 필드 값에 무관하게 항상 집계
+_cash_mask  = holdings["ticker"].str.upper() == "CASH"
+cash_amount = float(holdings.loc[_cash_mask, "qty"].sum()) if _cash_mask.any() else 0.0
+holdings    = holdings[~_cash_mask].copy()
+
 all_persons = sorted([p for p in holdings["person"].unique() if p and str(p).strip()])
 selected_person = st.selectbox(
     "👤 계산 대상",
@@ -217,11 +223,6 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         else:
             st.warning("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.")
         st.rerun()
-
-# CASH 티커 → 보유 현금 자동 읽기 (holdings.csv SSOT)
-_cash_mask  = holdings["ticker"].str.upper() == "CASH"
-cash_amount = float(holdings.loc[_cash_mask, "qty"].sum()) if _cash_mask.any() else 0.0
-holdings    = holdings[~_cash_mask].copy()  # CASH는 자산 배분 계산에서 제외
 
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"

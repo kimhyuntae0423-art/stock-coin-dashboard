@@ -150,6 +150,10 @@ st.caption("장기 분할매수 포트폴리오 추적. 매수 내역 입력 →
 
 holdings = _load_holdings()
 
+# CASH 행은 person 필터 전에 전체 합산 (person 값 무관)
+_cash_all_mask = holdings["ticker"].str.upper() == "CASH"
+_cash_held_all = float(holdings.loc[_cash_all_mask, "qty"].sum()) if _cash_all_mask.any() else 0.0
+
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"
 coin_summary_file = RESULTS / "coin_summary.csv"
@@ -318,9 +322,9 @@ view = view[view["ticker"].astype(str).str.strip() != ""].copy()
 view["ticker"] = view["ticker"].astype(str).str.strip().str.upper()
 
 # CASH 행 분리: 별도 지표로 표시, 주식 분석에서 제외
-_cash_view  = view[view["ticker"] == "CASH"].copy()
-_cash_held  = float(_cash_view["qty"].sum()) if not _cash_view.empty else 0.0
-view        = view[view["ticker"] != "CASH"].copy()
+# (person 필터 후 view에 CASH가 없을 수 있으므로 상단에서 계산한 _cash_held_all 사용)
+_cash_held = _cash_held_all
+view       = view[view["ticker"] != "CASH"].copy()
 
 if not combined_summary.empty:
     view = view.merge(combined_summary[_MERGE_COLS], on="ticker", how="left")
