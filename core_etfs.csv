@@ -11,7 +11,7 @@ SHY,iShares 1-3 Year Treasury,채권 - 미국 단기국채,bond,US,0.15,USD,단�
 GLD,SPDR Gold Shares,원자재 - 금,commodity,Global,0.4,USD,금 노출. 인플레 헷지,GLD
 069500.KS,KODEX 200,주식 - 한국 대형주,equity,KR,0.15,KRW,코스피 200 추종,
 360750.KS,TIGER 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무,VOO
-379800.KS,KODEX 미국나스닥100 TR,주식 - 미국 나스닥(원화),equity,US,0.07,KRW,나스닥 100 원화 노출,
+379800.KS,KODEX 미국S&P500 TR,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 TR 원화 노출. 나스닥100은 379810.KS,VOO
 448290.KS,KODEX CD금리액티브(합성),현금성 - 한국,cash,KR,0.04,KRW,단기 금리. Cash 버킷 대용,
 305080.KS,ACE 미국30년국채액티브(H),채권 - 미국 장기국채(헷지),bond,US,0.3,KRW,장기 국채 환헷지,TLT
 130730.KS,KOSEF 국고채10년,채권 - 한국 국채,bond,KR,0.15,KRW,한국 10년 국채,
@@ -32,11 +32,11 @@ IRBO,iShares Robotics & AI,테마 - AI/로봇,equity,Global,0.47,USD,저보수 A
 AIQ,Global X AI & Tech,테마 - AI/기술,equity,US,0.68,USD,빅테크 편중,
 INDA,iShares MSCI India,주식 - 인도,equity,IN,0.65,USD,신흥 메가 마켓 · 중국 대안,
 DXJ,WisdomTree Japan Hedged Equity,주식 - 일본(환헷지),equity,JP,0.48,USD,일본 정책 + 환율 + 거버넌스,
-314250.KS,KODEX 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.3,KRW,SCHD 가까운 한국 ETF. ISA 가능,SCHD
+429000.KS,TIGER 미국S&P500배당귀족,주식 - 미국 배당귀족(원화),equity,US,0.25,KRW,S&P 500 Dividend Aristocrats 원화 노출. 25년+ 배당 증가 기업. ISA 가능,SCHD
 091160.KS,KODEX 반도체,섹터 - 한국 반도체,equity,KR,0.45,KRW,한국 반도체 직접,SOXX
-381180.KS,TIGER 미국AI빅테크10 INDXX,테마 - AI 빅테크(원화),equity,US,0.49,KRW,미국 AI 빅테크 10종 원화,SOXX
+381180.KS,TIGER 미국PHLX반도체나스닥,섹터 - 미국 반도체(원화),equity,US,0.49,KRW,미국 PHLX 반도체 지수 원화 노출. ※AI빅테크10은 490090.KS,SOXX
 466950.KS,TIGER 글로벌AI액티브,테마 - AI 글로벌(원화),equity,Global,0.49,KRW,글로벌AI 액티브 운용. ★사용자편입(원래: KODEX 미국AI테크TOP10 469170.KS),SOXX
-469170.KS,KODEX 미국AI테크TOP10,테마 - AI 테크(원화),equity,US,0.21,KRW,저보수 AI ETF. ISA 가능,SOXX
+
 360200.KS,ACE 미국S&P500,주식 - 미국 대형주(원화),equity,US,0.07,KRW,S&P 500 원화 노출. 환헷지 무,VOO
 476760.KS,ACE 미국30년국채액티브,채권 - 미국 장기국채(원화),bond,US,0.3,KRW,장기 국채 액티브. 금리 하락기 헷지,TLT
 0072R0.KS,TIGER KRX금현물,원자재 - 금(원화),commodity,Global,0.35,KRW,금 현물 원화 노출. 인플레·지정학 헷지,GLD
