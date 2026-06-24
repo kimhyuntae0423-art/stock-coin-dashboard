@@ -1502,21 +1502,24 @@ if _rb_hist:
                 _h2.caption(_rb_ev_memo)
 
             if _rb_ev_buys or _rb_ev_sells:
-                _t1, _t2 = st.columns(2)
+                _both = bool(_rb_ev_buys) and bool(_rb_ev_sells)
+                _t1, _t2 = (st.columns(2) if _both else (st, None))
                 if _rb_ev_buys:
-                    _t1.markdown("**매수**")
+                    _tc = _t1
+                    _tc.markdown("**매수**")
                     for _b in _rb_ev_buys:
                         _bname = NAMES.get(_b["ticker"], _b["ticker"])
                         _bqty  = _b.get("qty") or _b.get("amount", "")
                         _bup   = f'  @{_b["unit_price"]:,.0f}원' if _b.get("unit_price") else ""
-                        _t1.caption(f"📈 {_bname}  {_bqty}{_bup}")
+                        _tc.caption(f"📈 {_bname}  {_bqty}{_bup}")
                 if _rb_ev_sells:
-                    _t2.markdown("**매도**")
+                    _tc = _t2 if _both else _t1
+                    _tc.markdown("**매도**")
                     for _s in _rb_ev_sells:
                         _sname = NAMES.get(_s["ticker"], _s["ticker"])
                         _sqty  = _s.get("qty") or _s.get("amount", "")
                         _sup   = f'  @{_s["unit_price"]:,.0f}원' if _s.get("unit_price") else ""
-                        _t2.caption(f"📉 {_sname}  {_sqty}{_sup}")
+                        _tc.caption(f"📉 {_sname}  {_sqty}{_sup}")
 else:
     st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
 
