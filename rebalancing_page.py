@@ -1302,10 +1302,11 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
     )
     st.caption("거래 내역  (+  버튼으로 행 추가 · 체크 → Delete로 삭제)")
     _rb_trade_template = pd.DataFrame({
-        "구분":     ["매수"],
-        "종목명":   [""],
-        "티커":     [""],
-        "금액 (원)": [0],
+        "구분":       ["매수"],
+        "종목명":     [""],
+        "티커":       [""],
+        "수량":       [0.0],
+        "단가 (원)":  [0],
     })
     _rb_edited = st.data_editor(
         _rb_trade_template,
@@ -1323,27 +1324,37 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                 "티커", width="small",
                 help="직접 입력 또는 종목명 선택 시 자동 채워짐",
             ),
-            "금액 (원)": st.column_config.NumberColumn(
-                "금액 (원)", format="%,.0f", min_value=0, step=10000, width="medium",
+            "수량": st.column_config.NumberColumn(
+                "수량", format="%.4g", min_value=0, width="small",
+            ),
+            "단가 (원)": st.column_config.NumberColumn(
+                "단가 (원)", format="%,.0f", min_value=0, step=100, width="medium",
+                help="매수 단가. 입력하면 보유현황 평균단가 자동 갱신",
             ),
         },
         use_container_width=True,
     )
-    if st.button("💾 기록 저장", key="rb_save_btn", use_container_width=True):
+    if st.button("💾 기록 저장 + 보유현황 반영", key="rb_save_btn", use_container_width=True):
+        # 티커 자동 파생
         _rb_cp = _rb_edited.copy()
         for idx, row in _rb_cp.iterrows():
             if not str(row.get("티커", "")).strip() and str(row.get("종목명", "")).strip():
                 _rb_cp.at[idx, "티커"] = _rb_name_to_ticker.get(str(row["종목명"]), "")
+
         buys, sells = [], []
         for _, row in _rb_cp.iterrows():
             ticker = str(row.get("티커", "")).strip().upper()
-            if not ticker:
+            qty    = float(row.get("수량", 0) or 0)
+            price  = float(row.get("단가 (원)", 0) or 0)
+            if not ticker or qty <= 0:
                 continue
-            trade = {"ticker": ticker, "amount": int(row.get("금액 (원)", 0) or 0)}
+            trade = {"ticker": ticker, "qty": qty, "unit_price": price}
             if str(row.get("구분")) == "매도":
                 sells.append(trade)
             else:
                 buys.append(trade)
+
+        # rebalancing_history.json 저장
         _rb_hist.insert(0, {
             "date":  str(_rb_f_date),
             "phase": _rb_f_phase,
@@ -1352,7 +1363,44 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             "sells": sells,
         })
         _rb_save(_rb_hist)
-        st.success("저장됐습니다. git commit & push 하면 영구 보존됩니다.")
+
+        # holdings.csv 자동 반영
+        _h_path = ROOT / "holdings.csv"
+        if _h_path.exists() and (buys or sells):
+            _hdf = pd.read_csv(_h_path)
+            _hdf["ticker"]    = _hdf["ticker"].astype(str).str.strip()
+            _hdf["qty"]       = pd.to_numeric(_hdf["qty"],       errors="coerce").fillna(0)
+            _hdf["buy_price"] = pd.to_numeric(_hdf["buy_price"], errors="coerce").fillna(0)
+
+            for _t in buys:
+                _tk, _qty, _up = _t["ticker"], _t["qty"], _t["unit_price"]
+                _mask = _hdf["ticker"] == _tk
+                if _mask.any():
+                    _oq = float(_hdf.loc[_mask, "qty"].iloc[0])
+                    _op = float(_hdf.loc[_mask, "buy_price"].iloc[0])
+                    _nq = _oq + _qty
+                    _np = (_oq * _op + _qty * _up) / _nq if _up > 0 and _nq > 0 else _op
+                    _hdf.loc[_mask, "qty"]       = _nq
+                    _hdf.loc[_mask, "buy_price"] = round(_np, 2)
+                else:
+                    _new_row = {c: "" for c in _hdf.columns}
+                    _new_row.update({"ticker": _tk, "qty": _qty, "buy_price": _up,
+                                     "buy_date": str(_rb_f_date), "notes": "", "person": ""})
+                    _hdf = pd.concat([_hdf, pd.DataFrame([_new_row])], ignore_index=True)
+
+            for _t in sells:
+                _tk, _qty = _t["ticker"], _t["qty"]
+                _mask = _hdf["ticker"] == _tk
+                if _mask.any():
+                    _nq = max(0, float(_hdf.loc[_mask, "qty"].iloc[0]) - _qty)
+                    if _nq == 0:
+                        _hdf = _hdf[~_mask].reset_index(drop=True)
+                    else:
+                        _hdf.loc[_mask, "qty"] = _nq
+
+            _hdf.to_csv(_h_path, index=False)
+
+        st.success("저장됐습니다. 보유현황도 반영됐어요. git commit & push 하면 영구 보존됩니다.")
         st.rerun()
 
 if _rb_hist:
@@ -1375,14 +1423,16 @@ if _rb_hist:
                     _t1.markdown("**매수**")
                     for _b in _rb_ev_buys:
                         _bname = NAMES.get(_b["ticker"], _b["ticker"])
-                        _bamt  = f'  {_b["amount"]:,.0f}원' if _b.get("amount") else ""
-                        _t1.caption(f"📈 {_bname}{_bamt}")
+                        _bqty  = _b.get("qty") or _b.get("amount", "")
+                        _bup   = f'  @{_b["unit_price"]:,.0f}원' if _b.get("unit_price") else ""
+                        _t1.caption(f"📈 {_bname}  {_bqty}{_bup}")
                 if _rb_ev_sells:
                     _t2.markdown("**매도**")
                     for _s in _rb_ev_sells:
                         _sname = NAMES.get(_s["ticker"], _s["ticker"])
-                        _samt  = f'  {_s["amount"]:,.0f}원' if _s.get("amount") else ""
-                        _t2.caption(f"📉 {_sname}{_samt}")
+                        _sqty  = _s.get("qty") or _s.get("amount", "")
+                        _sup   = f'  @{_s["unit_price"]:,.0f}원' if _s.get("unit_price") else ""
+                        _t2.caption(f"📉 {_sname}  {_sqty}{_sup}")
 else:
     st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
 
