@@ -1403,10 +1403,10 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
 
         buys, sells = [], []
         for _, row in _rb_cp.iterrows():
-            ticker = str(row.get("티커", "")).strip().upper()
+            ticker = str(row.get("티커", "") or "").strip().upper()
             qty    = float(row.get("수량", 0) or 0)
             price  = float(row.get("단가 (원)", 0) or 0)
-            if not ticker or qty <= 0:
+            if not ticker or ticker in ("NONE", "NAN") or qty <= 0:
                 continue
             trade = {"ticker": ticker, "qty": qty, "unit_price": price}
             if str(row.get("구분")) == "매도":
@@ -1504,11 +1504,15 @@ if _rb_hist:
             if _rb_ev_buys or _rb_ev_sells:
                 _both = bool(_rb_ev_buys) and bool(_rb_ev_sells)
                 _t1, _t2 = (st.columns(2) if _both else (st, None))
+                _BAD_TICKERS = {"NONE", "NAN", ""}
                 if _rb_ev_buys:
                     _tc = _t1
                     _tc.markdown("**매수**")
                     for _b in _rb_ev_buys:
-                        _bname = NAMES.get(_b["ticker"], _b["ticker"])
+                        _btk = str(_b.get("ticker", "")).upper()
+                        if _btk in _BAD_TICKERS:
+                            continue
+                        _bname = NAMES.get(_btk, _btk)
                         _bqty  = _b.get("qty") or _b.get("amount", "")
                         _bup   = f'  @{_b["unit_price"]:,.0f}원' if _b.get("unit_price") else ""
                         _tc.caption(f"📈 {_bname}  {_bqty}{_bup}")
@@ -1516,7 +1520,10 @@ if _rb_hist:
                     _tc = _t2 if _both else _t1
                     _tc.markdown("**매도**")
                     for _s in _rb_ev_sells:
-                        _sname = NAMES.get(_s["ticker"], _s["ticker"])
+                        _stk = str(_s.get("ticker", "")).upper()
+                        if _stk in _BAD_TICKERS:
+                            continue
+                        _sname = NAMES.get(_stk, _stk)
                         _sqty  = _s.get("qty") or _s.get("amount", "")
                         _sup   = f'  @{_s["unit_price"]:,.0f}원' if _s.get("unit_price") else ""
                         _tc.caption(f"📉 {_sname}  {_sqty}{_sup}")
