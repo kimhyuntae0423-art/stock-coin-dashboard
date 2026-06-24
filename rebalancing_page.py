@@ -57,6 +57,7 @@ def _load_holdings() -> pd.DataFrame:
 
 
 NAMES = _load_names()
+NAMES["CASH"] = "💰 보유 현금"   # 현금 특수 행
 
 # =====================================================================
 # 공통 데이터 로드
@@ -75,6 +76,69 @@ selected_person = st.selectbox(
 )
 if selected_person != "전체":
     holdings = holdings[holdings["person"] == selected_person].copy()
+
+# ── 보유 내역 편집 ────────────────────────────────────────────────
+_he_all_names      = [""] + sorted(set(NAMES.values()))
+_he_name_to_ticker = {v: k for k, v in NAMES.items()}
+
+with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)", expanded=False):
+    st.caption("새 행은 + 버튼으로 추가. 행 삭제는 체크박스 → Delete. 💰 보유 현금은 종목명에서 선택.")
+    _he_full   = _load_holdings()
+    if selected_person != "전체":
+        _he_show   = _he_full[_he_full["person"] == selected_person].copy()
+        _he_others = _he_full[_he_full["person"] != selected_person].copy()
+    else:
+        _he_show   = _he_full.copy()
+        _he_others = pd.DataFrame()
+
+    _he_show.insert(0, "종목명", _he_show["ticker"].map(NAMES).fillna(""))
+    _he_show = _he_show.rename(columns={
+        "ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"
+    })
+    _he_disp_cols = [c for c in ["종목명","티커","수량","매수가","이름","메모"] if c in _he_show.columns]
+
+    _he_edited = st.data_editor(
+        _he_show[_he_disp_cols],
+        num_rows="dynamic",
+        key=f"rebal_he_{selected_person}",
+        column_config={
+            "종목명": st.column_config.SelectboxColumn("종목명", options=_he_all_names, width="medium"),
+            "티커":   st.column_config.TextColumn("티커", width="small"),
+            "수량":   st.column_config.NumberColumn("수량", format="%.8g"),
+            "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
+            "이름":   st.column_config.TextColumn("이름", width="small"),
+            "메모":   st.column_config.TextColumn("메모"),
+        },
+        use_container_width=True,
+    )
+
+    if st.button("💾 저장 & GitHub 반영", key="rebal_he_save", type="primary", use_container_width=True):
+        _he_cp = _he_edited.copy()
+        for _hi, _hr in _he_cp.iterrows():
+            _htk = str(_hr.get("티커", "") or "").strip()
+            _hnm = str(_hr.get("종목명", "") or "").strip()
+            if not _htk and _hnm:
+                _he_cp.at[_hi, "티커"] = _he_name_to_ticker.get(_hnm, "")
+
+        _he_cur = _he_cp.drop(columns=["종목명"]).rename(columns={
+            "티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"
+        })
+        _he_cur["buy_date"] = ""
+        _he_cur = _he_cur[
+            _he_cur["ticker"].astype(str).str.strip().str.upper().isin(["", "NONE", "NAN"]) == False
+        ]
+        if selected_person != "전체" and not _he_others.empty:
+            _he_save = pd.concat([_he_cur, _he_others], ignore_index=True)
+        else:
+            _he_save = _he_cur.copy()
+
+        (ROOT / "holdings.csv").write_text(_he_save.to_csv(index=False), encoding="utf-8")
+        if _rb_gh_token():
+            _he_ok = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
+            st.success("✅ GitHub에 저장됐습니다." if _he_ok else "⚠️ 로컬 저장됨. GitHub 저장 실패.")
+        else:
+            st.warning("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.")
+        st.rerun()
 
 # CASH 티커 → 보유 현금 자동 읽기 (holdings.csv SSOT)
 _cash_mask  = holdings["ticker"].str.upper() == "CASH"
