@@ -67,6 +67,9 @@ if CORE_ETF_FILE.exists():
         _NAME_TO_TICKER[str(_r["name"])] = str(_r["ticker"])
     _ETF_TICKERS = set(_etf_df["ticker"].astype(str).str.strip())
 _NAME_TO_TICKER.update({v: k for k, v in NAMES.items()})
+# 현금 특수 행: ticker=CASH, name=💰 보유 현금
+NAMES["CASH"] = "💰 보유 현금"
+_NAME_TO_TICKER["💰 보유 현금"] = "CASH"
 _ALL_NAMES = [""] + sorted(_NAME_TO_TICKER.keys())
 
 
@@ -313,6 +316,11 @@ st.subheader(f"📊 현황 + 매도 신호{label_suffix}")
 view = holdings_view.dropna(subset=["ticker"]).copy()
 view = view[view["ticker"].astype(str).str.strip() != ""].copy()
 view["ticker"] = view["ticker"].astype(str).str.strip().str.upper()
+
+# CASH 행 분리: 별도 지표로 표시, 주식 분석에서 제외
+_cash_view  = view[view["ticker"] == "CASH"].copy()
+_cash_held  = float(_cash_view["qty"].sum()) if not _cash_view.empty else 0.0
+view        = view[view["ticker"] != "CASH"].copy()
 
 if not combined_summary.empty:
     view = view.merge(combined_summary[_MERGE_COLS], on="ticker", how="left")
@@ -566,13 +574,14 @@ total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
 n_sell = view["신호"].str.contains("🔴", na=False).sum()
 n_warn = view["신호"].str.contains("🟠", na=False).sum()
 
-k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 k1.metric("보유 종목 수", f"{len(view)}")
 k2.metric("총 원금", f"{total_cost:,.0f}원")
 k3.metric("총 손익", f"{total_pnl:+,.0f}원", delta=f"{total_pnl_pct:+.2f}%")
 k4.metric("총 평가금액", f"{total_value:,.0f}원")
-k5.metric("🔴 매도 검토", f"{n_sell}")
-k6.metric("USD/KRW", f"{_get_usdkrw():,.0f}", help="코인 현재가 환산에 사용된 환율 (1시간 캐시)")
+k5.metric("💵 보유 현금", f"{_cash_held:,.0f}원", help="보유 내역 편집에서 CASH 행으로 관리")
+k6.metric("🔴 매도 검토", f"{n_sell}")
+k7.metric("USD/KRW", f"{_get_usdkrw():,.0f}", help="코인 현재가 환산에 사용된 환율 (1시간 캐시)")
 
 if n_sell > 0:
     sell_tickers = view[view["신호"].str.contains("🔴", na=False)]["ticker"].tolist()

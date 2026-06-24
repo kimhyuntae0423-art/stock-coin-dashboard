@@ -76,6 +76,11 @@ selected_person = st.selectbox(
 if selected_person != "전체":
     holdings = holdings[holdings["person"] == selected_person].copy()
 
+# CASH 티커 → 보유 현금 자동 읽기 (holdings.csv SSOT)
+_cash_mask  = holdings["ticker"].str.upper() == "CASH"
+cash_amount = float(holdings.loc[_cash_mask, "qty"].sum()) if _cash_mask.any() else 0.0
+holdings    = holdings[~_cash_mask].copy()  # CASH는 자산 배분 계산에서 제외
+
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
@@ -117,7 +122,7 @@ _i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
 target_core      = int(st.session_state.get("tgt_core_", 80))
 target_satellite = int(st.session_state.get("tgt_sat_",  10))
 target_cash      = int(st.session_state.get("tgt_cash_", 10))
-cash_amount      = float(st.session_state.get("cash_amt_", 0))
+# cash_amount는 위에서 holdings.csv CASH 티커로 읽음 (세션 상태 불필요)
 new_money        = float(st.session_state.get("new_money_input", 1_000_000))
 
 view_alloc = holdings.copy()
@@ -779,7 +784,7 @@ if not holdings.empty:
 st.divider()
 st.subheader("📊 배분 현황 & 리밸런싱")
 
-ic1, ic2, ic3, ic4, ic5 = st.columns(5)
+ic1, ic2, ic3, ic4 = st.columns(4)
 with ic1:
     target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=80, step=5, key="tgt_core_")
 with ic2:
@@ -787,11 +792,9 @@ with ic2:
 with ic3:
     target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
 with ic4:
-    cash_amount = st.number_input("💵 현재 보유 현금", min_value=0, value=0, step=100_000,
-                                  help="MMF, CMA 등 즉시 사용 가능한 현금.", key="cash_amt_")
-with ic5:
     new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=2_000_000,
                                 step=100_000, key="new_money_input")
+st.caption(f"💵 현재 보유 현금: **{cash_amount:,.0f}원** — 보유종목 탭에서 CASH 행으로 관리")
 
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
@@ -1360,6 +1363,13 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         placeholder="예: VIX 27 진입 — 채권·금 비중 확대, 성장주 축소",
         height=70,
     )
+    _rb_f_cash = st.number_input(
+        "리밸런싱 후 보유 현금 (원)",
+        min_value=0, step=100_000,
+        value=int(cash_amount),
+        help="거래 후 남은 현금. 저장 시 보유현황 CASH 자동 갱신.",
+        key="rb_f_cash",
+    )
     st.caption("거래 내역  (+  버튼으로 행 추가 · 체크 → Delete로 삭제)")
     _rb_trade_template = pd.DataFrame({
         "구분":       ["매수"],
@@ -1423,8 +1433,9 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         _h_path     = ROOT / "holdings.csv"
         _h_updated  = False
         _h_gh_ok    = False
+        _rb_f_cash_val = int(st.session_state.get("rb_f_cash", 0) or 0)
 
-        if buys or sells:
+        if buys or sells or _rb_f_cash_val >= 0:
             # GitHub에서 최신 holdings 로드 (Cloud 환경)
             _h_raw, _ = _rb_gh_get("holdings.csv")
             if _h_raw:
@@ -1464,6 +1475,21 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                         _hdf = _hdf[~_mask].reset_index(drop=True)
                     else:
                         _hdf.loc[_mask, "qty"] = _nq
+
+            # CASH 행 갱신 (리밸런싱 후 현금 보유액으로 덮어쓰기)
+            _cash_person = selected_person if selected_person != "전체" else (
+                all_persons[0] if all_persons else ""
+            )
+            _cash_hmask = (_hdf["ticker"].str.upper() == "CASH") & \
+                          (_hdf["person"].astype(str) == _cash_person)
+            if _cash_hmask.any():
+                _hdf.loc[_cash_hmask, "qty"] = _rb_f_cash_val
+            else:
+                _cash_row = {c: "" for c in _hdf.columns}
+                _cash_row.update({"ticker": "CASH", "qty": _rb_f_cash_val,
+                                  "buy_price": 1, "notes": "보유 현금",
+                                  "person": _cash_person})
+                _hdf = pd.concat([_hdf, pd.DataFrame([_cash_row])], ignore_index=True)
 
             _hdf.to_csv(_h_path, index=False)
             _h_updated = True
