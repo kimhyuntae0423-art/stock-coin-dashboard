@@ -1253,8 +1253,56 @@ import json as _rb_json
 from datetime import date as _rb_date_cls
 
 _RB_HIST_FILE = ROOT / "rebalancing_history.json"
+_RB_GH_OWNER  = "kimhyuntae0423-art"
+_RB_GH_REPO   = "stock-coin-dashboard"
+
+def _rb_gh_token() -> str | None:
+    try:
+        return st.secrets["GH_PAT"]
+    except Exception:
+        return None
+
+def _rb_gh_get(path: str) -> tuple[str | None, str | None]:
+    """GitHub API에서 파일 내용(str)과 SHA를 반환. 없으면 (None, None)."""
+    import requests as _req
+    token = _rb_gh_token()
+    if not token:
+        return None, None
+    url  = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
+    resp = _req.get(url, headers={"Authorization": f"token {token}"}, timeout=10)
+    if resp.status_code != 200:
+        return None, None
+    data    = resp.json()
+    import base64 as _b64
+    content = _b64.b64decode(data["content"]).decode("utf-8")
+    return content, data.get("sha")
+
+def _rb_gh_put(path: str, content_str: str, msg: str) -> bool:
+    """GitHub API로 파일 커밋. 성공하면 True."""
+    import requests as _req, base64 as _b64
+    token = _rb_gh_token()
+    if not token:
+        return False
+    url      = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
+    _, sha   = _rb_gh_get(path)
+    payload  = {
+        "message": msg,
+        "content": _b64.b64encode(content_str.encode("utf-8")).decode("ascii"),
+    }
+    if sha:
+        payload["sha"] = sha
+    resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
+    return resp.status_code in (200, 201)
 
 def _rb_load() -> list:
+    # Streamlit Cloud: GitHub에서 로드
+    content, _ = _rb_gh_get("rebalancing_history.json")
+    if content is not None:
+        try:
+            return _rb_json.loads(content)
+        except Exception:
+            return []
+    # 로컬 fallback
     if _RB_HIST_FILE.exists():
         try:
             return _rb_json.loads(_RB_HIST_FILE.read_text(encoding="utf-8"))
@@ -1262,12 +1310,22 @@ def _rb_load() -> list:
             return []
     return []
 
-def _rb_save(hist: list) -> None:
-    _RB_HIST_FILE.write_text(
-        _rb_json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+def _rb_save(hist: list) -> bool:
+    """이력 저장. GitHub API 성공 시 True, 로컬만 저장 시 False."""
+    json_str = _rb_json.dumps(hist, ensure_ascii=False, indent=2)
+    # GitHub API 우선
+    if _rb_gh_token():
+        ok = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
+        if ok:
+            return True
+    # 로컬 fallback
+    _RB_HIST_FILE.write_text(json_str, encoding="utf-8")
+    return False
 
-_rb_hist = _rb_load()
+# 세션 내 캐시 (GitHub API 매 렌더마다 호출 방지)
+if "_rb_hist" not in st.session_state:
+    st.session_state["_rb_hist"] = _rb_load()
+_rb_hist = st.session_state["_rb_hist"]
 _rb_all_names      = sorted(set(NAMES.values()))
 _rb_name_to_ticker = {v: k for k, v in NAMES.items()}
 
@@ -1362,12 +1420,25 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             "buys":  buys,
             "sells": sells,
         })
-        _rb_save(_rb_hist)
+        _rb_saved_to_gh = _rb_save(_rb_hist)
+        st.session_state["_rb_hist"] = _rb_hist  # 세션 캐시 갱신
 
-        # holdings.csv 자동 반영
-        _h_path = ROOT / "holdings.csv"
-        if _h_path.exists() and (buys or sells):
-            _hdf = pd.read_csv(_h_path)
+        # holdings 처리
+        _h_path     = ROOT / "holdings.csv"
+        _h_updated  = False
+        _h_gh_ok    = False
+
+        if buys or sells:
+            # GitHub에서 최신 holdings 로드 (Cloud 환경)
+            _h_raw, _ = _rb_gh_get("holdings.csv")
+            if _h_raw:
+                import io as _io
+                _hdf = pd.read_csv(_io.StringIO(_h_raw))
+            elif _h_path.exists():
+                _hdf = pd.read_csv(_h_path)
+            else:
+                _hdf = pd.DataFrame(columns=["ticker","qty","buy_price","buy_date","notes","person"])
+
             _hdf["ticker"]    = _hdf["ticker"].astype(str).str.strip()
             _hdf["qty"]       = pd.to_numeric(_hdf["qty"],       errors="coerce").fillna(0)
             _hdf["buy_price"] = pd.to_numeric(_hdf["buy_price"], errors="coerce").fillna(0)
@@ -1399,8 +1470,19 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                         _hdf.loc[_mask, "qty"] = _nq
 
             _hdf.to_csv(_h_path, index=False)
+            _h_updated = True
 
-        st.success("저장됐습니다. 보유현황도 반영됐어요. git commit & push 하면 영구 보존됩니다.")
+            if _rb_gh_token():
+                _h_csv_str = _hdf.to_csv(index=False)
+                _h_gh_ok   = _rb_gh_put("holdings.csv", _h_csv_str, "data: 리밸런싱 후 보유현황 갱신")
+
+        if _rb_saved_to_gh:
+            _msg = "✅ GitHub에 저장됐습니다."
+            if _h_updated:
+                _msg += " 보유현황도 반영됐어요." if _h_gh_ok else " (보유현황 GitHub 저장 실패 — 로컬만 반영)"
+        else:
+            _msg = "⚠️ GH_PAT 미설정 — 로컬에만 저장됐습니다. Streamlit Cloud 재시작 시 사라집니다."
+        st.success(_msg)
         st.rerun()
 
 if _rb_hist:
