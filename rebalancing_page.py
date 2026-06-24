@@ -1267,66 +1267,80 @@ def _rb_save(hist: list) -> None:
         _rb_json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-def _rb_parse_trades(raw: str) -> list:
-    """'476760.KS 500000' 줄바꿈 구분 파싱."""
-    trades = []
-    for line in raw.strip().splitlines():
-        parts = line.strip().split()
-        if not parts:
-            continue
-        ticker = parts[0].upper()
-        try:
-            amount = int(parts[1].replace(",", "")) if len(parts) > 1 else 0
-        except ValueError:
-            amount = 0
-        trades.append({"ticker": ticker, "amount": amount})
-    return trades
-
 _rb_hist = _rb_load()
+_rb_all_names   = sorted(set(NAMES.values()))
+_rb_name_to_ticker = {v: k for k, v in NAMES.items()}
 
 st.subheader("📋 리밸런싱 이력")
 
 with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
-    with st.form("rb_add_form", clear_on_submit=True):
-        _f1, _f2 = st.columns(2)
-        _rb_f_date  = _f1.date_input("날짜", value=_rb_date_cls.today(), key="rb_f_date")
-        _rb_f_phase = _f2.selectbox(
-            "리밸런싱 국면",
-            ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"],
-            key="rb_f_phase",
-        )
-        _rb_f_memo = st.text_area(
-            "메모 (왜 리밸런싱했는지)",
-            key="rb_f_memo",
-            placeholder="예: VIX 27 진입 — 채권·금 비중 확대, 성장주 축소",
-            height=80,
-        )
-        _b1, _b2 = st.columns(2)
-        _rb_f_buys = _b1.text_area(
-            "매수 내역  (티커 금액, 줄바꿈 구분)",
-            key="rb_f_buys",
-            placeholder="476760.KS 500000\n0072R0.KS 300000",
-            height=100,
-        )
-        _rb_f_sells = _b2.text_area(
-            "매도 내역  (티커 금액, 줄바꿈 구분)",
-            key="rb_f_sells",
-            placeholder="466950.KS 300000",
-            height=100,
-        )
-        _rb_f_submit = st.form_submit_button("기록 저장", use_container_width=True)
-        if _rb_f_submit:
-            _new_entry = {
-                "date":  str(_rb_f_date),
-                "phase": _rb_f_phase,
-                "memo":  _rb_f_memo.strip(),
-                "buys":  _rb_parse_trades(_rb_f_buys),
-                "sells": _rb_parse_trades(_rb_f_sells),
-            }
-            _rb_hist.insert(0, _new_entry)
-            _rb_save(_rb_hist)
-            st.success("저장됐습니다. git commit & push 하면 영구 보존됩니다.")
-            st.rerun()
+    _f1, _f2 = st.columns(2)
+    _rb_f_date  = _f1.date_input("날짜", value=_rb_date_cls.today(), key="rb_f_date")
+    _rb_f_phase = _f2.selectbox(
+        "리밸런싱 국면",
+        ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"],
+        key="rb_f_phase",
+    )
+    _rb_f_memo = st.text_area(
+        "메모 (왜 리밸런싱했는지)",
+        key="rb_f_memo",
+        placeholder="예: VIX 27 진입 — 채권·금 비중 확대, 성장주 축소",
+        height=70,
+    )
+    st.caption("거래 내역  (+  버튼으로 행 추가 · 체크 → Delete로 삭제)")
+    _rb_trade_template = pd.DataFrame({
+        "구분":     ["매수"],
+        "종목명":   [""],
+        "티커":     [""],
+        "금액 (원)": [0],
+    })
+    _rb_edited = st.data_editor(
+        _rb_trade_template,
+        num_rows="dynamic",
+        key="rb_trades_editor",
+        column_config={
+            "구분": st.column_config.SelectboxColumn(
+                "구분", options=["매수", "매도"], width="small", required=True,
+            ),
+            "종목명": st.column_config.SelectboxColumn(
+                "종목명", options=_rb_all_names, width="medium",
+                help="목록에서 선택하면 저장 시 티커 자동 입력",
+            ),
+            "티커": st.column_config.TextColumn(
+                "티커", width="small",
+                help="직접 입력 또는 종목명 선택 시 자동 채워짐",
+            ),
+            "금액 (원)": st.column_config.NumberColumn(
+                "금액 (원)", format="%,.0f", min_value=0, step=10000, width="medium",
+            ),
+        },
+        use_container_width=True,
+    )
+    if st.button("💾 기록 저장", key="rb_save_btn", use_container_width=True):
+        _rb_cp = _rb_edited.copy()
+        for idx, row in _rb_cp.iterrows():
+            if not str(row.get("티커", "")).strip() and str(row.get("종목명", "")).strip():
+                _rb_cp.at[idx, "티커"] = _rb_name_to_ticker.get(str(row["종목명"]), "")
+        buys, sells = [], []
+        for _, row in _rb_cp.iterrows():
+            ticker = str(row.get("티커", "")).strip().upper()
+            if not ticker:
+                continue
+            trade = {"ticker": ticker, "amount": int(row.get("금액 (원)", 0) or 0)}
+            if str(row.get("구분")) == "매도":
+                sells.append(trade)
+            else:
+                buys.append(trade)
+        _rb_hist.insert(0, {
+            "date":  str(_rb_f_date),
+            "phase": _rb_f_phase,
+            "memo":  _rb_f_memo.strip(),
+            "buys":  buys,
+            "sells": sells,
+        })
+        _rb_save(_rb_hist)
+        st.success("저장됐습니다. git commit & push 하면 영구 보존됩니다.")
+        st.rerun()
 
 if _rb_hist:
     for _rb_ev in _rb_hist:
