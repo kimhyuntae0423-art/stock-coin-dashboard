@@ -1268,8 +1268,15 @@ def _rb_save(hist: list) -> None:
     )
 
 _rb_hist = _rb_load()
-_rb_all_names   = sorted(set(NAMES.values()))
+_rb_all_names      = sorted(set(NAMES.values()))
 _rb_name_to_ticker = {v: k for k, v in NAMES.items()}
+
+_rb_phase_options = ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"]
+_rb_phase_map = {"fear": "공포 🔥", "recovery": "회복 🌱", "expansion": "확장 🚀", "overheated": "과열 🌡️"}
+try:
+    _rb_default_phase = _rb_phase_map.get(_phase, "기타")
+except NameError:
+    _rb_default_phase = "기타"
 
 st.subheader("📋 리밸런싱 이력")
 
@@ -1278,7 +1285,8 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
     _rb_f_date  = _f1.date_input("날짜", value=_rb_date_cls.today(), key="rb_f_date")
     _rb_f_phase = _f2.selectbox(
         "리밸런싱 국면",
-        ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"],
+        _rb_phase_options,
+        index=_rb_phase_options.index(_rb_default_phase),
         key="rb_f_phase",
     )
     _rb_f_memo = st.text_area(
