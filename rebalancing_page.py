@@ -1364,7 +1364,6 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
     _rb_trade_template = pd.DataFrame({
         "구분":       ["매수"],
         "종목명":     [""],
-        "티커":       [""],
         "수량":       [0.0],
         "단가 (원)":  [0],
     })
@@ -1377,12 +1376,8 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                 "구분", options=["매수", "매도"], width="small", required=True,
             ),
             "종목명": st.column_config.SelectboxColumn(
-                "종목명", options=_rb_all_names, width="medium",
-                help="목록에서 선택하면 저장 시 티커 자동 입력",
-            ),
-            "티커": st.column_config.TextColumn(
-                "티커", width="small",
-                help="직접 입력 또는 종목명 선택 시 자동 채워짐",
+                "종목명", options=_rb_all_names, width="large",
+                help="목록에서 선택 — 저장 시 티커 자동 연계",
             ),
             "수량": st.column_config.NumberColumn(
                 "수량", format="%.4g", min_value=0, width="small",
@@ -1395,18 +1390,17 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         use_container_width=True,
     )
     if st.button("💾 기록 저장 + 보유현황 반영", key="rb_save_btn", use_container_width=True):
-        # 티커 자동 파생
-        _rb_cp = _rb_edited.copy()
-        for idx, row in _rb_cp.iterrows():
-            if not str(row.get("티커", "")).strip() and str(row.get("종목명", "")).strip():
-                _rb_cp.at[idx, "티커"] = _rb_name_to_ticker.get(str(row["종목명"]), "")
-
         buys, sells = [], []
-        for _, row in _rb_cp.iterrows():
-            ticker = str(row.get("티커", "") or "").strip().upper()
+        _rb_skipped = []
+        for _, row in _rb_edited.iterrows():
+            name   = str(row.get("종목명", "") or "").strip()
             qty    = float(row.get("수량", 0) or 0)
             price  = float(row.get("단가 (원)", 0) or 0)
-            if not ticker or ticker in ("NONE", "NAN") or qty <= 0:
+            ticker = _rb_name_to_ticker.get(name, "")
+            if not name or qty <= 0:
+                continue
+            if not ticker:
+                _rb_skipped.append(name)
                 continue
             trade = {"ticker": ticker, "qty": qty, "unit_price": price}
             if str(row.get("구분")) == "매도":
@@ -1485,6 +1479,8 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         else:
             _msg = "⚠️ GH_PAT 미설정 — 로컬에만 저장됐습니다. Streamlit Cloud 재시작 시 사라집니다."
         st.success(_msg)
+        if _rb_skipped:
+            st.warning(f"종목명을 찾지 못해 저장 제외: {', '.join(_rb_skipped)}")
         st.rerun()
 
 if _rb_hist:
