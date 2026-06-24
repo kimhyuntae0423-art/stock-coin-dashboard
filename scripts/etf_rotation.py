@@ -26,8 +26,8 @@ CORE_ROLES = [
     {
         "role":    "배당/가치",
         "us":      "SCHD",
-        "kr":      "314250.KS",
-        "kr_name": "KODEX 미국배당귀족",
+        "kr":      "429000.KS",
+        "kr_name": "TIGER 미국S&P500배당귀족",
         "desc":    "고배당 우량주. 확장 후반~침체 전환기 방어.",
         "guide":   True,
         "weights": {"fear": 0.17, "recovery": 0.09, "expansion": 0.11, "overheated": 0.23},
