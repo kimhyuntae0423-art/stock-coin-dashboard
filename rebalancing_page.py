@@ -1248,6 +1248,118 @@ elif new_money > 0:
 
 st.divider()
 
+# ── 리밸런싱 이력 트래커 ──────────────────────────────────────────
+import json as _rb_json
+from datetime import date as _rb_date_cls
+
+_RB_HIST_FILE = ROOT / "rebalancing_history.json"
+
+def _rb_load() -> list:
+    if _RB_HIST_FILE.exists():
+        try:
+            return _rb_json.loads(_RB_HIST_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _rb_save(hist: list) -> None:
+    _RB_HIST_FILE.write_text(
+        _rb_json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+def _rb_parse_trades(raw: str) -> list:
+    """'476760.KS 500000' 줄바꿈 구분 파싱."""
+    trades = []
+    for line in raw.strip().splitlines():
+        parts = line.strip().split()
+        if not parts:
+            continue
+        ticker = parts[0].upper()
+        try:
+            amount = int(parts[1].replace(",", "")) if len(parts) > 1 else 0
+        except ValueError:
+            amount = 0
+        trades.append({"ticker": ticker, "amount": amount})
+    return trades
+
+_rb_hist = _rb_load()
+
+st.subheader("📋 리밸런싱 이력")
+
+with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
+    with st.form("rb_add_form", clear_on_submit=True):
+        _f1, _f2 = st.columns(2)
+        _rb_f_date  = _f1.date_input("날짜", value=_rb_date_cls.today(), key="rb_f_date")
+        _rb_f_phase = _f2.selectbox(
+            "리밸런싱 국면",
+            ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"],
+            key="rb_f_phase",
+        )
+        _rb_f_memo = st.text_area(
+            "메모 (왜 리밸런싱했는지)",
+            key="rb_f_memo",
+            placeholder="예: VIX 27 진입 — 채권·금 비중 확대, 성장주 축소",
+            height=80,
+        )
+        _b1, _b2 = st.columns(2)
+        _rb_f_buys = _b1.text_area(
+            "매수 내역  (티커 금액, 줄바꿈 구분)",
+            key="rb_f_buys",
+            placeholder="476760.KS 500000\n0072R0.KS 300000",
+            height=100,
+        )
+        _rb_f_sells = _b2.text_area(
+            "매도 내역  (티커 금액, 줄바꿈 구분)",
+            key="rb_f_sells",
+            placeholder="466950.KS 300000",
+            height=100,
+        )
+        _rb_f_submit = st.form_submit_button("기록 저장", use_container_width=True)
+        if _rb_f_submit:
+            _new_entry = {
+                "date":  str(_rb_f_date),
+                "phase": _rb_f_phase,
+                "memo":  _rb_f_memo.strip(),
+                "buys":  _rb_parse_trades(_rb_f_buys),
+                "sells": _rb_parse_trades(_rb_f_sells),
+            }
+            _rb_hist.insert(0, _new_entry)
+            _rb_save(_rb_hist)
+            st.success("저장됐습니다. git commit & push 하면 영구 보존됩니다.")
+            st.rerun()
+
+if _rb_hist:
+    for _rb_ev in _rb_hist:
+        _rb_ev_date  = _rb_ev.get("date", "")
+        _rb_ev_phase = _rb_ev.get("phase", "")
+        _rb_ev_memo  = _rb_ev.get("memo", "")
+        _rb_ev_buys  = _rb_ev.get("buys", [])
+        _rb_ev_sells = _rb_ev.get("sells", [])
+
+        with st.container(border=True):
+            _h1, _h2 = st.columns([2, 3])
+            _h1.markdown(f"**{_rb_ev_date}**  `{_rb_ev_phase}`")
+            if _rb_ev_memo:
+                _h2.caption(_rb_ev_memo)
+
+            if _rb_ev_buys or _rb_ev_sells:
+                _t1, _t2 = st.columns(2)
+                if _rb_ev_buys:
+                    _t1.markdown("**매수**")
+                    for _b in _rb_ev_buys:
+                        _bname = NAMES.get(_b["ticker"], _b["ticker"])
+                        _bamt  = f'  {_b["amount"]:,.0f}원' if _b.get("amount") else ""
+                        _t1.caption(f"📈 {_bname}{_bamt}")
+                if _rb_ev_sells:
+                    _t2.markdown("**매도**")
+                    for _s in _rb_ev_sells:
+                        _sname = NAMES.get(_s["ticker"], _s["ticker"])
+                        _samt  = f'  {_s["amount"]:,.0f}원' if _s.get("amount") else ""
+                        _t2.caption(f"📉 {_sname}{_samt}")
+else:
+    st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
+
+st.divider()
 
 # ── 코인 비중 축소 로드맵 ─────────────────────────────────────────
 st.subheader("🚪 코인 비중 축소 로드맵")
