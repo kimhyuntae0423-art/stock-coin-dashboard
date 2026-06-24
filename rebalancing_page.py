@@ -59,6 +59,84 @@ def _load_holdings() -> pd.DataFrame:
 NAMES = _load_names()
 NAMES["CASH"] = "💰 보유 현금"   # 현금 특수 행
 
+# ── GitHub API 헬퍼 (파일 상단 정의 — 보유내역 편집·이력 트래커 공용) ──
+import json as _rb_json
+
+_RB_GH_OWNER = "kimhyuntae0423-art"
+_RB_GH_REPO  = "stock-coin-dashboard"
+
+
+def _rb_gh_token() -> str | None:
+    for key in ("GH_PAT", "GITHUB_TOKEN"):
+        try:
+            return st.secrets[key]
+        except Exception:
+            continue
+    return None
+
+
+def _rb_gh_get(path: str) -> tuple[str | None, str | None]:
+    """GitHub API에서 파일 내용(str)과 SHA를 반환. 없으면 (None, None)."""
+    import requests as _req
+    token = _rb_gh_token()
+    if not token:
+        return None, None
+    url  = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
+    resp = _req.get(url, headers={"Authorization": f"token {token}"}, timeout=10)
+    if resp.status_code != 200:
+        return None, None
+    data = resp.json()
+    import base64 as _b64
+    content = _b64.b64decode(data["content"]).decode("utf-8")
+    return content, data.get("sha")
+
+
+def _rb_gh_put(path: str, content_str: str, msg: str) -> bool:
+    """GitHub API로 파일 커밋. 성공하면 True."""
+    import requests as _req, base64 as _b64
+    token = _rb_gh_token()
+    if not token:
+        return False
+    url     = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
+    _, sha  = _rb_gh_get(path)
+    payload = {
+        "message": msg,
+        "content": _b64.b64encode(content_str.encode("utf-8")).decode("ascii"),
+    }
+    if sha:
+        payload["sha"] = sha
+    resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
+    return resp.status_code in (200, 201)
+
+
+def _rb_load() -> list:
+    content, _ = _rb_gh_get("rebalancing_history.json")
+    if content is not None:
+        try:
+            return _rb_json.loads(content)
+        except Exception:
+            return []
+    if _RB_HIST_FILE_PATH.exists():
+        try:
+            return _rb_json.loads(_RB_HIST_FILE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _rb_save(hist: list) -> bool:
+    """이력 저장. GitHub API 성공 시 True, 로컬만 저장 시 False."""
+    json_str = _rb_json.dumps(hist, ensure_ascii=False, indent=2)
+    if _rb_gh_token():
+        ok = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
+        if ok:
+            return True
+    _RB_HIST_FILE_PATH.write_text(json_str, encoding="utf-8")
+    return False
+
+
+_RB_HIST_FILE_PATH = ROOT / "rebalancing_history.json"
+
 # =====================================================================
 # 공통 데이터 로드
 # =====================================================================
@@ -1316,80 +1394,7 @@ elif new_money > 0:
 st.divider()
 
 # ── 리밸런싱 이력 트래커 ──────────────────────────────────────────
-import json as _rb_json
 from datetime import date as _rb_date_cls
-
-_RB_HIST_FILE = ROOT / "rebalancing_history.json"
-_RB_GH_OWNER  = "kimhyuntae0423-art"
-_RB_GH_REPO   = "stock-coin-dashboard"
-
-def _rb_gh_token() -> str | None:
-    for key in ("GH_PAT", "GITHUB_TOKEN"):
-        try:
-            return st.secrets[key]
-        except Exception:
-            continue
-    return None
-
-def _rb_gh_get(path: str) -> tuple[str | None, str | None]:
-    """GitHub API에서 파일 내용(str)과 SHA를 반환. 없으면 (None, None)."""
-    import requests as _req
-    token = _rb_gh_token()
-    if not token:
-        return None, None
-    url  = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
-    resp = _req.get(url, headers={"Authorization": f"token {token}"}, timeout=10)
-    if resp.status_code != 200:
-        return None, None
-    data    = resp.json()
-    import base64 as _b64
-    content = _b64.b64decode(data["content"]).decode("utf-8")
-    return content, data.get("sha")
-
-def _rb_gh_put(path: str, content_str: str, msg: str) -> bool:
-    """GitHub API로 파일 커밋. 성공하면 True."""
-    import requests as _req, base64 as _b64
-    token = _rb_gh_token()
-    if not token:
-        return False
-    url      = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
-    _, sha   = _rb_gh_get(path)
-    payload  = {
-        "message": msg,
-        "content": _b64.b64encode(content_str.encode("utf-8")).decode("ascii"),
-    }
-    if sha:
-        payload["sha"] = sha
-    resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
-    return resp.status_code in (200, 201)
-
-def _rb_load() -> list:
-    # Streamlit Cloud: GitHub에서 로드
-    content, _ = _rb_gh_get("rebalancing_history.json")
-    if content is not None:
-        try:
-            return _rb_json.loads(content)
-        except Exception:
-            return []
-    # 로컬 fallback
-    if _RB_HIST_FILE.exists():
-        try:
-            return _rb_json.loads(_RB_HIST_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-    return []
-
-def _rb_save(hist: list) -> bool:
-    """이력 저장. GitHub API 성공 시 True, 로컬만 저장 시 False."""
-    json_str = _rb_json.dumps(hist, ensure_ascii=False, indent=2)
-    # GitHub API 우선
-    if _rb_gh_token():
-        ok = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
-        if ok:
-            return True
-    # 로컬 fallback
-    _RB_HIST_FILE.write_text(json_str, encoding="utf-8")
-    return False
 
 # 세션 내 캐시 (GitHub API 매 렌더마다 호출 방지)
 if "_rb_hist" not in st.session_state:
