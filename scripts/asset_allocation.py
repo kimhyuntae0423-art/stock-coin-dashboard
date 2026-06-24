@@ -8,11 +8,8 @@ Core-Satellite 자산 배분 추적 + 리밸런싱 액션 생성.
 - 정기 리밸런싱 (목표 ±5%p 이탈 시): 연 0.5~1% 추가 알파 (Vanguard 연구)
 """
 from __future__ import annotations
-from pathlib import Path
 import pandas as pd
-
-ROOT = Path(__file__).resolve().parent.parent
-CORE_ETF_FILE = ROOT / "core_etfs.csv"
+from scripts.config import ROOT, CORE_ETF_FILE
 
 # 순서 중요: 더 구체적인 규칙(SCHD, GLD, TLT)이 VOO보다 먼저 평가됨
 _ROLE_RULES: list[tuple[str, list[str]]] = [

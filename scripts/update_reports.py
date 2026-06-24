@@ -6,14 +6,11 @@ ANTHROPIC_API_KEY 환경변수 없으면 스킵.
 import json
 import os
 import time
-from pathlib import Path
 from datetime import date
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
-HOLDINGS_FILE = ROOT / "holdings.csv"
-RESULTS = ROOT / "results"
+from scripts.config import ROOT, HOLDINGS_FILE, RESULTS_DIR as RESULTS
 REPORTS_FILE = ROOT / "asset_reports.json"
 
 

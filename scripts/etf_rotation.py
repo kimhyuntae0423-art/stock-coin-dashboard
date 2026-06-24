@@ -13,10 +13,7 @@ guide=False : ISA 불가(세금 이슈) → 테이블 표시만, 가이드 제�
 """
 from __future__ import annotations
 import pandas as pd
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parent.parent
-_CORE_ETF_FILE = _ROOT / "core_etfs.csv"
+from scripts.config import CORE_ETF_FILE as _CORE_ETF_FILE
 
 
 def _load_isa_preferred() -> dict[str, tuple[str, str]]:
