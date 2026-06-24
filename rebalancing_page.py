@@ -1278,6 +1278,11 @@ try:
 except NameError:
     _rb_default_phase = "기타"
 
+# 실제 국면이 바뀌었을 때만 selectbox 초기값 갱신 (세션 캐시 방지)
+if st.session_state.get("_rb_tracked_phase") != _rb_default_phase:
+    st.session_state["rb_f_phase"] = _rb_default_phase
+    st.session_state["_rb_tracked_phase"] = _rb_default_phase
+
 st.subheader("📋 리밸런싱 이력")
 
 with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
