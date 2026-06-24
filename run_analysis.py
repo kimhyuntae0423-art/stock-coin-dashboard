@@ -187,10 +187,61 @@ def run_h15_strategy():
         print(f"  → H15 전략 백테스트 실패: {e}")
 
 
+def validate_ticker_consistency():
+    """4개 데이터 소스 간 KR ETF 티커 일관성 검증.
+
+    검증 대상:
+      A. etf_rotation.py의 ISA 추천 티커가 core_etfs.csv에 존재하는지
+      B. etf_rotation.py의 ISA 추천 티커가 tickers.csv(수집 대상)에 존재하는지
+      C. core_etfs.csv의 isa_preferred ETF가 tickers.csv에 존재하는지
+    """
+    base = Path(__file__).resolve().parent
+    issues = []
+
+    tickers_path = base / "tickers.csv"
+    tickers_set: set[str] = set()
+    if tickers_path.exists():
+        for line in tickers_path.read_text(encoding="utf-8").splitlines():
+            t = line.strip()
+            if t and not t.startswith("#"):
+                tickers_set.add(t)
+
+    core_path = base / "core_etfs.csv"
+    if not core_path.exists():
+        print("[경고] core_etfs.csv 없음 — 검증 스킵")
+        return
+    core_df = pd.read_csv(core_path)
+    core_tickers = set(core_df["ticker"].astype(str))
+
+    from scripts.etf_rotation import CORE_ROLES
+    rotation_kr = {r["kr"] for r in CORE_ROLES if r.get("kr")}
+
+    for t in sorted(rotation_kr):
+        if t not in core_tickers:
+            issues.append(f"  etf_rotation.py ISA '{t}' → core_etfs.csv에 없음")
+        if t not in tickers_set:
+            issues.append(f"  etf_rotation.py ISA '{t}' → tickers.csv에 없음 (수집 대상 누락)")
+
+    if "isa_preferred" in core_df.columns:
+        preferred = core_df[core_df["isa_preferred"].astype(str).str.lower() == "true"]
+        for _, row in preferred.iterrows():
+            t = str(row["ticker"])
+            if t not in tickers_set:
+                issues.append(f"  core_etfs isa_preferred '{t}' → tickers.csv에 없음 (수집 대상 누락)")
+
+    if issues:
+        print("\n[경고] 티커 일관성 검증 실패:")
+        for msg in issues:
+            print(msg)
+        raise SystemExit(f"\n검증 실패 {len(issues)}건 -- core_etfs.csv 또는 tickers.csv 수정 필요")
+    print("[OK] 티커 일관성 검증 통과")
+
+
 def run_all():
     base = Path(__file__).resolve().parent
     out_dir = base / "results"
     out_dir.mkdir(exist_ok=True)
+    validate_ticker_consistency()
     run_stocks(out_dir)
     run_coins(out_dir)
     run_factor_backtests()

@@ -33,6 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: 티커 일관성 검증
+        run: python -c "from run_analysis import validate_ticker_consistency; validate_ticker_consistency()"
+
       - name: 분석 실행
         run: python run_analysis.py
 

@@ -5,80 +5,106 @@
   1. 국면 판단 통일: market_regime() key를 1차로 사용, VIX는 보조
   2. 연성 국면 전환: VIX ±2 버퍼존에서 인접 국면 가중 혼합
      → VIX 25±2 구간에서 fear↔recovery 블렌딩, 절벽 제거
+  3. ISA ETF(kr/kr_name/guide)를 core_etfs.csv에서 동적 로드
+     → 단일 진실 공급원(SSOT): isa_preferred=True 행이 ISA 추천 ETF
 
 guide=True  : ISA 계좌 매수 가능 → 리밸런싱 가이드 제공
 guide=False : ISA 불가(세금 이슈) → 테이블 표시만, 가이드 제외
 """
 from __future__ import annotations
 import pandas as pd
+from pathlib import Path
 
-# ── 7역할 코어 정의 ─────────────────────────────────────────────────────────
-CORE_ROLES = [
+_ROOT = Path(__file__).resolve().parent.parent
+_CORE_ETF_FILE = _ROOT / "core_etfs.csv"
+
+
+def _load_isa_preferred() -> dict[str, tuple[str, str]]:
+    """core_etfs.csv에서 isa_preferred=True인 행을 {rotation_role: (ticker, name)} 형태로 반환."""
+    try:
+        df = pd.read_csv(_CORE_ETF_FILE)
+        if "isa_preferred" not in df.columns or "rotation_role" not in df.columns:
+            return {}
+        mask = df["isa_preferred"].astype(str).str.strip().str.lower() == "true"
+        result: dict[str, tuple[str, str]] = {}
+        for _, row in df[mask].iterrows():
+            role = str(row.get("rotation_role", "")).strip()
+            ticker = str(row.get("ticker", "")).strip()
+            name = str(row.get("name", "")).strip()
+            if role and ticker:
+                result[role] = (ticker, name)
+        return result
+    except Exception:
+        return {}
+
+
+_ISA_ETF = _load_isa_preferred()
+
+# ── 7역할 역할 정의 (전략 가중치만 — ISA 매핑은 core_etfs.csv에서 주입) ────
+_ROLES_DEF: list[dict] = [
     {
         "role":    "미국 주식",
         "us":      "VOO",
-        "kr":      "360750.KS",
-        "kr_name": "TIGER 미국S&P500",
         "desc":    "S&P500 지수 추종. 경기 회복~확장기 핵심.",
-        "guide":   True,
         "weights": {"fear": 0.20, "recovery": 0.35, "expansion": 0.42, "overheated": 0.32},
     },
     {
         "role":    "배당/가치",
         "us":      "SCHD",
-        "kr":      "429000.KS",
-        "kr_name": "TIGER 미국S&P500배당귀족",
         "desc":    "고배당 우량주. 확장 후반~침체 전환기 방어.",
-        "guide":   True,
         "weights": {"fear": 0.17, "recovery": 0.09, "expansion": 0.11, "overheated": 0.23},
     },
     {
         "role":    "성장/반도체",
         "us":      "SOXX",
-        "kr":      "466950.KS",
-        "kr_name": "TIGER 글로벌AI액티브 ★사용자편입",
-        # 원래 추천: KODEX 미국AI테크TOP10 (469170.KS) — 추세 확인 후 복귀 가능
         "desc":    "반도체·AI 성장. 회복 초기~확장 중기 집중.",
-        "guide":   True,
         "weights": {"fear": 0.04, "recovery": 0.15, "expansion": 0.17, "overheated": 0.09},
     },
     {
         "role":    "장기 국채",
         "us":      "TLT",
-        "kr":      "476760.KS",
-        "kr_name": "ACE 미국30년국채액티브",
         "desc":    "미국 20년 국채. 공포·금리 하락기 최고.",
-        "guide":   True,
         "weights": {"fear": 0.28, "recovery": 0.16, "expansion": 0.07, "overheated": 0.17},
     },
     {
         "role":    "금",
         "us":      "GLD",
-        "kr":      "0072R0.KS",
-        "kr_name": "TIGER KRX금현물",
         "desc":    "금 현물. 인플레·지정학·공포 헷지.",
-        "guide":   True,
         "weights": {"fear": 0.18, "recovery": 0.11, "expansion": 0.07, "overheated": 0.13},
     },
     {
         "role":    "원자재/구리",
         "us":      "COPX",
-        "kr":      None,
-        "kr_name": None,
         "desc":    "구리 채굴. 경기 확장 중기, 인프라·EV 수요. ISA 불가(세금 22%).",
-        "guide":   False,
         "weights": {"fear": 0.05, "recovery": 0.09, "expansion": 0.10, "overheated": 0.03},
     },
     {
         "role":    "헬스케어/방어",
         "us":      "XLV",
-        "kr":      None,
-        "kr_name": None,
         "desc":    "미국 헬스케어. 사이클 무관 방어. 침체 전환기. ISA 불가(세금 22%).",
-        "guide":   False,
         "weights": {"fear": 0.08, "recovery": 0.05, "expansion": 0.06, "overheated": 0.03},
     },
 ]
+
+
+def _build_core_roles(
+    roles_def: list[dict],
+    isa_map: dict[str, tuple[str, str]],
+) -> list[dict]:
+    """각 역할에 ISA ETF 정보(kr/kr_name/guide)를 core_etfs.csv에서 동적으로 주입."""
+    result = []
+    for r in roles_def:
+        entry = dict(r)
+        isa = isa_map.get(r["us"])
+        entry["kr"]      = isa[0] if isa else None
+        entry["kr_name"] = isa[1] if isa else None
+        entry["guide"]   = isa is not None
+        result.append(entry)
+    return result
+
+
+# ── 7역할 코어 정의 (ISA 매핑 core_etfs.csv에서 동적 주입) ────────────────
+CORE_ROLES = _build_core_roles(_ROLES_DEF, _ISA_ETF)
 
 PHASE_LABELS = {
     "fear":       "🔥 공포",
