@@ -1271,11 +1271,9 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df = pd.concat([_rot_df, _cash_row], ignore_index=True)
 
         # 현재금액 = 현재비중% × 현재총자산
-        # 목표금액 = 목표비중% × (현재총자산 + 추가투자금) — new_money 포함 미래 총액 기준
-        _new_total = _rot_total + new_money
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
-        _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _new_total).round(0).astype("Int64")
-        _rot_df["조정필요(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
+        # _raw_need: 과/부족 판단용 내부 컬럼 (표 미표시) — 목표비중 대비 현재 차이(KRW)
+        _rot_df["_raw_need"] = ((_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]) / 100 * _rot_total).round(0).astype("Int64")
 
         # ── 인사이트 기반 조정 ────────────────────────────────────────
         # ETF 신호 맵: _e_scored(백테스트 복합신호) 기반 — raw summary 재조회 없음
@@ -1358,7 +1356,7 @@ if new_money > 0 and alloc["Total"] > 0:
         _insights: list = []
 
         for _, _rr in _rot_df.iterrows():
-            _raw  = int(_rr.get("조정필요(원)") or 0)
+            _raw  = int(_rr.get("_raw_need") or 0)
             _uk   = str(_rr.get("US ETF", "")).upper()
             _acct = str(_rr.get("계좌", ""))
             _insight = ""
@@ -1473,11 +1471,11 @@ if new_money > 0 and alloc["Total"] > 0:
             "cash":      _bucket_sell["cash"]      + cash_res,
         }
 
-        # 버킷 내 조정필요(원) 비율로 매수 배분 — 금액 기준이라 비중 기준보다 정확
+        # 버킷 내 _raw_need 비율로 매수 배분
         _bucket_def = {"core": [], "satellite": [], "cash": []}
         for i in range(len(_rot_df)):
             if _buy_eligible[i]:
-                _d = max(0, float(_rot_df.iloc[i]["조정필요(원)"] or 0))
+                _d = max(0, float(_rot_df.iloc[i]["_raw_need"] or 0))
                 _bucket_def[_buckets[i]].append((i, _d))
 
         _buy_amts = [0] * len(_rot_df)
@@ -1487,16 +1485,21 @@ if new_money > 0 and alloc["Total"] > 0:
             for _idx, _d in _rows:
                 _buy_amts[_idx] = round(_d / _tot * _bud)
 
-        # 조정금액 = 매도(음수) or 매수(양수) or 0
+        # 추가금액 = 매도(음수) or 매수(양수) or 0
         _adj_amts = [
             _sell_amts[i] if _sell_amts[i] < 0 else (_buy_amts[i] if _buy_eligible[i] else 0)
             for i in range(len(_rot_df))
         ]
-        _rot_df["조정금액(원)"] = _adj_amts
+        _rot_df["추가금액(원)"] = _adj_amts
+        # 목표금액 = 현재금액 + 추가금액 (항등식 — 항상 일치)
+        _rot_df["목표금액(원)"] = (_rot_df["현재금액(원)"].astype(float) +
+                                   _rot_df["추가금액(원)"].astype(float)).round(0).astype("Int64")
+        _rot_df.drop(columns=["_raw_need"], inplace=True)
 
         # 합계 행
         _rot_total_sum  = int(_rot_df["현재금액(원)"].sum())
-        _rot_target_sum = int(_rot_df["목표금액(원)"].sum())
+        _rot_add_sum    = int(_rot_df["추가금액(원)"].sum())
+        _rot_target_sum = _rot_total_sum + _rot_add_sum
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
@@ -1504,9 +1507,8 @@ if new_money > 0 and alloc["Total"] > 0:
             "현재비중(%)": 100.0,
             "차이(%p)":   round(float(target_core + target_satellite + target_cash) - 100.0, 1),
             "현재금액(원)": _rot_total_sum,
+            "추가금액(원)": _rot_add_sum,
             "목표금액(원)": _rot_target_sum,
-            "조정필요(원)": int(_rot_df["조정필요(원)"].sum()),
-            "조정금액(원)": int(_rot_df["조정금액(원)"].sum()),
             "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
@@ -1514,7 +1516,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # 합계 행 강조 스타일
         _disp_cols = ["역할", "US ETF", "ISA(원화)", "계좌",
                       "목표비중(%)", "현재비중(%)", "차이(%p)",
-                      "현재금액(원)", "목표금액(원)", "조정필요(원)", "조정금액(원)", "인사이트"]
+                      "현재금액(원)", "추가금액(원)", "목표금액(원)", "인사이트"]
         _rot_disp = _rot_df[_disp_cols].copy()
         def _style_sum_row(df):
             styles = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -1533,18 +1535,16 @@ if new_money > 0 and alloc["Total"] > 0:
                                 help="VIX 국면 기반 전략 목표 비중"),
                 "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f%%", width="small"),
                 "차이(%p)":    st.column_config.NumberColumn("차이(%p)",  format="%+.1f",  width="small",
-                                help="목표비중 − 현재비중. 음수=초과보유, 양수=부족"),
+                                help="목표비중 − 현재비중. 양수=부족(매수), 음수=초과(매도)"),
                 "현재금액(원)": st.column_config.NumberColumn("현재금액(원)", format="%,d", width="medium"),
+                "추가금액(원)": st.column_config.NumberColumn("추가금액(원)", format="%+,d", width="medium",
+                                help="인사이트 반영 실행 금액. 양수=매수, 음수=매도, 0=보류"),
                 "목표금액(원)": st.column_config.NumberColumn("목표금액(원)", format="%,d", width="medium",
-                                help="목표비중 × (현재총자산 + 추가투자금) — 새 돈 포함 기준으로 있어야 할 금액"),
-                "조정필요(원)": st.column_config.NumberColumn("조정필요(원)", format="%+,d", width="medium",
-                                help="목표금액 − 현재금액. 완전 리밸런싱 시 필요한 전체 매수/매도 금액"),
-                "조정금액(원)": st.column_config.NumberColumn("조정금액(원)", format="%+,d", width="medium",
-                                help="인사이트 반영 후 실제 권장 실행 금액 (양수=매수, 음수=매도)"),
+                                help="현재금액 + 추가금액 = 오늘 실행 후 예상 보유금액"),
                 "인사이트":    st.column_config.TextColumn("인사이트",    width="large"),
             },
         )
-        st.caption("목표금액 = 목표비중 × (현재총자산 + 추가투자금).  조정필요 = 목표금액 − 현재금액.  조정금액 = 인사이트 반영 실제 실행.")
+        st.caption("목표금액 = 현재금액 + 추가금액.  추가금액 = 인사이트 반영 후 오늘 실행할 매수/매도 금액.")
 
         # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
