@@ -1235,8 +1235,10 @@ if new_money > 0 and alloc["Total"] > 0:
         if _coin_rows:
             _rot_df = pd.concat([_rot_df, pd.DataFrame(_coin_rows)], ignore_index=True)
 
+        _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
+        _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         st.dataframe(
-            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)"]],
+            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)"]],
             hide_index=True, use_container_width=True,
             column_config={
                 "역할":        st.column_config.TextColumn("역할"),
@@ -1250,6 +1252,8 @@ if new_money > 0 and alloc["Total"] > 0:
                 "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f"),
                 "차이(%p)":    st.column_config.NumberColumn("차이(%p)", format="%+.1f",
                                help="ISA 역할만 가이드 제공. ±3%p 이내는 유지."),
+                "현재금액(원)": st.column_config.NumberColumn("현재금액(원)", format="%,d"),
+                "목표금액(원)": st.column_config.NumberColumn("목표금액(원)", format="%,d"),
             },
         )
         st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
