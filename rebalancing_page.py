@@ -1199,6 +1199,9 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["현재비중(%)"] = _rot_df["US ETF"].apply(
             lambda t: round(_held_map.get(str(t).upper(), {}).get("현재비중(%)", 0.0), 1)
         )
+        # 기본비중·목표비중 → 전체 포트폴리오 대비(코어 목표비중 반영)
+        _rot_df["기본비중(%)"] = (_rot_df["기본비중(%)"] * target_core / 100).round(1)
+        _rot_df["목표비중(%)"] = (_rot_df["목표비중(%)"] * target_core / 100).round(1)
         _rot_df["차이(%p)"] = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).round(1)
 
         st.dataframe(
