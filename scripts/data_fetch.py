@@ -41,7 +41,7 @@ def _fetch_coingecko_ohlcv(ticker_usd: str) -> pd.DataFrame:
         return pd.DataFrame()
     import requests
     url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart"
-    params = {"vs_currency": "usd", "days": "max", "interval": "daily"}
+    params = {"vs_currency": "usd", "days": "365", "interval": "daily"}
     r = requests.get(url, params=params, timeout=20, headers={"accept": "application/json"})
     r.raise_for_status()
     data = r.json()
