@@ -1746,7 +1746,8 @@ if _rb_hist:
                     "메모":        _rb_ev_memo if _first else "",
                 })
                 _first = False
-        else:
+        elif _rb_ev_cash is None or _rb_ev_cash < 0:
+            # 거래도 없고 현금도 없을 때만 빈 행 표시
             _rb_table_rows.append({
                 "날짜": _rb_ev_date, "국면": _rb_ev_phase, "구분": "",
                 "종목명": "", "수량": None, "단가(원)": None,
