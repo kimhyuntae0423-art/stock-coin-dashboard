@@ -977,16 +977,13 @@ if not holdings.empty:
 st.divider()
 st.subheader("📊 배분 현황 & 리밸런싱")
 
-ic1, ic2, ic3, ic4 = st.columns(4)
+ic1, ic2, ic3 = st.columns(3)
 with ic1:
     target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=80, step=5, key="tgt_core_")
 with ic2:
     target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_sat_")
 with ic3:
     target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
-with ic4:
-    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=2_000_000,
-                                step=100_000, key="new_money_input")
 st.caption(f"💵 현재 보유 현금: **{cash_amount:,.0f}원** — 보유종목 탭에서 CASH 행으로 관리")
 
 if target_core + target_satellite + target_cash != 100:
@@ -1028,10 +1025,17 @@ if new_money > 0 and alloc["Total"] > 0:
     else:
         core_buy = sat_buy = 0
         cash_res = new_money
-    mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
-    mc2.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
-    mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
+
+mc1, mc2, mc3, mc4 = st.columns(4)
+mc1.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
+mc2.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
+mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
+with mc4:
+    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=2_000_000,
+                                step=100_000, key="new_money_input")
+
+if new_money > 0 and alloc["Total"] > 0:
+    total_after = alloc["Total"] + new_money
     new_core_pct = (alloc["Core_value"] + core_buy) / total_after * 100
     new_sat_pct  = (alloc["Satellite_value"] + sat_buy) / total_after * 100
     new_cash_pct = (cash_amount + cash_res) / total_after * 100
