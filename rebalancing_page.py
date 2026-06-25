@@ -1410,19 +1410,45 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _rot_df["인사이트"] = _insights
 
-        # ── 패스 2: 조정금액 산출 (매도수익 + 추가투자 → 매수 배분) ────────────
-        # 총 매도 수익 (음수 → 양수로)
-        _total_sell_proceeds = abs(sum(s for s in _sell_amts if s < 0))
-        _buy_budget = _total_sell_proceeds + new_money  # 매수에 쓸 수 있는 총액
+        # ── 행 버킷 분류 (core / satellite / cash) ───────────────────────────
+        def _row_bucket(row):
+            _acct = str(row.get("계좌", ""))
+            _us   = str(row.get("US ETF", ""))
+            if _acct == "현금" or _us == "CASH":
+                return "cash"
+            elif _acct == "코인" or "-USD" in _us:
+                return "satellite"
+            return "core"
 
-        # 매수 대상 행의 부족분 비율로 예산 배분
-        _deficit_vals = [
-            max(0, float(_rot_df.iloc[i]["목표비중(%)"]) - float(_rot_df.iloc[i]["현재비중(%)"]))
-            if _buy_eligible[i] else 0.0
-            for i in range(len(_rot_df))
-        ]
-        _total_def = sum(_deficit_vals) or 1.0
-        _buy_amts = [round(_d / _total_def * _buy_budget) for _d in _deficit_vals]
+        _buckets = [_row_bucket(_rot_df.iloc[i]) for i in range(len(_rot_df))]
+
+        # ── 패스 2: 버킷별 조정금액 산출 ─────────────────────────────────────
+        # 버킷별 매도 수익
+        _bucket_sell = {"core": 0, "satellite": 0, "cash": 0}
+        for i, _s in enumerate(_sell_amts):
+            if _s < 0:
+                _bucket_sell[_buckets[i]] += abs(_s)
+
+        # 버킷별 매수 예산 = 매도수익 + 위에서 산출된 코어/위성/현금 배분액
+        _bucket_budgets = {
+            "core":      _bucket_sell["core"]      + core_buy,
+            "satellite": _bucket_sell["satellite"] + sat_buy,
+            "cash":      _bucket_sell["cash"]      + cash_res,
+        }
+
+        # 버킷 내 부족분 비율로 매수 배분
+        _bucket_def = {"core": [], "satellite": [], "cash": []}
+        for i in range(len(_rot_df)):
+            if _buy_eligible[i]:
+                _d = max(0, float(_rot_df.iloc[i]["목표비중(%)"]) - float(_rot_df.iloc[i]["현재비중(%)"]))
+                _bucket_def[_buckets[i]].append((i, _d))
+
+        _buy_amts = [0] * len(_rot_df)
+        for _bkt, _rows in _bucket_def.items():
+            _tot = sum(d for _, d in _rows) or 1.0
+            _bud = _bucket_budgets[_bkt]
+            for _idx, _d in _rows:
+                _buy_amts[_idx] = round(_d / _tot * _bud)
 
         # 조정금액 = 매도(음수) or 매수(양수) or 0
         _adj_amts = [
@@ -1431,13 +1457,19 @@ if new_money > 0 and alloc["Total"] > 0:
         ]
         _rot_df["조정금액(원)"] = _adj_amts
 
-        # ── 추가투자: new_money만 → 부족분 비례 배분 (매도수익 제외) ──────────
-        _deficit = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).clip(lower=0)
-        _total_deficit = _deficit.sum()
-        if _total_deficit > 0:
-            _rot_df["추가투자(원)"] = (_deficit / _total_deficit * new_money).round(0).astype("Int64")
-        else:
-            _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
+        # ── 추가투자: core_buy/sat_buy/cash_res → 각 버킷 부족분 비례 배분 ───
+        _add_amts = [0] * len(_rot_df)
+        _add_budgets = {"core": core_buy, "satellite": sat_buy, "cash": cash_res}
+        _add_def: dict = {"core": [], "satellite": [], "cash": []}
+        for i in range(len(_rot_df)):
+            _d = max(0, float(_rot_df.iloc[i]["목표비중(%)"]) - float(_rot_df.iloc[i]["현재비중(%)"]))
+            _add_def[_buckets[i]].append((i, _d))
+        for _bkt, _rows in _add_def.items():
+            _tot = sum(d for _, d in _rows) or 1.0
+            _bud = _add_budgets[_bkt]
+            for _idx, _d in _rows:
+                _add_amts[_idx] = round(_d / _tot * _bud) if _tot > 0 and _d > 0 else 0
+        _rot_df["추가투자(원)"] = _add_amts
 
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
