@@ -1272,6 +1272,82 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["매수/매도(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
+
+        # ── 인사이트 기반 조정 ────────────────────────────────────────
+        # ETF 신호 맵: ticker → {rsi, ret1m}
+        _sig_map: dict = {}
+        if not summary.empty:
+            _sig_l = summary.sort_values("date").groupby("ticker").last().reset_index()
+            _sig_l["ticker"] = _sig_l["ticker"].astype(str).str.upper()
+            for _, _sr in _sig_l.iterrows():
+                _sig_map[str(_sr["ticker"])] = {
+                    "rsi":   float(_sr.get("rsi14") or 50),
+                    "ret1m": float(_sr.get("return_1m_pct") or 0),
+                }
+        # 코인 신호 맵: ticker → {rsi, ret90d, action}
+        _csig_map: dict = {}
+        if not _i_csum.empty:
+            _csl = _i_csum.copy()
+            _csl["ticker"] = _csl["ticker"].astype(str).str.upper()
+            for _, _cr in _csl.iterrows():
+                _csig_map[str(_cr["ticker"])] = {
+                    "rsi":    float(_cr.get("rsi14") or 50),
+                    "ret90d": float(_cr.get("return_90d_pct") or 0),
+                    "action": str(_cr.get("action") or ""),
+                }
+        # 역할 → 구성 티커 맵
+        _role_to_tks: dict = {}
+        if "rotation_role" in core_etfs.columns:
+            for _, _cer in core_etfs.iterrows():
+                _ctk3  = str(_cer.get("ticker","")).strip().upper()
+                _crole3 = str(_cer.get("rotation_role","")).strip().upper()
+                if _ctk3 and _crole3 and _crole3 != "NAN":
+                    _role_to_tks.setdefault(_crole3, []).append(_ctk3)
+
+        def _get_role_signal(us_etf: str, account: str):
+            """역할/코인별 RSI·수익률 신호 반환 (rsi, ret, is_coin)."""
+            _uk = str(us_etf).upper()
+            if account == "코인" or "-USD" in _uk:
+                _cs = _csig_map.get(_uk, {})
+                return float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)), True, str(_cs.get("action",""))
+            # ETF: 구성 KR 티커들의 평균 신호
+            _tks = _role_to_tks.get(_uk, [])
+            if not _tks:
+                return 50.0, 0.0, False, ""
+            _rsis = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
+            _rets = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
+            return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
+                    sum(_rets)/len(_rets) if _rets else 0.0,
+                    False, "")
+
+        _adj_amts: list = []
+        _insights: list = []
+        for _, _rr in _rot_df.iterrows():
+            _raw = int(_rr.get("매수/매도(원)") or 0)
+            _rsi_v, _ret_v, _is_coin, _action_v = _get_role_signal(
+                str(_rr.get("US ETF","")), str(_rr.get("계좌","")))
+            _insight = ""
+            _adj = _raw
+            if _raw < -5000:  # 매도 신호
+                if _is_coin:
+                    if _rsi_v < 40 or _ret_v < -15 or _action_v == "매수":
+                        _adj = 0
+                        _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}) — 매도 보류"
+                else:
+                    if _rsi_v < 38 or _ret_v < -10:
+                        _adj = 0
+                        _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%) — 매도 보류"
+            elif _raw > 5000:  # 매수 신호
+                if _rsi_v > 73:
+                    _adj = int(_raw * 0.5)
+                    _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
+                elif _rsi_v < 35:
+                    _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+            _adj_amts.append(_adj)
+            _insights.append(_insight)
+        _rot_df["조정금액(원)"] = _adj_amts
+        _rot_df["인사이트"]    = _insights
+
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
@@ -1281,11 +1357,12 @@ if new_money > 0 and alloc["Total"] > 0:
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
             "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
-            "설명": "", "가이드비중(%)": None,
+            "조정금액(원)": int(_rot_df["조정금액(원)"].sum()),
+            "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
         st.dataframe(
-            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "매수/매도(원)"]],
+            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "조정금액(원)", "인사이트"]],
             hide_index=True, use_container_width=True,
             column_config={
                 "역할":        st.column_config.TextColumn("역할",        width="small"),
@@ -1298,8 +1375,9 @@ if new_money > 0 and alloc["Total"] > 0:
                 "차이(%p)":    st.column_config.NumberColumn("차이(%p)",  format="%+.1f",  width="small"),
                 "현재금액(원)": st.column_config.NumberColumn("현재금액(원)", format="%,d", width="medium"),
                 "목표금액(원)": st.column_config.NumberColumn("목표금액(원)", format="%,d", width="medium"),
-                "매수/매도(원)": st.column_config.NumberColumn("매수/매도(원)", format="%+,d", width="medium",
-                                help="양수=매수 필요 / 음수=매도 필요"),
+                "조정금액(원)": st.column_config.NumberColumn("조정금액(원)", format="%+,d", width="medium",
+                                help="인사이트 반영 후 실제 권장 매수/매도 금액 (양수=매수, 음수=매도)"),
+                "인사이트":    st.column_config.TextColumn("인사이트",    width="large"),
             },
         )
         st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
