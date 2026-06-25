@@ -148,7 +148,13 @@ holdings = _load_holdings()
 # ── CASH 먼저 추출 (person 필터 전) ───────────────────────────────
 # CASH 행은 person 필드 값에 무관하게 항상 집계
 _cash_mask  = holdings["ticker"].str.upper() == "CASH"
-cash_amount = float(holdings.loc[_cash_mask, "qty"].sum()) if _cash_mask.any() else 0.0
+if _cash_mask.any():
+    _cr = holdings.loc[_cash_mask].copy()
+    _cq = pd.to_numeric(_cr["qty"],       errors="coerce").fillna(0)
+    _cb = pd.to_numeric(_cr["buy_price"], errors="coerce").fillna(1).replace(0, 1)
+    cash_amount = float((_cq * _cb).sum())
+else:
+    cash_amount = 0.0
 holdings    = holdings[~_cash_mask].copy()
 
 all_persons = sorted([p for p in holdings["person"].unique() if p and str(p).strip()])
@@ -164,6 +170,13 @@ if selected_person != "전체":
 # ── 보유 내역 편집 ────────────────────────────────────────────────
 _he_all_names      = [""] + sorted(set(NAMES.values()))
 _he_name_to_ticker = {v: k for k, v in NAMES.items()}
+
+if "_he_save_msg" in st.session_state:
+    _msg, _ok = st.session_state.pop("_he_save_msg")
+    if _ok:
+        st.success(_msg)
+    else:
+        st.warning(_msg)
 
 with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)", expanded=False):
     st.caption("새 행은 + 버튼으로 추가. 행 삭제는 체크박스 → Delete. 💰 보유 현금은 종목명에서 선택.")
@@ -219,9 +232,9 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         (ROOT / "holdings.csv").write_text(_he_save.to_csv(index=False), encoding="utf-8")
         if _rb_gh_token():
             _he_ok = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
-            st.success("✅ GitHub에 저장됐습니다." if _he_ok else "⚠️ 로컬 저장됨. GitHub 저장 실패.")
+            st.session_state["_he_save_msg"] = ("✅ GitHub에 저장됐습니다." if _he_ok else "⚠️ 로컬 저장됨. GitHub 저장 실패.", _he_ok)
         else:
-            st.warning("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.")
+            st.session_state["_he_save_msg"] = ("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.", False)
         st.rerun()
 
 summary_file = RESULTS / "summary_signals.csv"
