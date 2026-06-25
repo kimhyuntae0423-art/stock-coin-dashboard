@@ -1204,30 +1204,36 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["목표비중(%)"] = (_rot_df["목표비중(%)"] * target_core / 100).round(1)
         _rot_df["차이(%p)"] = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).round(1)
 
-        # 코인 행 추가 (BTC / 알트 분리)
-        _rot_total = max(alloc.get("Total", 1), 1)
-        _btc_val  = sum(float(_hr["qty"]) * _i_cp.get(str(_hr["ticker"]), 0)
-                        for _, _hr in holdings.iterrows()
-                        if str(_hr["ticker"]).upper() == "BTC-USD") if not holdings.empty else 0
-        _alt_val  = max(0.0, _i_val.get("코인", 0) - _btc_val)
-        _btc_현재  = round(_btc_val / _rot_total * 100, 1)
-        _alt_현재  = round(_alt_val / _rot_total * 100, 1)
+        # 코인 행 추가 — holdings 실제 보유 코인 각각
+        _rot_total  = max(alloc.get("Total", 1), 1)
         _btc_target = 15.0
-        _coin_rows = pd.DataFrame([
-            {
-                "역할": "BTC", "US ETF": "BTC-USD", "ISA(원화)": "—", "계좌": "코인",
-                "기본비중(%)": _btc_target, "목표비중(%)": _btc_target,
-                "현재비중(%)": _btc_현재, "차이(%p)": round(_btc_target - _btc_현재, 1),
-                "설명": "비트코인 — 4년 사이클 비대칭 옵션", "가이드비중(%)": None,
-            },
-            {
-                "역할": "알트코인", "US ETF": "ALT", "ISA(원화)": "—", "계좌": "코인",
-                "기본비중(%)": 0.0, "목표비중(%)": 0.0,
-                "현재비중(%)": _alt_현재, "차이(%p)": round(0.0 - _alt_현재, 1),
-                "설명": "알트코인 — BTC 전환 대기", "가이드비중(%)": None,
-            },
-        ])
-        _rot_df = pd.concat([_rot_df, _coin_rows], ignore_index=True)
+        _coin_rows  = []
+        if not holdings.empty:
+            for _, _chr in holdings.iterrows():
+                _ctk  = str(_chr["ticker"]).upper()
+                if "-USD" not in _ctk:
+                    continue
+                _cqty = float(_chr.get("qty") or 0)
+                _cprc = _i_cp.get(str(_chr["ticker"]), 0)
+                _cval = _cqty * _cprc
+                _c현재 = round(_cval / _rot_total * 100, 1)
+                _cname = NAMES.get(_ctk, _ctk.replace("-USD", ""))
+                if _ctk == "BTC-USD":
+                    _coin_rows.append({
+                        "역할": "BTC", "US ETF": "BTC-USD", "ISA(원화)": "—", "계좌": "코인",
+                        "기본비중(%)": _btc_target, "목표비중(%)": _btc_target,
+                        "현재비중(%)": _c현재, "차이(%p)": round(_btc_target - _c현재, 1),
+                        "설명": "비트코인 — 4년 사이클", "가이드비중(%)": None,
+                    })
+                else:
+                    _coin_rows.append({
+                        "역할": f"알트 ({_cname})", "US ETF": _ctk, "ISA(원화)": "—", "계좌": "코인",
+                        "기본비중(%)": 0.0, "목표비중(%)": 0.0,
+                        "현재비중(%)": _c현재, "차이(%p)": round(-_c현재, 1),
+                        "설명": "알트코인 — BTC 전환 대기", "가이드비중(%)": None,
+                    })
+        if _coin_rows:
+            _rot_df = pd.concat([_rot_df, pd.DataFrame(_coin_rows)], ignore_index=True)
 
         st.dataframe(
             _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)"]],
