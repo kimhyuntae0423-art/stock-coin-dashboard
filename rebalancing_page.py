@@ -1196,8 +1196,32 @@ if new_money > 0 and alloc["Total"] > 0:
                     "현재비중(%)": round(_amt / _total_held * 100, 1),
                 }
 
+        # 현재비중 = 역할별 보유가치 / 총자산 (KR ETF 포함, 분모 = alloc Total)
+        _rot_total_pre = max(alloc.get("Total", 1), 1)
+        _role_현재가치: dict = {}
+        if not holdings.empty and not summary.empty:
+            _rh2 = holdings.copy()
+            _rh2["ticker"] = _rh2["ticker"].astype(str).str.upper()
+            _rl2 = (summary.sort_values("date").groupby("ticker").last()
+                    .reset_index()[["ticker","close"]]
+                    .assign(ticker=lambda d: d["ticker"].astype(str).str.upper()))
+            _rh2 = _rh2.merge(_rl2, on="ticker", how="left")
+            _rh2["cur_val"] = (pd.to_numeric(_rh2["qty"], errors="coerce") *
+                               pd.to_numeric(_rh2["close"], errors="coerce"))
+            if "rotation_role" in core_etfs.columns:
+                _rrole_map = (core_etfs[["ticker","rotation_role"]]
+                              .dropna(subset=["rotation_role"])
+                              .assign(ticker=lambda d: d["ticker"].astype(str).str.upper(),
+                                      rotation_role=lambda d: d["rotation_role"].astype(str).str.upper())
+                              .set_index("ticker")["rotation_role"].to_dict())
+                for _, _rhr in _rh2.iterrows():
+                    _rtk2  = str(_rhr["ticker"]).upper()
+                    _rval2 = float(_rhr.get("cur_val") or 0)
+                    _rrole2 = _rrole_map.get(_rtk2, "")
+                    if _rrole2 and _rval2 > 0:
+                        _role_현재가치[_rrole2] = _role_현재가치.get(_rrole2, 0) + _rval2
         _rot_df["현재비중(%)"] = _rot_df["US ETF"].apply(
-            lambda t: round(_held_map.get(str(t).upper(), {}).get("현재비중(%)", 0.0), 1)
+            lambda t: round(_role_현재가치.get(str(t).upper(), 0) / _rot_total_pre * 100, 1)
         )
         # 기본비중·목표비중 → 전체 포트폴리오 대비(코어 목표비중 반영)
         _rot_df["기본비중(%)"] = (_rot_df["기본비중(%)"] * target_core / 100).round(1)
