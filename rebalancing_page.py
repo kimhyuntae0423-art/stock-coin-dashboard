@@ -1159,6 +1159,7 @@ if new_money > 0 and alloc["Total"] > 0:
         _spy_1m  = _e_regime.get("spy_1m",  0)
         _spy_12m = _e_regime.get("spy_12m", 0)
         _rot_df, _phase = rotation_target(_vix or 18.0, _spy_1m, _spy_12m, _e_scored, regime_dict=_e_regime)
+        _rot_df = _rot_df[~_rot_df["US ETF"].str.upper().isin(["COPX", "XLV"])].reset_index(drop=True)
 
         _phase_label = PHASE_LABELS.get(_phase, _phase)
         _phase_desc  = PHASE_DESCS.get(_phase, "")
@@ -1380,7 +1381,7 @@ if new_money > 0 and alloc["Total"] > 0:
                 "인사이트":    st.column_config.TextColumn("인사이트",    width="large"),
             },
         )
-        st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
+        st.caption("목표비중 = VIX 경기국면 기본비중 × H15 상대저점 tilt(±20%).  차이(%p) ±3%p 이내는 리밸런싱 생략 권장.")
 
         # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
