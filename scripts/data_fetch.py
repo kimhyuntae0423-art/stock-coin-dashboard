@@ -4,6 +4,16 @@ import pandas as pd
 import yfinance as yf
 
 
+# CoinGecko 코인 ID 매핑 (Binance도 막힐 때 최종 fallback)
+_COINGECKO_IDS = {
+    "MASK-USD":  "mask-network",
+    "ID-USD":    "space-id",
+    "TRUMP-USD": "official-trump",
+    "ZETA-USD":  "zetachain",
+    "ENS-USD":   "ethereum-name-service",
+}
+
+
 def _fetch_binance_ohlcv(ticker_usd: str, days: int = 1825) -> pd.DataFrame:
     """yfinance가 지원 안 하는 코인을 Binance REST API로 대체 수집."""
     import requests
@@ -22,6 +32,32 @@ def _fetch_binance_ohlcv(ticker_usd: str, days: int = 1825) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["open_time"], unit="ms").dt.normalize()
     df = df.set_index("Date")[["Open", "High", "Low", "Close", "Volume"]]
     return df.astype(float)
+
+
+def _fetch_coingecko_ohlcv(ticker_usd: str) -> pd.DataFrame:
+    """CoinGecko API로 일봉 수집 — Binance 차단 시 최종 fallback."""
+    cg_id = _COINGECKO_IDS.get(ticker_usd.upper())
+    if not cg_id:
+        return pd.DataFrame()
+    import requests
+    url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart"
+    params = {"vs_currency": "usd", "days": "max", "interval": "daily"}
+    r = requests.get(url, params=params, timeout=20, headers={"accept": "application/json"})
+    r.raise_for_status()
+    data = r.json()
+    prices  = data.get("prices", [])
+    volumes = data.get("total_volumes", [])
+    if not prices:
+        return pd.DataFrame()
+    p_df = pd.DataFrame(prices,  columns=["ts", "Close"]).set_index("ts")["Close"]
+    v_df = pd.DataFrame(volumes, columns=["ts", "Volume"]).set_index("ts")["Volume"]
+    df = pd.DataFrame({"Close": p_df, "Volume": v_df})
+    df.index = pd.to_datetime(df.index, unit="ms").normalize()
+    df.index.name = "Date"
+    df["Open"] = df["Close"]
+    df["High"] = df["Close"]
+    df["Low"]  = df["Close"]
+    return df[["Open", "High", "Low", "Close", "Volume"]].dropna().astype(float)
 
 
 def fetch_tickers(tickers_file: str = "../tickers.csv") -> list:
@@ -66,15 +102,28 @@ def download_prices(tickers: list, period: str = "5y", interval: str = "1d") -> 
                     yf_stale = True
                 if yf_stale or t in _BINANCE_FORCE:
                     print(f"{t}: yfinance 데이터 오래됨 → Binance fallback 시도...")
+                    _binance_ok = False
                     try:
                         df_b = _fetch_binance_ohlcv(t, days=1825)
                         if not df_b.empty:
                             df = df_b
+                            _binance_ok = True
                             print(f"{t}: Binance 수집 완료 ({len(df)} rows)")
                         else:
-                            print(f"{t}: Binance도 데이터 없음")
+                            print(f"{t}: Binance 데이터 없음")
                     except Exception as be:
-                        print(f"{t}: Binance fallback 실패 - {be}")
+                        print(f"{t}: Binance 실패 - {be}")
+                    if not _binance_ok and t.upper() in _COINGECKO_IDS:
+                        print(f"{t}: CoinGecko fallback 시도...")
+                        try:
+                            df_c = _fetch_coingecko_ohlcv(t)
+                            if not df_c.empty:
+                                df = df_c
+                                print(f"{t}: CoinGecko 수집 완료 ({len(df_c)} rows)")
+                            else:
+                                print(f"{t}: CoinGecko도 데이터 없음")
+                        except Exception as ce:
+                            print(f"{t}: CoinGecko 실패 - {ce}")
 
             if df.empty:
                 print(f"{t}: 데이터 없음")
