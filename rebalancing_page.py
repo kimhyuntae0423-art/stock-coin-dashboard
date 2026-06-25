@@ -1688,23 +1688,41 @@ if _rb_hist:
                 _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
                 _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
 
-    # ETF 목표금액 = 총자산 × 코어목표비중 × (가장 최근 매수이벤트 내 ETF 비중)
-    _etf_목표금액: dict = {}
+    # ETF 목표금액 = 총자산 × 로테이션 테이블 목표비중(%)
+    import re as _re
+    _ticker_to_목표pct: dict = {}  # ticker.upper() → fraction (0-1)
+
+    # 1) _rot_df의 US ETF + ISA(원화) KR 티커 → 목표비중
+    try:
+        if not _rot_df.empty and "목표비중(%)" in _rot_df.columns:
+            for _, _rrow in _rot_df.iterrows():
+                _목표w = float(_rrow.get("목표비중(%)", 0) or 0) / 100
+                _us = str(_rrow.get("US ETF", "")).strip().upper()
+                if _us:
+                    _ticker_to_목표pct[_us] = _목표w
+                # "ETF명\n(티커)" 또는 "ETF명 (티커)" 형식 파싱
+                _isa = str(_rrow.get("ISA(원화)", "") or "")
+                _km  = _re.search(r'\(([^)]+)\)', _isa)
+                if _km:
+                    _ticker_to_목표pct[_km.group(1).strip().upper()] = _목표w
+    except NameError:
+        pass
+
+    # 2) core_etfs.csv rotation_role 통해 기타 KR ETF도 매핑
+    if not core_etfs.empty and "rotation_role" in core_etfs.columns:
+        _role_to_w = {str(r).strip().upper(): _ticker_to_목표pct.get(str(r).strip().upper(), 0)
+                      for r in core_etfs["rotation_role"].dropna().unique()}
+        for _, _crow in core_etfs.iterrows():
+            _ctk   = str(_crow.get("ticker", "")).strip().upper()
+            _crole = str(_crow.get("rotation_role", "")).strip().upper()
+            if _ctk and _crole and _ctk not in _ticker_to_목표pct:
+                _w = _role_to_w.get(_crole, 0)
+                if _w:
+                    _ticker_to_목표pct[_ctk] = _w
+
     _alloc_total_val = alloc.get("Total", 0)
-    for _ev in _rb_hist:  # 최신순 → 첫 매수 이벤트만 사용
-        _ref_buys = [b for b in _ev.get("buys", [])
-                     if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
-        if not _ref_buys:
-            continue
-        _ref_total = sum(float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0)
-                         for b in _ref_buys)
-        if _ref_total <= 0:
-            break
-        for b in _ref_buys:
-            _tk = str(b.get("ticker","")).upper()
-            _amt = float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0)
-            _etf_목표금액[_tk] = _alloc_total_val * (target_core / 100) * (_amt / _ref_total)
-        break
+    _etf_목표금액 = {_tk: int(_alloc_total_val * _w)
+                   for _tk, _w in _ticker_to_목표pct.items() if _w > 0}
 
     _rb_table_rows = []
     for _ei, _rb_ev in enumerate(_rb_hist):
