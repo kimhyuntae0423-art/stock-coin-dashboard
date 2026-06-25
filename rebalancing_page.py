@@ -1350,9 +1350,9 @@ if new_money > 0 and alloc["Total"] > 0:
             "complacent": "과열 경계",
         }
 
-        # ── 패스 1: 인사이트 판단 + 매도 여부 결정 ─────────────────────────
-        _sell_amts: list = []   # 음수 또는 0
-        _buy_eligible: list = []  # True면 매수 예산 배분 대상
+        # ── 패스 1: 인사이트 텍스트 생성 ──────────────────────────────────────
+        # 추가금액은 무조건 new_money 배분 — 인사이트는 참고 텍스트만
+        _buy_eligible: list = []  # 부족한 행(차이(%p)>0) 여부 — 추가금액 배분 대상
         _insights: list = []
 
         for _, _rr in _rot_df.iterrows():
@@ -1360,74 +1360,59 @@ if new_money > 0 and alloc["Total"] > 0:
             _uk   = str(_rr.get("US ETF", "")).upper()
             _acct = str(_rr.get("계좌", ""))
             _insight = ""
-            _sell = 0
-            _eligible = False
 
-            # 현금 행은 신호 없음 — 현금은 매수/매도 자산이 아님
+            # 현금 행 — 신호 없음
             if _acct == "현금" or _uk == "CASH":
-                _sell_amts.append(0)
                 _buy_eligible.append(False)
                 _insights.append("")
                 continue
+
+            # 부족한 행만 추가금액 배분 대상
+            _eligible = _raw > 5000
 
             _rsi_v, _ret_v, _is_coin, _regime_v, _vix_k = _get_role_signal(_uk, _acct)
             _regime_kr = _REGIME_KR.get(_regime_v, "")
             _vix_kr    = _VIX_KR.get(_vix_k, "혼조")
 
             if _is_coin:
-                # ── 코인: coin_backtest 검증 regime + RSI<30 ──────────────────
-                # regime 우선, RSI<30은 강도 보조
-                if _raw < -5000:  # 비중 초과 → 매도 검토
+                # 코인: regime(coin_backtest ✅) + RSI<30(58% ✅)
+                if _raw < -5000:  # 비중 초과
                     if _regime_v == "accumulation":
-                        _insight = "🟡 매집 구간 — 아직 바닥권, 매도 보류"
-                    elif _regime_v == "markup":
-                        _sell = _raw
-                        _insight = "🟢 상승 구간 — 비중 초과분 매도 고려"
-                    elif _regime_v == "distribution":
-                        _sell = _raw
-                        _insight = "🔴 배분 구간 — 매도 실행"
+                        _insight = "🟡 매집 구간 — 바닥권, 매도 보류"
+                    elif _regime_v in ("markup", "distribution"):
+                        _insight = f"🔴 {_regime_kr} 구간 — 매도 고려"
                     elif _rsi_v < 30:
                         _insight = f"🟡 과매도(RSI {_rsi_v:.0f}) — 매도 보류"
                     else:
-                        _sell = _raw
-                        _insight = "🔵 비중 조정"
-                elif _raw > 5000:  # 비중 부족 → 매수 검토
-                    _eligible = True
+                        _insight = "🔵 비중 초과 — 매도 고려"
+                elif _raw > 5000:  # 비중 부족
                     if _regime_v == "accumulation":
-                        if _rsi_v < 30:
-                            _insight = f"🎯 매집 + 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
-                        else:
-                            _insight = "🟢 매집 구간 — 매수"
+                        _insight = (f"🎯 매집 + 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+                                    if _rsi_v < 30 else "🟢 매집 구간 — 매수")
                     elif _regime_v == "distribution":
-                        _eligible = False
                         _insight = "🔴 배분 구간 — 매수 보류"
                     elif _regime_v == "markdown":
-                        _insight = "⚠️ 하락 구간 — 분할 매수만"
+                        _insight = "⚠️ 하락 구간 — 분할 매수"
                     elif _rsi_v < 30:
                         _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 매수"
                     else:
                         _insight = f"🔵 {_regime_kr} 구간 — 매수"
-                else:  # 비중 균형
+                else:
                     if _regime_v:
                         _icon = "🟢" if _regime_v in ("accumulation", "markup") else "🔴"
                         _insight = f"{_icon} {_regime_kr} 구간 — 비중 유지"
             else:
-                # ── ETF: VIX 국면(IC=0.14) + RSI<30(58% 적중) ────────────────
-                # bull/bear state 제거 (IC=-0.047 역방향 검증)
-                # RSI 70/73/80 제거 (적중률 41~47%, 무효)
-                if _raw < -5000:  # 비중 초과 → 매도 검토
+                # ETF: VIX 국면(IC=0.14 ✅) + RSI<30(58% ✅)
+                if _raw < -5000:  # 비중 초과
                     if _vix_k == "fear":
                         _insight = "🔥 공포 극단 — 저점 매도 위험, 보류"
                     elif _rsi_v < 30:
                         _insight = f"🟡 과매도(RSI {_rsi_v:.0f}) — 매도 보류"
                     elif _vix_k == "complacent":
-                        _sell = _raw
-                        _insight = "🌡️ 과열 경계 — 비중 축소"
+                        _insight = "🌡️ 과열 경계 — 매도 고려"
                     else:
-                        _sell = _raw
-                        _insight = f"🔵 {_vix_kr} — 비중 조정"
-                elif _raw > 5000:  # 비중 부족 → 매수 검토
-                    _eligible = True
+                        _insight = f"🔵 {_vix_kr} — 매도 고려"
+                elif _raw > 5000:  # 비중 부족
                     if _vix_k == "fear":
                         _insight = "🔥 공포 극단 — 역발상 매수"
                     elif _rsi_v < 30:
@@ -1439,13 +1424,12 @@ if new_money > 0 and alloc["Total"] > 0:
                     else:
                         _insight = f"🟢 {_vix_kr} — 매수"
 
-            _sell_amts.append(_sell)
             _buy_eligible.append(_eligible)
             _insights.append(_insight)
 
         _rot_df["인사이트"] = _insights
 
-        # ── 행 버킷 분류 (core / satellite / cash) ───────────────────────────
+        # ── 행 버킷 분류 ──────────────────────────────────────────────────────
         def _row_bucket(row):
             _acct = str(row.get("계좌", ""))
             _us   = str(row.get("US ETF", ""))
@@ -1457,21 +1441,9 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _buckets = [_row_bucket(_rot_df.iloc[i]) for i in range(len(_rot_df))]
 
-        # ── 패스 2: 버킷별 조정금액 산출 ─────────────────────────────────────
-        # 버킷별 매도 수익
-        _bucket_sell = {"core": 0, "satellite": 0, "cash": 0}
-        for i, _s in enumerate(_sell_amts):
-            if _s < 0:
-                _bucket_sell[_buckets[i]] += abs(_s)
-
-        # 버킷별 매수 예산 = 매도수익 + 위에서 산출된 코어/위성/현금 배분액
-        _bucket_budgets = {
-            "core":      _bucket_sell["core"]      + core_buy,
-            "satellite": _bucket_sell["satellite"] + sat_buy,
-            "cash":      _bucket_sell["cash"]      + cash_res,
-        }
-
-        # 버킷 내 _raw_need 비율로 매수 배분
+        # ── 추가금액 배분: new_money를 부족한 행에 비례 배분 ──────────────────
+        # 매도는 인사이트 텍스트 참고 — 추가금액은 항상 0 이상
+        _bucket_budgets = {"core": core_buy, "satellite": sat_buy, "cash": cash_res}
         _bucket_def = {"core": [], "satellite": [], "cash": []}
         for i in range(len(_rot_df)):
             if _buy_eligible[i]:
@@ -1485,12 +1457,7 @@ if new_money > 0 and alloc["Total"] > 0:
             for _idx, _d in _rows:
                 _buy_amts[_idx] = round(_d / _tot * _bud)
 
-        # 추가금액 = 매도(음수) or 매수(양수) or 0
-        _adj_amts = [
-            _sell_amts[i] if _sell_amts[i] < 0 else (_buy_amts[i] if _buy_eligible[i] else 0)
-            for i in range(len(_rot_df))
-        ]
-        _rot_df["추가금액(원)"] = _adj_amts
+        _rot_df["추가금액(원)"] = _buy_amts
         # 목표금액 = 현재금액 + 추가금액 (항등식 — 항상 일치)
         _rot_df["목표금액(원)"] = (_rot_df["현재금액(원)"].astype(float) +
                                    _rot_df["추가금액(원)"].astype(float)).round(0).astype("Int64")
