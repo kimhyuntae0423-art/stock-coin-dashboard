@@ -1771,6 +1771,21 @@ if _rb_hist:
                 "메모":        "" if not _first else _rb_ev_memo,
             })
 
+    # ── 총계 행 ──────────────────────────────────────────────────────
+    _sum_거래 = sum(r.get("거래금액(원)") or 0
+                   for r in _rb_table_rows if r.get("구분") in ["매수", "매도"])
+    _sum_누적 = int(sum(_ticker_total_buy.values()))
+    _sum_목표 = sum(_etf_목표금액.values()) if _etf_목표금액 else 0
+    _sum_pct  = round(_sum_누적 / _sum_목표 * 100, 1) if _sum_목표 > 0 else None
+    _rb_table_rows.append({
+        "날짜": "── 합계 ──", "국면": "", "구분": "",
+        "종목명": "", "수량": None, "단가(원)": None,
+        "거래금액(원)": int(_sum_거래) if _sum_거래 else None,
+        "목표대비(%)":  _sum_pct,
+        "누적금액(원)": _sum_누적 if _sum_누적 else None,
+        "메모": "",
+    })
+
     _rb_df = pd.DataFrame(_rb_table_rows)
     st.dataframe(
         _rb_df,
