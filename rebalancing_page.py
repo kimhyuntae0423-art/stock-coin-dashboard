@@ -1237,6 +1237,17 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
+        _rot_sum = pd.DataFrame([{
+            "역할": "── 합계 ──", "US ETF": "", "ISA(원화)": "", "계좌": "",
+            "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
+            "목표비중(%)": round(_rot_df["목표비중(%)"].sum(), 1),
+            "현재비중(%)": round(_rot_df["현재비중(%)"].sum(), 1),
+            "차이(%p)":   round(_rot_df["차이(%p)"].sum(), 1),
+            "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
+            "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
+            "설명": "", "가이드비중(%)": None,
+        }])
+        _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
         st.dataframe(
             _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)"]],
             hide_index=True, use_container_width=True,
