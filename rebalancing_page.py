@@ -1206,7 +1206,7 @@ if new_money > 0 and alloc["Total"] > 0:
 
         # 코인 행 추가 — holdings 실제 보유 코인 각각
         _rot_total  = max(alloc.get("Total", 1), 1)
-        _btc_target = 15.0
+        _btc_target = float(target_satellite)  # 코인은 위성 버킷 — 위성 목표비중 연동
         _coin_rows  = []
         if not holdings.empty:
             for _, _chr in holdings.iterrows():
