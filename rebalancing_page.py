@@ -1478,7 +1478,7 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
-            "목표비중(%)": round(_rot_df["목표비중(%)"].sum(), 1),
+            "목표비중(%)": float(target_core + target_satellite + target_cash),  # 반올림 오차 방지
             "현재비중(%)": round(_rot_df["현재비중(%)"].sum(), 1),
             "차이(%p)":   round(_rot_df["차이(%p)"].sum(), 1),
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
@@ -1489,8 +1489,17 @@ if new_money > 0 and alloc["Total"] > 0:
             "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
+
+        # 합계 행 강조 스타일
+        _disp_cols = ["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)",
+                      "차이(%p)", "현재금액(원)", "목표금액(원)", "조정금액(원)", "추가투자(원)", "인사이트"]
+        _rot_disp = _rot_df[_disp_cols].copy()
+        def _style_sum_row(df):
+            styles = pd.DataFrame("", index=df.index, columns=df.columns)
+            styles.iloc[-1] = "background-color: #1e3a5f; font-weight: bold; color: #e2e8f0"
+            return styles
         st.dataframe(
-            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "조정금액(원)", "추가투자(원)", "인사이트"]],
+            _rot_disp.style.apply(_style_sum_row, axis=None),
             hide_index=True, use_container_width=True,
             column_config={
                 "역할":        st.column_config.TextColumn("역할",        width="small"),
