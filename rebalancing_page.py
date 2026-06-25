@@ -1749,8 +1749,12 @@ if _rb_hist:
                 _tk_upper  = str(_t.get("ticker","")).upper()
                 _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" else None
                 _target_val = _etf_목표금액.get(_tk_upper, 0)
-                _pct = round((_cumul or 0) / _target_val * 100, 1) \
-                    if (_side == "매수" and _target_val > 0 and _cumul) else None
+                if _side == "매수" and _target_val > 0 and _cumul:
+                    _pct = round(_cumul / _target_val * 100, 1)
+                elif _side == "매도" and _target_val > 0 and _trade_amt:
+                    _pct = round(_trade_amt / _target_val * 100, 1)
+                else:
+                    _pct = None
                 _rb_table_rows.append({
                     "날짜":        _rb_ev_date,
                     "국면":        _rb_ev_phase,
@@ -1776,6 +1780,8 @@ if _rb_hist:
 
         # 현금 행 (저장된 경우)
         if _rb_ev_cash is not None and _rb_ev_cash >= 0:
+            _cash_target = _alloc_total_val * (target_cash / 100)
+            _cash_pct = round(_rb_ev_cash / _cash_target * 100, 1) if _cash_target > 0 else None
             _rb_table_rows.append({
                 "날짜":        _rb_ev_date,
                 "국면":        _rb_ev_phase,
@@ -1784,25 +1790,10 @@ if _rb_hist:
                 "수량":        None,
                 "단가(원)":    None,
                 "거래금액(원)": int(_rb_ev_cash),
-                "목표대비(%)":  None,
-                "누적금액(원)": None,
+                "목표대비(%)":  _cash_pct,
+                "누적금액(원)": int(_rb_ev_cash),
                 "메모":        "" if not _first else _rb_ev_memo,
             })
-
-    # ── 총계 행 ──────────────────────────────────────────────────────
-    _sum_거래 = sum(r.get("거래금액(원)") or 0
-                   for r in _rb_table_rows if r.get("구분") in ["매수", "매도"])
-    _sum_누적 = int(sum(_ticker_total_buy.values()))
-    _sum_목표 = sum(_etf_목표금액.values()) if _etf_목표금액 else 0
-    _sum_pct  = round(_sum_누적 / _sum_목표 * 100, 1) if _sum_목표 > 0 else None
-    _rb_table_rows.append({
-        "날짜": "── 합계 ──", "국면": "", "구분": "",
-        "종목명": "", "수량": None, "단가(원)": None,
-        "거래금액(원)": int(_sum_거래) if _sum_거래 else None,
-        "목표대비(%)":  _sum_pct,
-        "누적금액(원)": _sum_누적 if _sum_누적 else None,
-        "메모": "",
-    })
 
     _rb_df = pd.DataFrame(_rb_table_rows)
     st.dataframe(
