@@ -1296,6 +1296,7 @@ if new_money > 0 and alloc["Total"] > 0:
                     "rsi":    float(_cr.get("rsi14") or 50),
                     "ret90d": float(_cr.get("return_90d_pct") or 0),
                     "action": str(_cr.get("action") or ""),
+                    "regime": str(_cr.get("regime") or ""),
                 }
         # 역할 → 구성 티커 맵
         _role_to_tks: dict = {}
@@ -1307,44 +1308,81 @@ if new_money > 0 and alloc["Total"] > 0:
                     _role_to_tks.setdefault(_crole3, []).append(_ctk3)
 
         def _get_role_signal(us_etf: str, account: str):
-            """역할/코인별 RSI·수익률 신호 반환 (rsi, ret, is_coin)."""
+            """역할/코인별 RSI·수익률·regime 신호 반환."""
             _uk = str(us_etf).upper()
             if account == "코인" or "-USD" in _uk:
                 _cs = _csig_map.get(_uk, {})
-                return float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)), True, str(_cs.get("action",""))
-            # ETF: 구성 KR 티커들의 평균 신호
+                return (float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)),
+                        True, str(_cs.get("action","")), str(_cs.get("regime","")))
             _tks = _role_to_tks.get(_uk, [])
             if not _tks:
-                return 50.0, 0.0, False, ""
+                return 50.0, 0.0, False, "", ""
             _rsis = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
             _rets = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
             return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
                     sum(_rets)/len(_rets) if _rets else 0.0,
-                    False, "")
+                    False, "", "")
+
+        # regime 한글 레이블
+        _REGIME_KR = {
+            "accumulation": "매집",
+            "markup":       "상승",
+            "distribution": "배분",
+            "markdown":     "하락",
+        }
 
         _adj_amts: list = []
         _insights: list = []
         for _, _rr in _rot_df.iterrows():
             _raw = int(_rr.get("매수/매도(원)") or 0)
-            _rsi_v, _ret_v, _is_coin, _action_v = _get_role_signal(
+            _rsi_v, _ret_v, _is_coin, _action_v, _regime_v = _get_role_signal(
                 str(_rr.get("US ETF","")), str(_rr.get("계좌","")))
+            _regime_kr = _REGIME_KR.get(_regime_v, "")
             _insight = ""
             _adj = _raw
-            if _raw < -5000:  # 매도 신호
-                if _is_coin:
-                    if _rsi_v < 40 or _ret_v < -15 or _action_v == "매수":
+
+            if _is_coin:
+                if _raw < -5000:  # 코인 매도 필요
+                    if _regime_v == "accumulation":
                         _adj = 0
-                        _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}) — 매도 보류"
+                        _insight = f"🟡 매집 구간 — 매도 보류 (RSI {_rsi_v:.0f})"
+                    elif _regime_v in ("markup",):
+                        _insight = f"🟢 {_regime_kr} 구간 — 매도 고려 (RSI {_rsi_v:.0f})"
+                    elif _regime_v == "distribution":
+                        _insight = f"🔴 배분 구간 — 매도 권장 (RSI {_rsi_v:.0f})"
+                    elif _rsi_v < 40 or _ret_v < -15:
+                        _adj = 0
+                        _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}, 90일 {_ret_v:+.0f}%) — 매도 보류"
+                elif _raw > 5000:  # 코인 매수 필요
+                    if _regime_v == "accumulation":
+                        if _rsi_v < 35:
+                            _insight = f"🎯 매집 + 과매도(RSI {_rsi_v:.0f}) — 강력 매수"
+                        else:
+                            _insight = f"🟢 매집 구간(RSI {_rsi_v:.0f}) — 적극 매수"
+                    elif _regime_v == "distribution":
+                        _adj = int(_raw * 0.5)
+                        _insight = f"🔴 배분 구간 — 매수 절제 (RSI {_rsi_v:.0f})"
+                    elif _regime_v == "markdown":
+                        _adj = int(_raw * 0.5)
+                        _insight = f"⚠️ 하락 구간 — 분할 매수만 (RSI {_rsi_v:.0f})"
+                    elif _rsi_v < 35:
+                        _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
                 else:
+                    if _regime_kr:
+                        _insight = f"{'🟢' if _regime_v in ('accumulation','markup') else '🔴'} {_regime_kr} 구간 (RSI {_rsi_v:.0f})"
+            else:
+                # ETF 로직
+                if _raw < -5000:
                     if _rsi_v < 38 or _ret_v < -10:
                         _adj = 0
                         _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%) — 매도 보류"
-            elif _raw > 5000:  # 매수 신호
-                if _rsi_v > 73:
-                    _adj = int(_raw * 0.5)
-                    _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
-                elif _rsi_v < 35:
-                    _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+                elif _raw > 5000:
+                    if _rsi_v > 73:
+                        _adj = int(_raw * 0.5)
+                        _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
+                    elif _rsi_v < 35:
+                        _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+
             _adj_amts.append(_adj)
             _insights.append(_insight)
         _rot_df["조정금액(원)"] = _adj_amts
