@@ -1271,6 +1271,7 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
+        _rot_df["매수/매도(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
@@ -1279,11 +1280,12 @@ if new_money > 0 and alloc["Total"] > 0:
             "차이(%p)":   round(_rot_df["차이(%p)"].sum(), 1),
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
+            "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
             "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
         st.dataframe(
-            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "기본비중(%)", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)"]],
+            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "매수/매도(원)"]],
             hide_index=True, use_container_width=True,
             column_config={
                 "역할":        st.column_config.TextColumn("역할",        width="small"),
@@ -1291,12 +1293,13 @@ if new_money > 0 and alloc["Total"] > 0:
                 "ISA(원화)":  st.column_config.TextColumn("ISA(원화)",   width="medium",
                                help="ISA 계좌에서 매수할 국내 상장 ETF. '—'이면 ISA 불가(세금 22%)."),
                 "계좌":        st.column_config.TextColumn("계좌",        width="small"),
-                "기본비중(%)": st.column_config.NumberColumn("기본비중(%)", format="%.1f", width="small"),
                 "목표비중(%)": st.column_config.NumberColumn("목표비중(%)", format="%.1f%%",  width="small"),
                 "현재비중(%)": st.column_config.NumberColumn("현재비중(%)", format="%.1f",  width="small"),
                 "차이(%p)":    st.column_config.NumberColumn("차이(%p)",  format="%+.1f",  width="small"),
                 "현재금액(원)": st.column_config.NumberColumn("현재금액(원)", format="%,d", width="medium"),
                 "목표금액(원)": st.column_config.NumberColumn("목표금액(원)", format="%,d", width="medium"),
+                "매수/매도(원)": st.column_config.NumberColumn("매수/매도(원)", format="%+,d", width="medium",
+                                help="양수=매수 필요 / 음수=매도 필요"),
             },
         )
         st.caption("⚠️ 원자재/구리·헬스케어/방어는 참고용 — ISA 불가(양도세 22%)로 가이드 제외.")
