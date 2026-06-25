@@ -1471,6 +1471,10 @@ if new_money > 0 and alloc["Total"] > 0:
                 _add_amts[_idx] = round(_d / _tot * _bud) if _tot > 0 and _d > 0 else 0
         _rot_df["추가투자(원)"] = _add_amts
 
+        # 목표금액 = 현재금액 + 추가투자 (오늘 투자 실행 후 실제 잔액)
+        _rot_df["목표금액(원)"] = (_rot_df["현재금액(원)"].astype(float) +
+                                   _rot_df["추가투자(원)"].astype(float)).round(0).astype("Int64")
+
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
