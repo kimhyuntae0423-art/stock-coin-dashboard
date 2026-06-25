@@ -1457,6 +1457,12 @@ if new_money > 0 and alloc["Total"] > 0:
             for _idx, _d in _rows:
                 _buy_amts[_idx] = round(_d / _tot * _bud)
 
+        # 현금 행에 cash_res 직접 배정 → 합계가 정확히 new_money
+        for _ci in range(len(_rot_df)):
+            if str(_rot_df.iloc[_ci].get("US ETF", "")).upper() == "CASH":
+                _buy_amts[_ci] = cash_res
+                break
+
         _rot_df["추가금액(원)"] = _buy_amts
         # 목표금액 = 현재금액 + 추가금액 (항등식 — 항상 일치)
         _rot_df["목표금액(원)"] = (_rot_df["현재금액(원)"].astype(float) +
