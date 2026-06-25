@@ -1273,18 +1273,19 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["매수/매도(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
-        _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
 
         # ── 인사이트 기반 조정 ────────────────────────────────────────
-        # ETF 신호 맵: ticker → {rsi, ret1m}
+        # ETF 신호 맵: ticker → {rsi, ret1m, state, action}
         _sig_map: dict = {}
         if not summary.empty:
             _sig_l = summary.sort_values("date").groupby("ticker").last().reset_index()
             _sig_l["ticker"] = _sig_l["ticker"].astype(str).str.upper()
             for _, _sr in _sig_l.iterrows():
                 _sig_map[str(_sr["ticker"])] = {
-                    "rsi":   float(_sr.get("rsi14") or 50),
-                    "ret1m": float(_sr.get("return_1m_pct") or 0),
+                    "rsi":    float(_sr.get("rsi14") or 50),
+                    "ret1m":  float(_sr.get("return_1m_pct") or 0),
+                    "state":  str(_sr.get("state") or ""),
+                    "action": str(_sr.get("action") or ""),
                 }
         # 코인 신호 맵: ticker → {rsi, ret90d, action}
         _csig_map: dict = {}
@@ -1308,20 +1309,23 @@ if new_money > 0 and alloc["Total"] > 0:
                     _role_to_tks.setdefault(_crole3, []).append(_ctk3)
 
         def _get_role_signal(us_etf: str, account: str):
-            """역할/코인별 RSI·수익률·regime 신호 반환."""
+            """역할/코인별 RSI·수익률·state·regime 신호 반환."""
             _uk = str(us_etf).upper()
             if account == "코인" or "-USD" in _uk:
                 _cs = _csig_map.get(_uk, {})
                 return (float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)),
-                        True, str(_cs.get("action","")), str(_cs.get("regime","")))
+                        True, str(_cs.get("action","")), str(_cs.get("regime","")), "")
             _tks = _role_to_tks.get(_uk, [])
             if not _tks:
-                return 50.0, 0.0, False, "", ""
-            _rsis = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
-            _rets = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
+                return 50.0, 0.0, False, "", "", ""
+            _rsis   = [_sig_map[t]["rsi"]    for t in _tks if t in _sig_map]
+            _rets   = [_sig_map[t]["ret1m"]  for t in _tks if t in _sig_map]
+            _states = [_sig_map[t]["state"]  for t in _tks if t in _sig_map]
+            _bull_n = sum(1 for s in _states if s == "bull")
+            _etf_state = "bull" if _bull_n > len(_states) / 2 else ("bear" if _states else "")
             return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
                     sum(_rets)/len(_rets) if _rets else 0.0,
-                    False, "", "")
+                    False, "", "", _etf_state)
 
         # regime 한글 레이블
         _REGIME_KR = {
@@ -1335,7 +1339,7 @@ if new_money > 0 and alloc["Total"] > 0:
         _insights: list = []
         for _, _rr in _rot_df.iterrows():
             _raw = int(_rr.get("매수/매도(원)") or 0)
-            _rsi_v, _ret_v, _is_coin, _action_v, _regime_v = _get_role_signal(
+            _rsi_v, _ret_v, _is_coin, _action_v, _regime_v, _etf_state = _get_role_signal(
                 str(_rr.get("US ETF","")), str(_rr.get("계좌","")))
             _regime_kr = _REGIME_KR.get(_regime_v, "")
             _insight = ""
@@ -1346,8 +1350,8 @@ if new_money > 0 and alloc["Total"] > 0:
                     if _regime_v == "accumulation":
                         _adj = 0
                         _insight = f"🟡 매집 구간 — 매도 보류 (RSI {_rsi_v:.0f})"
-                    elif _regime_v in ("markup",):
-                        _insight = f"🟢 {_regime_kr} 구간 — 매도 고려 (RSI {_rsi_v:.0f})"
+                    elif _regime_v == "markup":
+                        _insight = f"🟢 상승 구간 — 매도 고려 (RSI {_rsi_v:.0f})"
                     elif _regime_v == "distribution":
                         _insight = f"🔴 배분 구간 — 매도 권장 (RSI {_rsi_v:.0f})"
                     elif _rsi_v < 40 or _ret_v < -15:
@@ -1371,15 +1375,28 @@ if new_money > 0 and alloc["Total"] > 0:
                     if _regime_kr:
                         _insight = f"{'🟢' if _regime_v in ('accumulation','markup') else '🔴'} {_regime_kr} 구간 (RSI {_rsi_v:.0f})"
             else:
-                # ETF 로직
-                if _raw < -5000:
+                # ETF: bull/bear state + RSI 복합 판단
+                if _raw < -5000:  # ETF 매도 필요
                     if _rsi_v < 38 or _ret_v < -10:
                         _adj = 0
-                        _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%) — 매도 보류"
-                elif _raw > 5000:
+                        _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%, RSI {_rsi_v:.0f}) — 매도 보류"
+                    elif _etf_state == "bear":
+                        _insight = f"🔴 하락추세 — 매도 고려 (RSI {_rsi_v:.0f})"
+                    elif _etf_state == "bull":
+                        _adj = 0
+                        _insight = f"🟢 상승추세 — 매도 보류 (RSI {_rsi_v:.0f})"
+                elif _raw > 5000:  # ETF 매수 필요
                     if _rsi_v > 73:
                         _adj = int(_raw * 0.5)
                         _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
+                    elif _etf_state == "bull":
+                        if _rsi_v < 40:
+                            _insight = f"🎯 상승추세 + 과매도(RSI {_rsi_v:.0f}) — 강력 매수"
+                        else:
+                            _insight = f"🟢 상승추세(RSI {_rsi_v:.0f}) — 적극 매수"
+                    elif _etf_state == "bear":
+                        _adj = int(_raw * 0.5)
+                        _insight = f"⚠️ 하락추세 — 분할 매수 (RSI {_rsi_v:.0f})"
                     elif _rsi_v < 35:
                         _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
 
@@ -1387,6 +1404,14 @@ if new_money > 0 and alloc["Total"] > 0:
             _insights.append(_insight)
         _rot_df["조정금액(원)"] = _adj_amts
         _rot_df["인사이트"]    = _insights
+
+        # ── 추가투자 배분: 현재비중 < 목표비중인 항목 우선, 부족분 비율로 배분 ──
+        _deficit = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).clip(lower=0)
+        _total_deficit = _deficit.sum()
+        if _total_deficit > 0:
+            _rot_df["추가투자(원)"] = (_deficit / _total_deficit * new_money).round(0).astype("Int64")
+        else:
+            _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
 
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
