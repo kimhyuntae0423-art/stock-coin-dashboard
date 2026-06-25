@@ -1235,6 +1235,16 @@ if new_money > 0 and alloc["Total"] > 0:
         if _coin_rows:
             _rot_df = pd.concat([_rot_df, pd.DataFrame(_coin_rows)], ignore_index=True)
 
+        # 현금 행 추가 (target_cash 연동)
+        _cash_현재 = round(cash_amount / _rot_total * 100, 1)
+        _cash_row = pd.DataFrame([{
+            "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—", "계좌": "현금",
+            "기본비중(%)": float(target_cash), "목표비중(%)": float(target_cash),
+            "현재비중(%)": _cash_현재, "차이(%p)": round(float(target_cash) - _cash_현재, 1),
+            "설명": "폭락 시 추가매수 탄약", "가이드비중(%)": None,
+        }])
+        _rot_df = pd.concat([_rot_df, _cash_row], ignore_index=True)
+
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_sum = pd.DataFrame([{
