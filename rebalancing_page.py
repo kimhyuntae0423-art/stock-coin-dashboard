@@ -1491,15 +1491,15 @@ st.subheader("📋 리밸런싱 이력")
 with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
     st.caption("날짜·국면이 같은 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제")
     _rb_input_template = pd.DataFrame({
-        "날짜":        [_rb_date_cls.today()],
-        "국면":        [_rb_default_phase],
-        "구분":        ["매수"],
-        "종목명":      [""],
-        "수량":        [0.0],
-        "단가(원)":    [0],
-        "보유현금(원)": [int(cash_amount)],
-        "메모":        [""],
+        "날짜":     [_rb_date_cls.today()],
+        "국면":     [_rb_default_phase],
+        "구분":     ["매수"],
+        "종목명":   [""],
+        "수량":     [0.0],
+        "단가(원)": [0],
+        "메모":     [""],
     })
+    st.caption("💡 구분 = **현금** 선택 후 수량에 보유 현금(원) 입력 → CASH 자동 갱신")
     _rb_edited = st.data_editor(
         _rb_input_template,
         num_rows="dynamic",
@@ -1507,12 +1507,10 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         column_config={
             "날짜":  st.column_config.DateColumn("날짜", width="small"),
             "국면":  st.column_config.SelectboxColumn("국면", options=_rb_phase_options, width="medium"),
-            "구분":  st.column_config.SelectboxColumn("구분", options=["매수", "매도"], width="small"),
+            "구분":  st.column_config.SelectboxColumn("구분", options=["매수", "매도", "현금"], width="small"),
             "종목명": st.column_config.SelectboxColumn("종목명", options=_rb_all_names, width="large"),
             "수량":  st.column_config.NumberColumn("수량", format="%.4g", min_value=0, width="small"),
             "단가(원)": st.column_config.NumberColumn("단가(원)", format="%,d", min_value=0, width="medium"),
-            "보유현금(원)": st.column_config.NumberColumn("보유현금(원)", format="%,d", min_value=0, width="medium",
-                help="거래 후 남은 현금 — 날짜·국면 그룹의 첫 값 사용"),
             "메모": st.column_config.TextColumn("메모", width="large"),
         },
         use_container_width=True,
@@ -1544,10 +1542,14 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             _ev_date  = str(_grp["_date_str"].iloc[0])
             _ev_phase = str(_grp["_phase_str"].iloc[0])
             _ev_memo  = str(_grp["메모"].iloc[0] or "").strip()
-            _ev_cash  = int(_grp["보유현금(원)"].fillna(0).iloc[0] or 0)
+            # 현금 행: 구분 == "현금"인 행의 수량을 보유현금으로 사용
+            _cash_rows = _grp[_grp["구분"].astype(str) == "현금"]
+            _ev_cash   = int(_cash_rows["수량"].fillna(0).iloc[0] or 0) if not _cash_rows.empty else -1
 
             buys, sells = [], []
             for _, _row in _grp.iterrows():
+                if str(_row.get("구분")) == "현금":
+                    continue  # 현금 행은 trade 처리 제외
                 _name  = str(_row.get("종목명", "") or "").strip()
                 _qty   = float(_row.get("수량",   0) or 0)
                 _price = float(_row.get("단가(원)", 0) or 0)
@@ -1594,19 +1596,20 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                     else:
                         _hdf.loc[_mask, "qty"] = _nq
 
-            # CASH 갱신 (그룹별 마지막 이벤트 값으로)
-            _cash_person = selected_person if selected_person != "전체" else (
-                all_persons[0] if all_persons else ""
-            )
-            _cash_hmask = (_hdf["ticker"].str.upper() == "CASH") & \
-                          (_hdf["person"].astype(str) == _cash_person)
-            if _cash_hmask.any():
-                _hdf.loc[_cash_hmask, "qty"] = _ev_cash
-            else:
-                _cr = {c: "" for c in _hdf.columns}
-                _cr.update({"ticker": "CASH", "qty": _ev_cash,
-                             "buy_price": 1, "notes": "보유 현금", "person": _cash_person})
-                _hdf = pd.concat([_hdf, pd.DataFrame([_cr])], ignore_index=True)
+            # CASH 갱신 — 현금 행이 있을 때만 (_ev_cash >= 0)
+            if _ev_cash >= 0:
+                _cash_person = selected_person if selected_person != "전체" else (
+                    all_persons[0] if all_persons else ""
+                )
+                _cash_hmask = (_hdf["ticker"].str.upper() == "CASH") & \
+                              (_hdf["person"].astype(str) == _cash_person)
+                if _cash_hmask.any():
+                    _hdf.loc[_cash_hmask, "qty"] = _ev_cash
+                else:
+                    _cr = {c: "" for c in _hdf.columns}
+                    _cr.update({"ticker": "CASH", "qty": _ev_cash,
+                                 "buy_price": 1, "notes": "보유 현금", "person": _cash_person})
+                    _hdf = pd.concat([_hdf, pd.DataFrame([_cr])], ignore_index=True)
 
         # 이력 저장 (최신 순으로 앞에 삽입)
         for _ev in reversed(_new_events):
