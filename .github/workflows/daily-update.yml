@@ -1,6 +1,12 @@
 name: 매일 데이터 자동 갱신
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:          # data 커밋은 무시 (무한루프 방지)
+      - "results/**"
+      - "*.json"
+      - "*.md"
   schedule:
     # 매일 22:00 UTC = 다음날 07:00 KST (미국 장 마감 후)
     - cron: "0 22 * * *"
