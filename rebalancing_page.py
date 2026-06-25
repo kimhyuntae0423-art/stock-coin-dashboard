@@ -1679,14 +1679,20 @@ if _rb_hist:
         st.session_state["_rb_hist"] = _rb_hist
         st.rerun()
 
-    # 종목별 전체 이력 누적 투자금 계산
-    _ticker_total_buy: dict = {}
+    # 종목별 누적 매수·매도 금액 계산
+    _ticker_total_buy:  dict = {}
+    _ticker_total_sell: dict = {}
     for _ev in _rb_hist:
         for _t in _ev.get("buys", []):
             _tk = str(_t.get("ticker", "")).upper()
             if _tk and _tk not in _BAD_TICKERS:
                 _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
                 _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
+        for _t in _ev.get("sells", []):
+            _tk = str(_t.get("ticker", "")).upper()
+            if _tk and _tk not in _BAD_TICKERS:
+                _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
+                _ticker_total_sell[_tk] = _ticker_total_sell.get(_tk, 0) + _amt
 
     # ETF 목표금액 = 총자산 × 로테이션 테이블 목표비중(%)
     import re as _re
@@ -1747,14 +1753,12 @@ if _rb_hist:
                 _price = float(_t.get("unit_price", 0) or 0)
                 _trade_amt = _qty * _price
                 _tk_upper  = str(_t.get("ticker","")).upper()
-                _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" else None
+                _net_amt = max(0, _ticker_total_buy.get(_tk_upper, 0)
+                               - _ticker_total_sell.get(_tk_upper, 0))
+                _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" \
+                    else int(_net_amt)
                 _target_val = _etf_목표금액.get(_tk_upper, 0)
-                if _side == "매수" and _target_val > 0 and _cumul:
-                    _pct = round(_cumul / _target_val * 100, 1)
-                elif _side == "매도" and _target_val > 0 and _trade_amt:
-                    _pct = round(_trade_amt / _target_val * 100, 1)
-                else:
-                    _pct = None
+                _pct = round(_net_amt / _target_val * 100, 1) if _target_val > 0 else None
                 _rb_table_rows.append({
                     "날짜":        _rb_ev_date,
                     "국면":        _rb_ev_phase,
