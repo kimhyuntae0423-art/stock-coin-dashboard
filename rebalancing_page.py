@@ -1478,9 +1478,9 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
-            "목표비중(%)": float(target_core + target_satellite + target_cash),  # 반올림 오차 방지
+            "목표비중(%)": float(target_core + target_satellite + target_cash),
             "현재비중(%)": round(_rot_df["현재비중(%)"].sum(), 1),
-            "차이(%p)":   round(_rot_df["차이(%p)"].sum(), 1),
+            "차이(%p)":   round(float(target_core + target_satellite + target_cash) - round(_rot_df["현재비중(%)"].sum(), 1), 1),
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
             "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
