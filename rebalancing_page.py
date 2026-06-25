@@ -1415,11 +1415,18 @@ if new_money > 0 and alloc["Total"] > 0:
                     else:
                         _insight = (f"🔵 {_regime_kr} 구간({_rsi_str}) — "
                                     f"비중 {_diff_pp:.1f}%p 부족, 매수")
-                else:
-                    if _regime_v:
-                        _icon = "🟢" if _regime_v in ("accumulation", "markup") else "🔴"
-                        _insight = (f"{_icon} {_regime_kr} 구간({_rsi_str}) — "
-                                    f"목표 비중 달성, 유지")
+                else:  # 비중 균형 (-5000 ~ +5000)
+                    if _regime_v in ("accumulation", "markup"):
+                        _icon = "🟢"
+                        _insight = (f"{_icon} {_regime_kr} 구간({_rsi_str}) — 매수 신호 우호적. "
+                                    f"단, 목표 비중 이미 달성(차이 {_diff_pp:+.1f}%p)으로 추가금액 0. "
+                                    f"비중 줄어들면 다음 번에 자동 배분")
+                    elif _regime_v == "distribution":
+                        _insight = (f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
+                                    f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0. 매도 고려")
+                    elif _regime_v:
+                        _insight = (f"🔵 {_regime_kr} 구간({_rsi_str}) — "
+                                    f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
             else:
                 # ETF: VIX 국면(IC=0.14 ✅) + RSI<30(58% ✅)
                 _vix_str = f"VIX {_vix_val:.0f}" if _vix_val else _vix_kr
@@ -1453,6 +1460,17 @@ if new_money > 0 and alloc["Total"] > 0:
                     else:
                         _insight = (f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — "
                                     f"비중 {_diff_pp:.1f}%p 부족, 매수 적합")
+                else:  # 비중 균형
+                    if _vix_k in ("fear", "bear"):
+                        _insight = (f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — 매수 신호 우호적. "
+                                    f"단, 목표 비중 달성(차이 {_diff_pp:+.1f}%p)으로 추가금액 0. "
+                                    f"비중 줄어들면 자동 배분")
+                    elif _vix_k == "complacent":
+                        _insight = (f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 고점 주의. "
+                                    f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
+                    else:
+                        _insight = (f"🔵 {_vix_kr}({_vix_str}, {_rsi_str}) — "
+                                    f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
 
             _buy_eligible.append(_eligible)
             _insights.append(_insight)
