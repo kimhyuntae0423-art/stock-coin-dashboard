@@ -1028,15 +1028,24 @@ if new_money > 0 and alloc["Total"] > 0:
         core_buy = sat_buy = 0
         cash_res = new_money
 
+st.markdown("""
+<style>
+div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) [data-baseweb="input"] {
+    border: none !important; background: transparent !important; box-shadow: none !important;
+}
+div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) input {
+    font-size: 1.875rem !important; font-weight: 700 !important;
+    padding: 0 !important; line-height: 1.2 !important; color: rgb(49,51,63) !important;
+}
+div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) button {
+    display: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
 mc1, mc2, mc3, mc4 = st.columns(4)
 with mc1:
-    st.markdown(
-        '<p style="margin:0 0 4px 0;font-size:0.875rem;color:rgba(49,51,63,0.6)">💰 추가 투자할 금액 (원)</p>',
-        unsafe_allow_html=True,
-    )
     new_money = st.number_input("추가 투자할 금액 (원)", min_value=0, value=2_000_000,
-                                step=100_000, key="new_money_input",
-                                label_visibility="collapsed")
+                                step=100_000, key="new_money_input")
 mc2.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
 mc3.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
 mc4.metric("💵 현금 유보", f"{cash_res:,.0f}원")
