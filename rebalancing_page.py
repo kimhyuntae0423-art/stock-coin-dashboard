@@ -1315,24 +1315,26 @@ if new_money > 0 and alloc["Total"] > 0:
         def _get_role_signal(us_etf: str, account: str):
             """역할/코인별 신호 반환 — 검증된 지표만 사용.
 
-            코인: regime(coin_backtest ✅) + RSI<30(✅)
-            ETF:  VIX국면(IC=0.14 ✅) + RSI<30(58%적중 ✅)
-            제거: bull/bear state(IC=-0.047 역방향), RSI>70(적중률 47% 이하)
-            Returns: (rsi, ret, is_coin, regime, vix_key)
+            Returns: (rsi, ret, is_coin, regime, vix_key, action, avg_score)
+              - 코인: action = coin_backtest 액션(매수/보유/매도), avg_score = 0
+              - ETF:  action = "", avg_score = 역할 구성 티커 평균 score
             """
             _uk = str(us_etf).upper()
             if account == "코인" or "-USD" in _uk:
                 _cs = _csig_map.get(_uk, {})
                 return (float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)),
-                        True, str(_cs.get("regime", "")), "")
+                        True, str(_cs.get("regime", "")), "",
+                        str(_cs.get("action", "")), 0.0)
             _tks = _role_to_tks.get(_uk, [])
             if not _tks:
-                return 50.0, 0.0, False, "", _vix_key
-            _rsis = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
-            _rets = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
+                return 50.0, 0.0, False, "", _vix_key, "", 100.0
+            _rsis   = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
+            _rets   = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
+            _scores = [_sig_map[t]["score"] for t in _tks if t in _sig_map]
+            _avg_sc = sum(_scores)/len(_scores) if _scores else 100.0
             return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
                     sum(_rets)/len(_rets) if _rets else 0.0,
-                    False, "", _vix_key)
+                    False, "", _vix_key, "", _avg_sc)
 
         # regime 한글 레이블 (coin_backtest 검증 기준)
         _REGIME_KR = {
@@ -1370,106 +1372,138 @@ if new_money > 0 and alloc["Total"] > 0:
             # 부족한 행만 추가금액 배분 대상
             _eligible = _raw > 5000
 
-            _rsi_v, _ret_v, _is_coin, _regime_v, _vix_k = _get_role_signal(_uk, _acct)
+            _rsi_v, _ret_v, _is_coin, _regime_v, _vix_k, _action_v, _avg_score = _get_role_signal(_uk, _acct)
             _regime_kr = _REGIME_KR.get(_regime_v, "")
             _vix_kr    = _VIX_KR.get(_vix_k, "혼조")
+            # ETF score → 액션 레이블 (백테스트 복합점수 기반)
+            _score_label = ("📈 매수 강세" if _avg_score > 108 else
+                            "🟢 매수 우호" if _avg_score > 100 else
+                            "🔵 중립"      if _avg_score > 92  else "📉 매수 약화")
 
             _diff_pp = round(float(_rr.get("차이(%p)") or 0), 1)
 
             if _is_coin:
                 # 코인: regime(coin_backtest ✅) + RSI<30(58% ✅)
                 _rsi_str = f"RSI {_rsi_v:.0f}"
+                _act_prefix = f"[백테스트 액션: {_action_v}]  " if _action_v else ""
                 if _raw < -5000:  # 비중 초과
                     if _regime_v == "accumulation":
-                        _insight = (f"🟡 매집 구간({_rsi_str}) — 현재 바닥 형성 중. "
-                                    f"비중이 {abs(_diff_pp):.1f}%p 초과지만 아직 저점 구간, 매도 보류 권장")
+                        _insight = (_act_prefix +
+                                    f"🟡 매집 구간({_rsi_str}) — 현재 바닥 형성 중. "
+                                    f"비중 {abs(_diff_pp):.1f}%p 초과지만 저점 구간이므로 매도 보류 권장")
                     elif _regime_v == "distribution":
-                        _insight = (f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
+                        _insight = (_act_prefix +
+                                    f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
                                     f"비중 {abs(_diff_pp):.1f}%p 초과, 일부 익절 매도 고려")
                     elif _regime_v == "markup":
-                        _insight = (f"🟢 상승 구간({_rsi_str}) — 추세 강함. "
+                        _insight = (_act_prefix +
+                                    f"🟢 상승 구간({_rsi_str}) — 추세 강함. "
                                     f"비중 {abs(_diff_pp):.1f}%p 초과, 천천히 비중 축소 고려")
                     elif _rsi_v < 30:
-                        _insight = (f"🟡 과매도({_rsi_str}, 58% 적중) — 단기 반등 가능성. "
+                        _insight = (_act_prefix +
+                                    f"🟡 과매도({_rsi_str}, 58% 적중) — 단기 반등 가능성. "
                                     f"비중 초과지만 저점 매도 위험, 보류")
                     else:
-                        _insight = (f"🔵 비중 {abs(_diff_pp):.1f}%p 초과({_rsi_str}) — "
+                        _insight = (_act_prefix +
+                                    f"🔵 비중 {abs(_diff_pp):.1f}%p 초과({_rsi_str}) — "
                                     f"점진적 비중 축소 고려")
                 elif _raw > 5000:  # 비중 부족
                     if _regime_v == "accumulation":
                         if _rsi_v < 30:
-                            _insight = (f"🎯 매집 구간 + 과매도({_rsi_str}, 58% 적중) — "
+                            _insight = (_act_prefix +
+                                        f"🎯 매집 구간 + 과매도({_rsi_str}, 58% 적중) — "
                                         f"백테스트 최적 진입 조건. 비중 {_diff_pp:.1f}%p 부족, 적극 매수")
                         else:
-                            _insight = (f"🟢 매집 구간({_rsi_str}) — 바닥 형성 중. "
+                            _insight = (_act_prefix +
+                                        f"🟢 매집 구간({_rsi_str}) — 바닥 형성 중. "
                                         f"비중 {_diff_pp:.1f}%p 부족, 분할 매수 적합")
                     elif _regime_v == "distribution":
-                        _insight = (f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
+                        _insight = (_act_prefix +
+                                    f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
                                     f"비중은 부족하지만 고점 매수 위험, 신규 매수 보류")
                     elif _regime_v == "markdown":
-                        _insight = (f"⚠️ 하락 구간({_rsi_str}) — 추세 하락 중. "
+                        _insight = (_act_prefix +
+                                    f"⚠️ 하락 구간({_rsi_str}) — 추세 하락 중. "
                                     f"비중 {_diff_pp:.1f}%p 부족, 소량 분할 매수만 권장")
                     elif _rsi_v < 30:
-                        _insight = (f"🎯 과매도({_rsi_str}, 5일 적중률 58%) — "
+                        _insight = (_act_prefix +
+                                    f"🎯 과매도({_rsi_str}, 5일 적중률 58%) — "
                                     f"단기 반등 확률 높음. 비중 {_diff_pp:.1f}%p 부족, 매수")
                     else:
-                        _insight = (f"🔵 {_regime_kr} 구간({_rsi_str}) — "
+                        _insight = (_act_prefix +
+                                    f"🔵 {_regime_kr} 구간({_rsi_str}) — "
                                     f"비중 {_diff_pp:.1f}%p 부족, 매수")
-                else:  # 비중 균형 (-5000 ~ +5000)
+                else:  # 비중 균형
                     if _regime_v in ("accumulation", "markup"):
                         _icon = "🟢"
-                        _insight = (f"{_icon} {_regime_kr} 구간({_rsi_str}) — 매수 신호 우호적. "
+                        _insight = (_act_prefix +
+                                    f"{_icon} {_regime_kr} 구간({_rsi_str}) — 매수 신호 우호적. "
                                     f"단, 목표 비중 이미 달성(차이 {_diff_pp:+.1f}%p)으로 추가금액 0. "
                                     f"비중 줄어들면 다음 번에 자동 배분")
                     elif _regime_v == "distribution":
-                        _insight = (f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
+                        _insight = (_act_prefix +
+                                    f"🔴 배분 구간({_rsi_str}) — 고점 경계. "
                                     f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0. 매도 고려")
                     elif _regime_v:
-                        _insight = (f"🔵 {_regime_kr} 구간({_rsi_str}) — "
+                        _insight = (_act_prefix +
+                                    f"🔵 {_regime_kr} 구간({_rsi_str}) — "
                                     f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
             else:
-                # ETF: VIX 국면(IC=0.14 ✅) + RSI<30(58% ✅)
+                # ETF: VIX 국면(IC=0.14 ✅) + RSI<30(58% ✅) + 백테스트 복합점수
                 _vix_str = f"VIX {_vix_val:.0f}" if _vix_val else _vix_kr
                 _rsi_str = f"RSI {_rsi_v:.0f}"
+                _sc_pfx  = f"[백테스트 점수: {_score_label}({_avg_score:.0f}점)]  "
                 if _raw < -5000:  # 비중 초과
                     if _vix_k == "fear":
-                        _insight = (f"🔥 공포 극단({_vix_str}) — 저점 매도는 최악의 타이밍. "
+                        _insight = (_sc_pfx +
+                                    f"🔥 공포 극단({_vix_str}) — 저점 매도는 최악의 타이밍. "
                                     f"비중 {abs(_diff_pp):.1f}%p 초과지만 보류 강력 권장")
                     elif _rsi_v < 30:
-                        _insight = (f"🟡 과매도({_rsi_str}, 58% 적중) — 단기 반등 가능. "
+                        _insight = (_sc_pfx +
+                                    f"🟡 과매도({_rsi_str}, 58% 적중) — 단기 반등 가능. "
                                     f"비중 초과지만 지금 매도 불리, 보류")
                     elif _vix_k == "complacent":
-                        _insight = (f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 시장 과열 신호. "
+                        _insight = (_sc_pfx +
+                                    f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 시장 과열 신호. "
                                     f"비중 {abs(_diff_pp):.1f}%p 초과, 일부 차익실현 고려")
                     else:
-                        _insight = (f"🔵 {_vix_kr}({_vix_str}, {_rsi_str}) — "
+                        _insight = (_sc_pfx +
+                                    f"🔵 {_vix_kr}({_vix_str}, {_rsi_str}) — "
                                     f"비중 {abs(_diff_pp):.1f}%p 초과, 점진적 축소 고려")
                 elif _raw > 5000:  # 비중 부족
                     if _vix_k == "fear":
-                        _insight = (f"🔥 공포 극단({_vix_str}) — 백테스트 IC=0.14 역발상 타이밍. "
+                        _insight = (_sc_pfx +
+                                    f"🔥 공포 극단({_vix_str}) — 백테스트 IC=0.14 역발상 타이밍. "
                                     f"비중 {_diff_pp:.1f}%p 부족, 적극 매수 권장")
                     elif _rsi_v < 30:
-                        _insight = (f"🎯 과매도({_rsi_str}, 5일 58% 적중) + {_vix_kr} — "
+                        _insight = (_sc_pfx +
+                                    f"🎯 과매도({_rsi_str}, 5일 58% 적중) + {_vix_kr} — "
                                     f"비중 {_diff_pp:.1f}%p 부족, 이중 매수 신호, 적극 매수")
                     elif _vix_k == "complacent":
-                        _insight = (f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 고점 가능성. "
+                        _insight = (_sc_pfx +
+                                    f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 고점 가능성. "
                                     f"비중 {_diff_pp:.1f}%p 부족, 소량 분할 매수만")
                     elif _vix_k == "bear":
-                        _insight = (f"⚠️ 약세 구간({_vix_str}, {_rsi_str}) — 하락 압력 있음. "
+                        _insight = (_sc_pfx +
+                                    f"⚠️ 약세 구간({_vix_str}, {_rsi_str}) — 하락 압력 있음. "
                                     f"비중 {_diff_pp:.1f}%p 부족, 분할 매수 권장")
                     else:
-                        _insight = (f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — "
+                        _insight = (_sc_pfx +
+                                    f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — "
                                     f"비중 {_diff_pp:.1f}%p 부족, 매수 적합")
                 else:  # 비중 균형
                     if _vix_k in ("fear", "bear"):
-                        _insight = (f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — 매수 신호 우호적. "
+                        _insight = (_sc_pfx +
+                                    f"🟢 {_vix_kr}({_vix_str}, {_rsi_str}) — 매수 신호 우호적. "
                                     f"단, 목표 비중 달성(차이 {_diff_pp:+.1f}%p)으로 추가금액 0. "
                                     f"비중 줄어들면 자동 배분")
                     elif _vix_k == "complacent":
-                        _insight = (f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 고점 주의. "
+                        _insight = (_sc_pfx +
+                                    f"🌡️ 과열 경계({_vix_str}, {_rsi_str}) — 고점 주의. "
                                     f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
                     else:
-                        _insight = (f"🔵 {_vix_kr}({_vix_str}, {_rsi_str}) — "
+                        _insight = (_sc_pfx +
+                                    f"🔵 {_vix_kr}({_vix_str}, {_rsi_str}) — "
                                     f"목표 비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 0")
 
             _buy_eligible.append(_eligible)
