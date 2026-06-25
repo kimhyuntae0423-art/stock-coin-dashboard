@@ -1489,24 +1489,21 @@ if st.session_state.get("_rb_tracked_phase") != _rb_default_phase:
 st.subheader("📋 리밸런싱 이력")
 
 with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
-    st.caption("날짜·국면이 같은 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제")
+    st.caption("같은 날짜의 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제  |  💡 구분 = **현금** → 수량에 보유 현금(원) 입력")
     _rb_input_template = pd.DataFrame({
         "날짜":     [_rb_date_cls.today()],
-        "국면":     [_rb_default_phase],
         "구분":     ["매수"],
         "종목명":   [""],
         "수량":     [0.0],
         "단가(원)": [0],
         "메모":     [""],
     })
-    st.caption("💡 구분 = **현금** 선택 후 수량에 보유 현금(원) 입력 → CASH 자동 갱신")
     _rb_edited = st.data_editor(
         _rb_input_template,
         num_rows="dynamic",
         key="rb_trades_editor",
         column_config={
             "날짜":  st.column_config.DateColumn("날짜", width="small"),
-            "국면":  st.column_config.SelectboxColumn("국면", options=_rb_phase_options, width="medium"),
             "구분":  st.column_config.SelectboxColumn("구분", options=["매수", "매도", "현금"], width="small"),
             "종목명": st.column_config.SelectboxColumn("종목명", options=_rb_all_names, width="large"),
             "수량":  st.column_config.NumberColumn("수량", format="%.4g", min_value=0, width="small"),
@@ -1519,10 +1516,32 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         import io as _io
         _rb_skipped = []
 
-        # 날짜+국면 기준으로 그룹화
+        # MVRV 이력으로 날짜별 국면 자동 계산
+        _mvrv_hist_f = RESULTS / "mvrv_history.csv"
+        _mvrv_hist_df = pd.DataFrame()
+        if _mvrv_hist_f.exists():
+            try:
+                _mvrv_hist_df = pd.read_csv(_mvrv_hist_f, index_col=0, parse_dates=True)
+            except Exception:
+                pass
+
+        def _phase_from_date(date_str: str) -> str:
+            try:
+                if not _mvrv_hist_df.empty:
+                    _ts = pd.Timestamp(date_str)
+                    _idx = _mvrv_hist_df.index.get_indexer([_ts], method="nearest")[0]
+                    _z = float(_mvrv_hist_df.iloc[_idx]["value"])
+                    if _z < 0:   return "공포 🔥"
+                    if _z < 2:   return "회복 🌱"
+                    if _z < 5:   return "확장 🚀"
+                    return "과열 🌡️"
+            except Exception:
+                pass
+            return _rb_default_phase
+
+        # 날짜 기준으로 그룹화
         _rb_edited["_date_str"]  = _rb_edited["날짜"].astype(str)
-        _rb_edited["_phase_str"] = _rb_edited["국면"].fillna("기타").astype(str)
-        _rb_edited["_group_key"] = _rb_edited["_date_str"] + "|" + _rb_edited["_phase_str"]
+        _rb_edited["_group_key"] = _rb_edited["_date_str"]
 
         # holdings 로드 (한 번만)
         _h_path = ROOT / "holdings.csv"
@@ -1540,7 +1559,7 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
         _new_events = []
         for _gkey, _grp in _rb_edited.groupby("_group_key", sort=False):
             _ev_date  = str(_grp["_date_str"].iloc[0])
-            _ev_phase = str(_grp["_phase_str"].iloc[0])
+            _ev_phase = _phase_from_date(_ev_date)
             _ev_memo  = str(_grp["메모"].iloc[0] or "").strip()
             # 현금 행: 구분 == "현금"인 행의 수량을 보유현금으로 사용
             _cash_rows = _grp[_grp["구분"].astype(str) == "현금"]
