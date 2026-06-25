@@ -1402,8 +1402,7 @@ if new_money > 0 and alloc["Total"] > 0:
 
             _adj_amts.append(_adj)
             _insights.append(_insight)
-        _rot_df["조정금액(원)"] = _adj_amts
-        _rot_df["인사이트"]    = _insights
+        _rot_df["인사이트"] = _insights
 
         # ── 추가투자 배분: 현재비중 < 목표비중인 항목 우선, 부족분 비율로 배분 ──
         _deficit = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).clip(lower=0)
@@ -1412,6 +1411,9 @@ if new_money > 0 and alloc["Total"] > 0:
             _rot_df["추가투자(원)"] = (_deficit / _total_deficit * new_money).round(0).astype("Int64")
         else:
             _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
+
+        # 조정금액 = 추가투자(원) 기준으로 통일 (코인 매도 불가 등 인사이트 반영 후 실질 액션)
+        _rot_df["조정금액(원)"] = _rot_df["추가투자(원)"]
 
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
@@ -1422,8 +1424,8 @@ if new_money > 0 and alloc["Total"] > 0:
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
             "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
-            "조정금액(원)": int(_rot_df["조정금액(원)"].sum()),
             "추가투자(원)": int(new_money),
+            "조정금액(원)": int(new_money),
             "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
