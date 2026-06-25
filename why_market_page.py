@@ -15,7 +15,12 @@ def load_returns():
     coin_files  = list(RESULTS_DIR.glob("coin_*_signals.csv"))
 
     def _ret(path):
-        df = pd.read_csv(path)
+        try:
+            df = pd.read_csv(path)
+        except Exception:
+            return None
+        if df.empty:
+            return None
         dc = [c for c in df.columns if c.lower() == "date"]
         if not dc: return None
         df = df.rename(columns={dc[0]: "Date"})
