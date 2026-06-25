@@ -1694,44 +1694,70 @@ if _rb_hist:
                 _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
                 _ticker_total_sell[_tk] = _ticker_total_sell.get(_tk, 0) + _amt
 
-    # 목표비중·현재비중 매핑 — _rot_df 기준 (ticker.upper() → fraction 0-1)
+    # ── ETF 목표비중 매핑 (_rot_df 기준, ticker → fraction 0-1) ──────
     import re as _re
-    _ticker_to_목표pct:  dict = {}
-    _ticker_to_현재pct:  dict = {}
-
-    def _build_pct_map(col_name: str) -> dict:
-        result: dict = {}
-        try:
-            if not _rot_df.empty and col_name in _rot_df.columns:
-                for _, _rrow in _rot_df.iterrows():
-                    _w  = float(_rrow.get(col_name, 0) or 0) / 100
-                    _us = str(_rrow.get("US ETF", "")).strip().upper()
-                    if _us:
-                        result[_us] = _w
-                    _isa = str(_rrow.get("ISA(원화)", "") or "")
-                    _km  = _re.search(r'\(([^)]+)\)', _isa)
-                    if _km:
-                        result[_km.group(1).strip().upper()] = _w
-        except NameError:
-            pass
-        if not core_etfs.empty and "rotation_role" in core_etfs.columns:
-            _role_map = {str(r).strip().upper(): result.get(str(r).strip().upper(), 0)
-                         for r in core_etfs["rotation_role"].dropna().unique()}
-            for _, _crow in core_etfs.iterrows():
-                _ctk   = str(_crow.get("ticker", "")).strip().upper()
-                _crole = str(_crow.get("rotation_role", "")).strip().upper()
-                if _ctk and _crole and _ctk not in result:
-                    _w = _role_map.get(_crole, 0)
-                    if _w:
-                        result[_ctk] = _w
-        return result
-
-    _ticker_to_목표pct = _build_pct_map("목표비중(%)")
-    _ticker_to_현재pct = _build_pct_map("현재비중(%)")
+    _ticker_to_목표pct: dict = {}  # rotation table 내 비중(100% 기준, CORE 내)
+    try:
+        if not _rot_df.empty and "목표비중(%)" in _rot_df.columns:
+            for _, _rrow in _rot_df.iterrows():
+                _목표w = float(_rrow.get("목표비중(%)", 0) or 0) / 100
+                _us = str(_rrow.get("US ETF", "")).strip().upper()
+                if _us:
+                    _ticker_to_목표pct[_us] = _목표w
+                _isa = str(_rrow.get("ISA(원화)", "") or "")
+                _km  = _re.search(r'\(([^)]+)\)', _isa)
+                if _km:
+                    _ticker_to_목표pct[_km.group(1).strip().upper()] = _목표w
+    except NameError:
+        pass
+    if not core_etfs.empty and "rotation_role" in core_etfs.columns:
+        _role_to_목표w = {str(r).strip().upper(): _ticker_to_목표pct.get(str(r).strip().upper(), 0)
+                          for r in core_etfs["rotation_role"].dropna().unique()}
+        for _, _crow in core_etfs.iterrows():
+            _ctk   = str(_crow.get("ticker", "")).strip().upper()
+            _crole = str(_crow.get("rotation_role", "")).strip().upper()
+            if _ctk and _crole and _ctk not in _ticker_to_목표pct:
+                _w = _role_to_목표w.get(_crole, 0)
+                if _w:
+                    _ticker_to_목표pct[_ctk] = _w
 
     _alloc_total_val = alloc.get("Total", 0)
-    _etf_목표금액 = {_tk: int(_alloc_total_val * _w)
+    # 실제 목표금액 = 총자산 × core비중 × role비중 (target_core로 스케일 조정)
+    _core_factor = (target_core / 100) if target_core > 0 else 1.0
+    _etf_목표금액 = {_tk: int(_alloc_total_val * _w * _core_factor)
                    for _tk, _w in _ticker_to_목표pct.items() if _w > 0}
+
+    # ── 현재 보유가치 매핑 (holdings × 현재가 / 총자산) ──────────────
+    # _rot_df["현재비중(%)"]는 US ETF만 포함해 분모가 틀림 → 직접 계산
+    _rb_현재가치_f: dict = {}  # ticker.upper() → fraction of total portfolio
+    try:
+        if not holdings.empty and not summary.empty and _alloc_total_val > 0:
+            _rb_h = holdings.copy()
+            _rb_h["ticker"] = _rb_h["ticker"].astype(str).str.upper()
+            _rb_latest = (summary.sort_values("date")
+                          .groupby("ticker").last()
+                          .reset_index()[["ticker", "close"]]
+                          .assign(ticker=lambda d: d["ticker"].astype(str).str.upper()))
+            _rb_h = _rb_h.merge(_rb_latest, on="ticker", how="left")
+            _rb_h["cur_val"] = (pd.to_numeric(_rb_h["qty"], errors="coerce") *
+                                pd.to_numeric(_rb_h["close"], errors="coerce"))
+            for _, _rh in _rb_h.iterrows():
+                _rtk  = str(_rh["ticker"]).upper()
+                _rval = float(_rh.get("cur_val") or 0)
+                if _rval > 0 and _rtk not in _BAD_TICKERS:
+                    _rb_현재가치_f[_rtk] = _rb_현재가치_f.get(_rtk, 0) + _rval / _alloc_total_val
+        # rotation_role 경유하여 US ETF 심볼에도 매핑 (역할 합산)
+        if not core_etfs.empty and "rotation_role" in core_etfs.columns:
+            _rb_role_val: dict = {}
+            for _, _crow in core_etfs.iterrows():
+                _ctk2  = str(_crow.get("ticker", "")).strip().upper()
+                _crole2 = str(_crow.get("rotation_role", "")).strip().upper()
+                if _ctk2 in _rb_현재가치_f and _crole2:
+                    _rb_role_val[_crole2] = _rb_role_val.get(_crole2, 0) + _rb_현재가치_f[_ctk2]
+            for _crole2, _rw in _rb_role_val.items():
+                _rb_현재가치_f[_crole2] = _rw
+    except Exception:
+        pass
 
     _rb_table_rows = []
     for _ei, _rb_ev in enumerate(_rb_hist):
@@ -1756,12 +1782,14 @@ if _rb_hist:
                 _price = float(_t.get("unit_price", 0) or 0)
                 _trade_amt = _qty * _price
                 _tk_upper  = str(_t.get("ticker","")).upper()
+                # 누적금액: 매수=역대 누적매수, 매도=현재 시가평가
+                _cur_f = _rb_현재가치_f.get(_tk_upper)
                 _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" \
-                    else int(_alloc_total_val * _ticker_to_현재pct.get(_tk_upper, 0))
-                _목표f  = _ticker_to_목표pct.get(_tk_upper, 0)
-                _현재f  = _ticker_to_현재pct.get(_tk_upper)
-                _pct = round(_현재f / _목표f * 100, 1) \
-                    if (_목표f > 0 and _현재f is not None) else None
+                    else int((_cur_f or 0) * _alloc_total_val)
+                # 목표대비 = 현재보유가치 / (총자산 × core목표비중 × role목표비중)
+                _목표f_adj = _ticker_to_목표pct.get(_tk_upper, 0) * _core_factor
+                _pct = round((_cur_f or 0) / _목표f_adj * 100, 1) \
+                    if (_목표f_adj > 0 and _cur_f is not None) else None
                 _rb_table_rows.append({
                     "날짜":        _rb_ev_date,
                     "국면":        _rb_ev_phase,
