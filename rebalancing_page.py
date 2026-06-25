@@ -1652,36 +1652,46 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
 _BAD_TICKERS = {"NONE", "NAN", ""}
 
 if _rb_hist:
+    _rb_table_rows = []
     for _rb_ev in _rb_hist:
         _rb_ev_date  = _rb_ev.get("date", "")
         _rb_ev_phase = _rb_ev.get("phase", "")
         _rb_ev_memo  = _rb_ev.get("memo", "")
         _rb_ev_buys  = [b for b in _rb_ev.get("buys",  []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
         _rb_ev_sells = [s for s in _rb_ev.get("sells", []) if str(s.get("ticker","")).upper() not in _BAD_TICKERS]
+        _trades = [("매수", t) for t in _rb_ev_buys] + [("매도", t) for t in _rb_ev_sells]
+        if _trades:
+            for _i, (_side, _t) in enumerate(_trades):
+                _rb_table_rows.append({
+                    "날짜":   _rb_ev_date,
+                    "국면":   _rb_ev_phase,
+                    "구분":   _side,
+                    "종목명": NAMES.get(str(_t.get("ticker","")).upper(), _t.get("ticker","")),
+                    "수량":   _t.get("qty", ""),
+                    "단가(원)": int(_t["unit_price"]) if _t.get("unit_price") else None,
+                    "메모":   _rb_ev_memo if _i == 0 else "",
+                })
+        else:
+            _rb_table_rows.append({
+                "날짜": _rb_ev_date, "국면": _rb_ev_phase, "구분": "",
+                "종목명": "", "수량": "", "단가(원)": None, "메모": _rb_ev_memo,
+            })
 
-        # 한 줄 컴팩트 렌더링
-        _rb_lines = [f"**{_rb_ev_date}** &nbsp; `{_rb_ev_phase}`"]
-        if _rb_ev_memo:
-            _rb_lines.append(f"<span style='color:gray;font-size:0.85em'>{_rb_ev_memo}</span>")
-        if _rb_ev_buys:
-            _parts = []
-            for _b in _rb_ev_buys:
-                _bname = NAMES.get(str(_b["ticker"]).upper(), _b["ticker"])
-                _bqty  = _b.get("qty") or _b.get("amount", "")
-                _bup   = f" @{_b['unit_price']:,.0f}원" if _b.get("unit_price") else ""
-                _parts.append(f"📈 {_bname} {_bqty}{_bup}")
-            _rb_lines.append("&nbsp;&nbsp;".join(_parts))
-        if _rb_ev_sells:
-            _parts = []
-            for _s in _rb_ev_sells:
-                _sname = NAMES.get(str(_s["ticker"]).upper(), _s["ticker"])
-                _sqty  = _s.get("qty") or _s.get("amount", "")
-                _sup   = f" @{_s['unit_price']:,.0f}원" if _s.get("unit_price") else ""
-                _parts.append(f"📉 {_sname} {_sqty}{_sup}")
-            _rb_lines.append("&nbsp;&nbsp;".join(_parts))
-
-        with st.container(border=True):
-            st.markdown("  \n".join(_rb_lines), unsafe_allow_html=True)
+    _rb_df = pd.DataFrame(_rb_table_rows)
+    st.dataframe(
+        _rb_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "날짜":     st.column_config.TextColumn("날짜",     width="small"),
+            "국면":     st.column_config.TextColumn("국면",     width="small"),
+            "구분":     st.column_config.TextColumn("구분",     width="small"),
+            "종목명":   st.column_config.TextColumn("종목명",   width="large"),
+            "수량":     st.column_config.NumberColumn("수량",   format="%.4g", width="small"),
+            "단가(원)": st.column_config.NumberColumn("단가(원)", format="%,d", width="medium"),
+            "메모":     st.column_config.TextColumn("메모",     width="large"),
+        },
+    )
 else:
     st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
 
