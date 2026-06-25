@@ -1275,17 +1275,16 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["매수/매도(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
 
         # ── 인사이트 기반 조정 ────────────────────────────────────────
-        # ETF 신호 맵: ticker → {rsi, ret1m, state, action}
+        # ETF 신호 맵: _e_scored(백테스트 복합신호) 기반 — raw summary 재조회 없음
         _sig_map: dict = {}
-        if not summary.empty:
-            _sig_l = summary.sort_values("date").groupby("ticker").last().reset_index()
-            _sig_l["ticker"] = _sig_l["ticker"].astype(str).str.upper()
-            for _, _sr in _sig_l.iterrows():
+        if not _e_scored.empty:
+            _esc = _e_scored.copy()
+            _esc["ticker"] = _esc["ticker"].astype(str).str.upper()
+            for _, _sr in _esc.iterrows():
                 _sig_map[str(_sr["ticker"])] = {
-                    "rsi":    float(_sr.get("rsi14") or 50),
-                    "ret1m":  float(_sr.get("return_1m_pct") or 0),
-                    "state":  str(_sr.get("state") or ""),
-                    "action": str(_sr.get("action") or ""),
+                    "rsi":   float(_sr.get("rsi14") or 50),
+                    "ret1m": float(_sr.get("return_1m_pct") or 0),
+                    "score": float(_sr.get("score") or 100),
                 }
         # 코인 신호 맵: ticker → {rsi, ret90d, action}
         _csig_map: dict = {}
@@ -1308,31 +1307,46 @@ if new_money > 0 and alloc["Total"] > 0:
                 if _ctk3 and _crole3 and _crole3 != "NAN":
                     _role_to_tks.setdefault(_crole3, []).append(_ctk3)
 
+        # VIX 국면 (백테스트 검증, IC=0.14) — ETF 인사이트 핵심 드라이버
+        _vix_key = _e_regime.get("key", "mixed")   # fear/complacent/bull/bear/mixed
+        _vix_val = _e_regime.get("vix")
+
         def _get_role_signal(us_etf: str, account: str):
-            """역할/코인별 RSI·수익률·state·regime 신호 반환."""
+            """역할/코인별 신호 반환 — 검증된 지표만 사용.
+
+            코인: regime(coin_backtest ✅) + RSI<30(✅)
+            ETF:  VIX국면(IC=0.14 ✅) + RSI<30(58%적중 ✅)
+            제거: bull/bear state(IC=-0.047 역방향), RSI>70(적중률 47% 이하)
+            Returns: (rsi, ret, is_coin, regime, vix_key)
+            """
             _uk = str(us_etf).upper()
             if account == "코인" or "-USD" in _uk:
                 _cs = _csig_map.get(_uk, {})
                 return (float(_cs.get("rsi", 50)), float(_cs.get("ret90d", 0)),
-                        True, str(_cs.get("action","")), str(_cs.get("regime","")), "")
+                        True, str(_cs.get("regime", "")), "")
             _tks = _role_to_tks.get(_uk, [])
             if not _tks:
-                return 50.0, 0.0, False, "", "", ""
-            _rsis   = [_sig_map[t]["rsi"]    for t in _tks if t in _sig_map]
-            _rets   = [_sig_map[t]["ret1m"]  for t in _tks if t in _sig_map]
-            _states = [_sig_map[t]["state"]  for t in _tks if t in _sig_map]
-            _bull_n = sum(1 for s in _states if s == "bull")
-            _etf_state = "bull" if _bull_n > len(_states) / 2 else ("bear" if _states else "")
+                return 50.0, 0.0, False, "", _vix_key
+            _rsis = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
+            _rets = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
             return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
                     sum(_rets)/len(_rets) if _rets else 0.0,
-                    False, "", "", _etf_state)
+                    False, "", _vix_key)
 
-        # regime 한글 레이블
+        # regime 한글 레이블 (coin_backtest 검증 기준)
         _REGIME_KR = {
             "accumulation": "매집",
             "markup":       "상승",
             "distribution": "배분",
             "markdown":     "하락",
+        }
+        # VIX 국면 한글 레이블 (etf_recommend 검증 기준)
+        _VIX_KR = {
+            "fear":       "공포 극단",
+            "bear":       "약세 구간",
+            "mixed":      "혼조",
+            "bull":       "강세 구간",
+            "complacent": "과열 경계",
         }
 
         # ── 패스 1: 인사이트 판단 + 매도 여부 결정 ─────────────────────────
@@ -1342,67 +1356,73 @@ if new_money > 0 and alloc["Total"] > 0:
 
         for _, _rr in _rot_df.iterrows():
             _raw = int(_rr.get("매수/매도(원)") or 0)
-            _rsi_v, _ret_v, _is_coin, _action_v, _regime_v, _etf_state = _get_role_signal(
+            _rsi_v, _ret_v, _is_coin, _regime_v, _vix_k = _get_role_signal(
                 str(_rr.get("US ETF","")), str(_rr.get("계좌","")))
             _regime_kr = _REGIME_KR.get(_regime_v, "")
+            _vix_kr    = _VIX_KR.get(_vix_k, "혼조")
             _insight = ""
             _sell = 0
             _eligible = False
 
             if _is_coin:
-                if _raw < -5000:  # 코인 매도 필요
+                # ── 코인: coin_backtest 검증 regime + RSI<30(✅) ──────────────
+                if _raw < -5000:  # 비중 초과 → 매도 검토
                     if _regime_v == "accumulation":
-                        _insight = f"🟡 매집 구간 — 매도 보류 (RSI {_rsi_v:.0f})"
+                        _insight = f"🟡 매집 구간 — 매도 보류"
                     elif _regime_v == "markup":
                         _sell = _raw
-                        _insight = f"🟢 상승 구간 — 매도 고려 (RSI {_rsi_v:.0f})"
+                        _insight = f"🟢 상승 구간 — 매도 고려"
                     elif _regime_v == "distribution":
                         _sell = _raw
-                        _insight = f"🔴 배분 구간 — 매도 권장 (RSI {_rsi_v:.0f})"
-                    elif _rsi_v < 40 or _ret_v < -15:
-                        _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}, 90일 {_ret_v:+.0f}%) — 매도 보류"
+                        _insight = f"🔴 배분 구간 — 매도 권장"
+                    elif _rsi_v < 30:  # RSI 30만 유효 (58% 적중 검증)
+                        _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}) — 매도 보류"
                     else:
                         _sell = _raw
-                elif _raw > 5000:  # 코인 매수 필요
+                elif _raw > 5000:  # 비중 부족 → 매수 검토
                     _eligible = True
                     if _regime_v == "accumulation":
-                        if _rsi_v < 35:
+                        if _rsi_v < 30:
                             _insight = f"🎯 매집 + 과매도(RSI {_rsi_v:.0f}) — 강력 매수"
                         else:
-                            _insight = f"🟢 매집 구간(RSI {_rsi_v:.0f}) — 적극 매수"
+                            _insight = f"🟢 매집 구간 — 적극 매수"
                     elif _regime_v == "distribution":
-                        _insight = f"🔴 배분 구간 — 매수 절제 (RSI {_rsi_v:.0f})"
+                        _eligible = False
+                        _insight = f"🔴 배분 구간 — 매수 보류"
                     elif _regime_v == "markdown":
-                        _insight = f"⚠️ 하락 구간 — 분할 매수만 (RSI {_rsi_v:.0f})"
-                    elif _rsi_v < 35:
+                        _insight = f"⚠️ 하락 구간 — 분할 매수만"
+                    elif _rsi_v < 30:
                         _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+                    else:
+                        _insight = f"{'🟢' if _regime_v == 'markup' else '🔵'} {_regime_kr} 구간 — 매수 유지"
                 else:
-                    if _regime_kr:
-                        _insight = f"{'🟢' if _regime_v in ('accumulation','markup') else '🔴'} {_regime_kr} 구간 (RSI {_rsi_v:.0f})"
+                    _insight = f"{'🟢' if _regime_v in ('accumulation','markup') else '🔴'} {_regime_kr} 구간"
             else:
-                if _raw < -5000:  # ETF 매도 필요
-                    if _rsi_v < 38 or _ret_v < -10:
-                        _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%, RSI {_rsi_v:.0f}) — 매도 보류"
-                    elif _etf_state == "bull":
-                        _insight = f"🟢 상승추세 — 매도 보류 (RSI {_rsi_v:.0f})"
-                    elif _etf_state == "bear":
+                # ── ETF: VIX 국면(IC=0.14 ✅) + RSI<30(58% ✅) ──────────────
+                # bull/bear state 제거 (IC=-0.047 역방향, 백테스트 무효)
+                # RSI 70/73/80 제거 (적중률 41~47%, 유해)
+                if _raw < -5000:  # 비중 초과 → 매도 검토
+                    if _vix_k == "fear" or _rsi_v < 30:
+                        # 공포 극단이거나 과매도 → 역발상: 매도 보류
+                        _insight = f"⚠️ {_vix_kr} — 매도 보류 (역발상 원칙)"
+                    elif _vix_k == "complacent":
                         _sell = _raw
-                        _insight = f"🔴 하락추세 — 매도 고려 (RSI {_rsi_v:.0f})"
+                        _insight = f"🌡️ {_vix_kr} — 비중 축소 고려"
                     else:
                         _sell = _raw
-                elif _raw > 5000:  # ETF 매수 필요
+                        _insight = f"🔵 {_vix_kr} — 비중 조정"
+                elif _raw > 5000:  # 비중 부족 → 매수 검토
                     _eligible = True
-                    if _rsi_v > 73:
-                        _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
-                    elif _etf_state == "bull":
-                        if _rsi_v < 40:
-                            _insight = f"🎯 상승추세 + 과매도(RSI {_rsi_v:.0f}) — 강력 매수"
-                        else:
-                            _insight = f"🟢 상승추세(RSI {_rsi_v:.0f}) — 적극 매수"
-                    elif _etf_state == "bear":
-                        _insight = f"⚠️ 하락추세 — 분할 매수 (RSI {_rsi_v:.0f})"
-                    elif _rsi_v < 35:
-                        _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
+                    if _vix_k == "fear":
+                        _insight = f"🔥 공포 극단 — 역발상 매수 (IC=0.14 검증)"
+                    elif _rsi_v < 30:
+                        _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수 (58% 적중)"
+                    elif _vix_k == "complacent":
+                        _insight = f"🌡️ {_vix_kr} — 분할 매수 신중"
+                    elif _vix_k == "bear":
+                        _insight = f"⚠️ {_vix_kr} — 분할 매수"
+                    else:
+                        _insight = f"🟢 {_vix_kr} — 매수 유지"
 
             _sell_amts.append(_sell)
             _buy_eligible.append(_eligible)
