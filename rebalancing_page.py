@@ -984,19 +984,21 @@ with ic2:
     target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_sat_")
 with ic3:
     target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
-st.caption(f"💵 현재 보유 현금: **{cash_amount:,.0f}원** — 보유종목 탭에서 CASH 행으로 관리")
-
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
 
 aa1, aa2, aa3, aa4 = st.columns(4)
-aa1.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
+with aa1:
+    st.metric("💼 총 자산", f"{alloc['Total']:,.0f}원")
+    st.caption(f"보유 현금 {cash_amount:,.0f}원 포함 · CASH 행 관리")
+aa2.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
            delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-aa2.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
+aa3.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
            delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-aa3.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
-           delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-aa4.metric("💼 총 자산", f"{alloc['Total']:,.0f}원", delta_color="off")
+with aa4:
+    st.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
+              delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
+    st.caption(f"보유 현금: {cash_amount:,.0f}원")
 
 if _h_vix:
     if _h_vix > 25:
@@ -1027,12 +1029,17 @@ if new_money > 0 and alloc["Total"] > 0:
         cash_res = new_money
 
 mc1, mc2, mc3, mc4 = st.columns(4)
-mc1.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
-mc2.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
-mc3.metric("💵 현금 유보", f"{cash_res:,.0f}원")
-with mc4:
-    new_money = st.number_input("💰 추가 투자할 금액 (원)", min_value=0, value=2_000_000,
-                                step=100_000, key="new_money_input")
+with mc1:
+    st.markdown(
+        '<p style="margin:0 0 4px 0;font-size:0.875rem;color:rgba(49,51,63,0.6)">💰 추가 투자할 금액 (원)</p>',
+        unsafe_allow_html=True,
+    )
+    new_money = st.number_input("추가 투자할 금액 (원)", min_value=0, value=2_000_000,
+                                step=100_000, key="new_money_input",
+                                label_visibility="collapsed")
+mc2.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
+mc3.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
+mc4.metric("💵 현금 유보", f"{cash_res:,.0f}원")
 
 if new_money > 0 and alloc["Total"] > 0:
     total_after = alloc["Total"] + new_money
