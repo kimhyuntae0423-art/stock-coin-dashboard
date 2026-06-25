@@ -1539,6 +1539,11 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
                 pass
             return _rb_default_phase
 
+        # + 버튼으로 추가한 행(현금 등)은 날짜가 NaT → 같은 이벤트로 묶이도록 채우기
+        _valid_dates = _rb_edited["날짜"].dropna()
+        if not _valid_dates.empty:
+            _rb_edited["날짜"] = _rb_edited["날짜"].fillna(_valid_dates.mode().iloc[0])
+
         # 날짜 기준으로 그룹화
         _rb_edited["_date_str"]  = _rb_edited["날짜"].astype(str)
         _rb_edited["_group_key"] = _rb_edited["_date_str"]
@@ -1683,6 +1688,24 @@ if _rb_hist:
                 _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
                 _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
 
+    # ETF 목표금액 = 총자산 × 코어목표비중 × (가장 최근 매수이벤트 내 ETF 비중)
+    _etf_목표금액: dict = {}
+    _alloc_total_val = alloc.get("Total", 0)
+    for _ev in _rb_hist:  # 최신순 → 첫 매수 이벤트만 사용
+        _ref_buys = [b for b in _ev.get("buys", [])
+                     if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
+        if not _ref_buys:
+            continue
+        _ref_total = sum(float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0)
+                         for b in _ref_buys)
+        if _ref_total <= 0:
+            break
+        for b in _ref_buys:
+            _tk = str(b.get("ticker","")).upper()
+            _amt = float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0)
+            _etf_목표금액[_tk] = _alloc_total_val * (target_core / 100) * (_amt / _ref_total)
+        break
+
     _rb_table_rows = []
     for _ei, _rb_ev in enumerate(_rb_hist):
         _rb_ev_date  = _rb_ev.get("date", "")
@@ -1706,8 +1729,10 @@ if _rb_hist:
                 _price = float(_t.get("unit_price", 0) or 0)
                 _trade_amt = _qty * _price
                 _tk_upper  = str(_t.get("ticker","")).upper()
-                _pct   = round(_trade_amt / _ev_total_all * 100, 1) if _ev_total_all > 0 else None
                 _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" else None
+                _target_val = _etf_목표금액.get(_tk_upper, 0)
+                _pct = round((_cumul or 0) / _target_val * 100, 1) \
+                    if (_side == "매수" and _target_val > 0 and _cumul) else None
                 _rb_table_rows.append({
                     "날짜":        _rb_ev_date,
                     "국면":        _rb_ev_phase,
