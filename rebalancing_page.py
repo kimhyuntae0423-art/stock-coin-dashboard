@@ -1652,29 +1652,58 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
 _BAD_TICKERS = {"NONE", "NAN", ""}
 
 if _rb_hist:
+    # 종목별 전체 이력 누적 투자금 계산
+    _ticker_total_buy: dict = {}
+    for _ev in _rb_hist:
+        for _t in _ev.get("buys", []):
+            _tk = str(_t.get("ticker", "")).upper()
+            if _tk and _tk not in _BAD_TICKERS:
+                _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
+                _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
+
+    # 이벤트별 총 매수금액 계산
+    _ev_buy_totals = []
+    for _ev in _rb_hist:
+        _bs = [b for b in _ev.get("buys", []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
+        _ev_buy_totals.append(
+            sum(float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0) for b in _bs)
+        )
+
     _rb_table_rows = []
-    for _rb_ev in _rb_hist:
+    for _ei, _rb_ev in enumerate(_rb_hist):
         _rb_ev_date  = _rb_ev.get("date", "")
         _rb_ev_phase = _rb_ev.get("phase", "")
         _rb_ev_memo  = _rb_ev.get("memo", "")
         _rb_ev_buys  = [b for b in _rb_ev.get("buys",  []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
         _rb_ev_sells = [s for s in _rb_ev.get("sells", []) if str(s.get("ticker","")).upper() not in _BAD_TICKERS]
+        _ev_total    = _ev_buy_totals[_ei]
         _trades = [("매수", t) for t in _rb_ev_buys] + [("매도", t) for t in _rb_ev_sells]
         if _trades:
             for _i, (_side, _t) in enumerate(_trades):
+                _qty   = float(_t.get("qty", 0) or 0)
+                _price = float(_t.get("unit_price", 0) or 0)
+                _trade_amt = _qty * _price
+                _tk_upper  = str(_t.get("ticker","")).upper()
+                _pct = round(_trade_amt / _ev_total * 100, 1) if (_ev_total > 0 and _side == "매수") else None
+                _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" else None
                 _rb_table_rows.append({
-                    "날짜":   _rb_ev_date,
-                    "국면":   _rb_ev_phase,
-                    "구분":   _side,
-                    "종목명": NAMES.get(str(_t.get("ticker","")).upper(), _t.get("ticker","")),
-                    "수량":   _t.get("qty", ""),
-                    "단가(원)": int(_t["unit_price"]) if _t.get("unit_price") else None,
-                    "메모":   _rb_ev_memo if _i == 0 else "",
+                    "날짜":       _rb_ev_date,
+                    "국면":       _rb_ev_phase,
+                    "구분":       _side,
+                    "종목명":     NAMES.get(_tk_upper, _t.get("ticker","")),
+                    "수량":       _qty if _qty else None,
+                    "단가(원)":   int(_price) if _price else None,
+                    "거래금액(원)": int(_trade_amt) if _trade_amt else None,
+                    "목표대비(%)": _pct,
+                    "누적금액(원)": _cumul,
+                    "메모":       _rb_ev_memo if _i == 0 else "",
                 })
         else:
             _rb_table_rows.append({
                 "날짜": _rb_ev_date, "국면": _rb_ev_phase, "구분": "",
-                "종목명": "", "수량": "", "단가(원)": None, "메모": _rb_ev_memo,
+                "종목명": "", "수량": None, "단가(원)": None,
+                "거래금액(원)": None, "목표대비(%)": None, "누적금액(원)": None,
+                "메모": _rb_ev_memo,
             })
 
     _rb_df = pd.DataFrame(_rb_table_rows)
@@ -1683,13 +1712,16 @@ if _rb_hist:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "날짜":     st.column_config.TextColumn("날짜",     width="small"),
-            "국면":     st.column_config.TextColumn("국면",     width="small"),
-            "구분":     st.column_config.TextColumn("구분",     width="small"),
-            "종목명":   st.column_config.TextColumn("종목명",   width="large"),
-            "수량":     st.column_config.NumberColumn("수량",   format="%.4g", width="small"),
-            "단가(원)": st.column_config.NumberColumn("단가(원)", format="%,d", width="medium"),
-            "메모":     st.column_config.TextColumn("메모",     width="large"),
+            "날짜":        st.column_config.TextColumn("날짜",        width="small"),
+            "국면":        st.column_config.TextColumn("국면",        width="small"),
+            "구분":        st.column_config.TextColumn("구분",        width="small"),
+            "종목명":      st.column_config.TextColumn("종목명",      width="large"),
+            "수량":        st.column_config.NumberColumn("수량",      format="%.4g", width="small"),
+            "단가(원)":    st.column_config.NumberColumn("단가(원)",   format="%,d",  width="medium"),
+            "거래금액(원)": st.column_config.NumberColumn("거래금액(원)", format="%,d", width="medium"),
+            "목표대비(%)": st.column_config.NumberColumn("목표대비(%)", format="%.1f%%", width="small"),
+            "누적금액(원)": st.column_config.NumberColumn("누적금액(원)", format="%,d", width="medium"),
+            "메모":        st.column_config.TextColumn("메모",        width="large"),
         },
     )
 else:
