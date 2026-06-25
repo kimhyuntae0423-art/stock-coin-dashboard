@@ -96,9 +96,24 @@ def _rb_gh_put(path: str, content_str: str, msg: str) -> tuple[bool, str]:
     import requests as _req, base64 as _b64
     token = _rb_gh_token()
     if not token:
-        return False, "토큰 없음"
+        return False, "토큰 없음 (Streamlit Cloud secrets에 GH_PAT 미설정)"
     url     = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
-    _, sha  = _rb_gh_get(path)
+    headers = {"Authorization": f"token {token}"}
+
+    # 1단계: SHA 조회 (파일 업데이트에 필수)
+    sha = None
+    try:
+        get_resp = _req.get(url, headers=headers, timeout=10)
+        if get_resp.status_code == 200:
+            sha = get_resp.json().get("sha")
+        elif get_resp.status_code == 401:
+            return False, "HTTP 401: 토큰 인증 실패 — Streamlit secrets의 GH_PAT를 확인하세요"
+        elif get_resp.status_code == 403:
+            return False, "HTTP 403: 토큰 권한 부족 — GH_PAT에 repo 쓰기 권한이 필요합니다"
+    except Exception as ge:
+        return False, f"GET 실패: {ge}"
+
+    # 2단계: PUT으로 파일 저장
     payload = {
         "message": msg,
         "content": _b64.b64encode(content_str.encode("utf-8")).decode("ascii"),
@@ -106,9 +121,22 @@ def _rb_gh_put(path: str, content_str: str, msg: str) -> tuple[bool, str]:
     if sha:
         payload["sha"] = sha
     try:
-        resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
+        resp = _req.put(url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
             return True, ""
+        # 422: SHA 충돌 → 최신 SHA 재조회 후 1회 재시도
+        if resp.status_code == 422:
+            try:
+                sha2 = _req.get(url, headers=headers, timeout=10).json().get("sha")
+                if sha2:
+                    payload["sha"] = sha2
+                    resp2 = _req.put(url, headers=headers, json=payload, timeout=15)
+                    if resp2.status_code in (200, 201):
+                        return True, ""
+                    err2 = resp2.json().get("message", "") if resp2.content else ""
+                    return False, f"재시도 실패 HTTP {resp2.status_code}: {err2}"
+            except Exception:
+                pass
         err_msg = resp.json().get("message", "") if resp.content else ""
         return False, f"HTTP {resp.status_code}: {err_msg}"
     except Exception as e:
