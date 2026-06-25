@@ -91,12 +91,12 @@ def _rb_gh_get(path: str) -> tuple[str | None, str | None]:
     return content, data.get("sha")
 
 
-def _rb_gh_put(path: str, content_str: str, msg: str) -> bool:
-    """GitHub API로 파일 커밋. 성공하면 True."""
+def _rb_gh_put(path: str, content_str: str, msg: str) -> tuple[bool, str]:
+    """GitHub API로 파일 커밋. (성공여부, 오류메시지) 반환."""
     import requests as _req, base64 as _b64
     token = _rb_gh_token()
     if not token:
-        return False
+        return False, "토큰 없음"
     url     = f"https://api.github.com/repos/{_RB_GH_OWNER}/{_RB_GH_REPO}/contents/{path}"
     _, sha  = _rb_gh_get(path)
     payload = {
@@ -105,8 +105,14 @@ def _rb_gh_put(path: str, content_str: str, msg: str) -> bool:
     }
     if sha:
         payload["sha"] = sha
-    resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
-    return resp.status_code in (200, 201)
+    try:
+        resp = _req.put(url, headers={"Authorization": f"token {token}"}, json=payload, timeout=15)
+        if resp.status_code in (200, 201):
+            return True, ""
+        err_msg = resp.json().get("message", "") if resp.content else ""
+        return False, f"HTTP {resp.status_code}: {err_msg}"
+    except Exception as e:
+        return False, str(e)
 
 
 def _rb_load() -> list:
@@ -128,7 +134,7 @@ def _rb_save(hist: list) -> bool:
     """이력 저장. GitHub API 성공 시 True, 로컬만 저장 시 False."""
     json_str = _rb_json.dumps(hist, ensure_ascii=False, indent=2)
     if _rb_gh_token():
-        ok = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
+        ok, _ = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
         if ok:
             return True
     _RB_HIST_FILE_PATH.write_text(json_str, encoding="utf-8")
@@ -231,8 +237,11 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
 
         (ROOT / "holdings.csv").write_text(_he_save.to_csv(index=False), encoding="utf-8")
         if _rb_gh_token():
-            _he_ok = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
-            st.session_state["_he_save_msg"] = ("✅ GitHub에 저장됐습니다." if _he_ok else "⚠️ 로컬 저장됨. GitHub 저장 실패.", _he_ok)
+            _he_ok, _he_err = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
+            if _he_ok:
+                st.session_state["_he_save_msg"] = ("✅ GitHub에 저장됐습니다.", True)
+            else:
+                st.session_state["_he_save_msg"] = (f"⚠️ 로컬 저장됨. GitHub 저장 실패 — {_he_err}", False)
         else:
             st.session_state["_he_save_msg"] = ("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.", False)
         st.rerun()
@@ -1579,7 +1588,7 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
 
             if _rb_gh_token():
                 _h_csv_str = _hdf.to_csv(index=False)
-                _h_gh_ok   = _rb_gh_put("holdings.csv", _h_csv_str, "data: 리밸런싱 후 보유현황 갱신")
+                _h_gh_ok, _ = _rb_gh_put("holdings.csv", _h_csv_str, "data: 리밸런싱 후 보유현황 갱신")
 
         if _rb_saved_to_gh:
             _msg = "✅ GitHub에 저장됐습니다."
