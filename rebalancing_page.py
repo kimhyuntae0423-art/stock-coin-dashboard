@@ -1489,7 +1489,7 @@ if st.session_state.get("_rb_tracked_phase") != _rb_default_phase:
 st.subheader("📋 리밸런싱 이력")
 
 with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
-    st.caption("같은 날짜의 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제  |  💡 구분 = **현금** → 수량에 보유 현금(원) 입력")
+    st.caption("같은 날짜의 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제  |  💡 구분 = **현금** → **단가(원)**에 보유 현금(원) 입력")
     _rb_input_template = pd.DataFrame({
         "날짜":     [_rb_date_cls.today()],
         "구분":     ["매수"],
@@ -1561,9 +1561,9 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             _ev_date  = str(_grp["_date_str"].iloc[0])
             _ev_phase = _phase_from_date(_ev_date)
             _ev_memo  = str(_grp["메모"].iloc[0] or "").strip()
-            # 현금 행: 구분 == "현금"인 행의 수량을 보유현금으로 사용
+            # 현금 행: 구분 == "현금"인 행의 단가(원)을 보유현금으로 사용
             _cash_rows = _grp[_grp["구분"].astype(str) == "현금"]
-            _ev_cash   = int(_cash_rows["수량"].fillna(0).iloc[0] or 0) if not _cash_rows.empty else -1
+            _ev_cash   = int(_cash_rows["단가(원)"].fillna(0).iloc[0] or 0) if not _cash_rows.empty else -1
 
             buys, sells = [], []
             for _, _row in _grp.iterrows():
@@ -1587,6 +1587,7 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             _new_events.append({
                 "date": _ev_date, "phase": _ev_phase,
                 "memo": _ev_memo, "buys": buys, "sells": sells,
+                "cash": _ev_cash if _ev_cash >= 0 else None,
             })
 
             # holdings 반영
@@ -1658,6 +1659,21 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
 _BAD_TICKERS = {"NONE", "NAN", ""}
 
 if _rb_hist:
+    # ── 이벤트 삭제 UI ──────────────────────────────────────────────
+    _ev_labels = [
+        f"[{i+1}] {ev.get('date','')} {ev.get('phase','')} "
+        f"(매수 {len(ev.get('buys',[]))}건 · 매도 {len(ev.get('sells',[]))}건)"
+        for i, ev in enumerate(_rb_hist)
+    ]
+    _del_sel = st.multiselect("🗑️ 삭제할 이벤트 선택 (복수 가능)", options=list(range(len(_rb_hist))),
+                              format_func=lambda i: _ev_labels[i], key="rb_del_sel")
+    if _del_sel and st.button("선택 이벤트 삭제", key="rb_del_btn", type="secondary"):
+        _del_set = set(_del_sel)
+        _rb_hist = [ev for i, ev in enumerate(_rb_hist) if i not in _del_set]
+        _rb_save(_rb_hist)
+        st.session_state["_rb_hist"] = _rb_hist
+        st.rerun()
+
     # 종목별 전체 이력 누적 투자금 계산
     _ticker_total_buy: dict = {}
     for _ev in _rb_hist:
@@ -1667,14 +1683,6 @@ if _rb_hist:
                 _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
                 _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
 
-    # 이벤트별 총 매수금액 계산
-    _ev_buy_totals = []
-    for _ev in _rb_hist:
-        _bs = [b for b in _ev.get("buys", []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
-        _ev_buy_totals.append(
-            sum(float(b.get("qty",0) or 0) * float(b.get("unit_price",0) or 0) for b in _bs)
-        )
-
     _rb_table_rows = []
     for _ei, _rb_ev in enumerate(_rb_hist):
         _rb_ev_date  = _rb_ev.get("date", "")
@@ -1682,34 +1690,59 @@ if _rb_hist:
         _rb_ev_memo  = _rb_ev.get("memo", "")
         _rb_ev_buys  = [b for b in _rb_ev.get("buys",  []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
         _rb_ev_sells = [s for s in _rb_ev.get("sells", []) if str(s.get("ticker","")).upper() not in _BAD_TICKERS]
-        _ev_total    = _ev_buy_totals[_ei]
+        _rb_ev_cash  = _rb_ev.get("cash")  # 보유현금 (있을 때만)
+
+        # 이벤트 내 전체 거래금액 합계 (매수+매도) — 목표대비(%) 분모
+        _ev_total_all = sum(
+            float(t.get("qty", 0) or 0) * float(t.get("unit_price", 0) or 0)
+            for t in _rb_ev_buys + _rb_ev_sells
+        )
+
         _trades = [("매수", t) for t in _rb_ev_buys] + [("매도", t) for t in _rb_ev_sells]
+        _first = True
         if _trades:
-            for _i, (_side, _t) in enumerate(_trades):
+            for _side, _t in _trades:
                 _qty   = float(_t.get("qty", 0) or 0)
                 _price = float(_t.get("unit_price", 0) or 0)
                 _trade_amt = _qty * _price
                 _tk_upper  = str(_t.get("ticker","")).upper()
-                _pct = round(_trade_amt / _ev_total * 100, 1) if (_ev_total > 0 and _side == "매수") else None
+                _pct   = round(_trade_amt / _ev_total_all * 100, 1) if _ev_total_all > 0 else None
                 _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" else None
                 _rb_table_rows.append({
-                    "날짜":       _rb_ev_date,
-                    "국면":       _rb_ev_phase,
-                    "구분":       _side,
-                    "종목명":     NAMES.get(_tk_upper, _t.get("ticker","")),
-                    "수량":       _qty if _qty else None,
-                    "단가(원)":   int(_price) if _price else None,
+                    "날짜":        _rb_ev_date,
+                    "국면":        _rb_ev_phase,
+                    "구분":        _side,
+                    "종목명":      NAMES.get(_tk_upper, _t.get("ticker","")),
+                    "수량":        _qty if _qty else None,
+                    "단가(원)":    int(_price) if _price else None,
                     "거래금액(원)": int(_trade_amt) if _trade_amt else None,
-                    "목표대비(%)": _pct,
+                    "목표대비(%)":  _pct,
                     "누적금액(원)": _cumul,
-                    "메모":       _rb_ev_memo if _i == 0 else "",
+                    "메모":        _rb_ev_memo if _first else "",
                 })
+                _first = False
         else:
             _rb_table_rows.append({
                 "날짜": _rb_ev_date, "국면": _rb_ev_phase, "구분": "",
                 "종목명": "", "수량": None, "단가(원)": None,
                 "거래금액(원)": None, "목표대비(%)": None, "누적금액(원)": None,
                 "메모": _rb_ev_memo,
+            })
+            _first = False
+
+        # 현금 행 (저장된 경우)
+        if _rb_ev_cash is not None and _rb_ev_cash >= 0:
+            _rb_table_rows.append({
+                "날짜":        _rb_ev_date,
+                "국면":        _rb_ev_phase,
+                "구분":        "현금",
+                "종목명":      "보유현금",
+                "수량":        None,
+                "단가(원)":    None,
+                "거래금액(원)": int(_rb_ev_cash),
+                "목표대비(%)":  None,
+                "누적금액(원)": None,
+                "메모":        "" if not _first else _rb_ev_memo,
             })
 
     _rb_df = pd.DataFrame(_rb_table_rows)
