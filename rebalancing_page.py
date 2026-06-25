@@ -1335,39 +1335,44 @@ if new_money > 0 and alloc["Total"] > 0:
             "markdown":     "하락",
         }
 
-        _adj_amts: list = []
+        # ── 패스 1: 인사이트 판단 + 매도 여부 결정 ─────────────────────────
+        _sell_amts: list = []   # 음수 또는 0
+        _buy_eligible: list = []  # True면 매수 예산 배분 대상
         _insights: list = []
+
         for _, _rr in _rot_df.iterrows():
             _raw = int(_rr.get("매수/매도(원)") or 0)
             _rsi_v, _ret_v, _is_coin, _action_v, _regime_v, _etf_state = _get_role_signal(
                 str(_rr.get("US ETF","")), str(_rr.get("계좌","")))
             _regime_kr = _REGIME_KR.get(_regime_v, "")
             _insight = ""
-            _adj = _raw
+            _sell = 0
+            _eligible = False
 
             if _is_coin:
                 if _raw < -5000:  # 코인 매도 필요
                     if _regime_v == "accumulation":
-                        _adj = 0
                         _insight = f"🟡 매집 구간 — 매도 보류 (RSI {_rsi_v:.0f})"
                     elif _regime_v == "markup":
+                        _sell = _raw
                         _insight = f"🟢 상승 구간 — 매도 고려 (RSI {_rsi_v:.0f})"
                     elif _regime_v == "distribution":
+                        _sell = _raw
                         _insight = f"🔴 배분 구간 — 매도 권장 (RSI {_rsi_v:.0f})"
                     elif _rsi_v < 40 or _ret_v < -15:
-                        _adj = 0
                         _insight = f"⚠️ 과매도(RSI {_rsi_v:.0f}, 90일 {_ret_v:+.0f}%) — 매도 보류"
+                    else:
+                        _sell = _raw
                 elif _raw > 5000:  # 코인 매수 필요
+                    _eligible = True
                     if _regime_v == "accumulation":
                         if _rsi_v < 35:
                             _insight = f"🎯 매집 + 과매도(RSI {_rsi_v:.0f}) — 강력 매수"
                         else:
                             _insight = f"🟢 매집 구간(RSI {_rsi_v:.0f}) — 적극 매수"
                     elif _regime_v == "distribution":
-                        _adj = int(_raw * 0.5)
                         _insight = f"🔴 배분 구간 — 매수 절제 (RSI {_rsi_v:.0f})"
                     elif _regime_v == "markdown":
-                        _adj = int(_raw * 0.5)
                         _insight = f"⚠️ 하락 구간 — 분할 매수만 (RSI {_rsi_v:.0f})"
                     elif _rsi_v < 35:
                         _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
@@ -1375,19 +1380,19 @@ if new_money > 0 and alloc["Total"] > 0:
                     if _regime_kr:
                         _insight = f"{'🟢' if _regime_v in ('accumulation','markup') else '🔴'} {_regime_kr} 구간 (RSI {_rsi_v:.0f})"
             else:
-                # ETF: bull/bear state + RSI 복합 판단
                 if _raw < -5000:  # ETF 매도 필요
                     if _rsi_v < 38 or _ret_v < -10:
-                        _adj = 0
                         _insight = f"⚠️ 단기 급락({_ret_v:+.1f}%, RSI {_rsi_v:.0f}) — 매도 보류"
-                    elif _etf_state == "bear":
-                        _insight = f"🔴 하락추세 — 매도 고려 (RSI {_rsi_v:.0f})"
                     elif _etf_state == "bull":
-                        _adj = 0
                         _insight = f"🟢 상승추세 — 매도 보류 (RSI {_rsi_v:.0f})"
+                    elif _etf_state == "bear":
+                        _sell = _raw
+                        _insight = f"🔴 하락추세 — 매도 고려 (RSI {_rsi_v:.0f})"
+                    else:
+                        _sell = _raw
                 elif _raw > 5000:  # ETF 매수 필요
+                    _eligible = True
                     if _rsi_v > 73:
-                        _adj = int(_raw * 0.5)
                         _insight = f"⚡ 과매수(RSI {_rsi_v:.0f}) — 매수 절반"
                     elif _etf_state == "bull":
                         if _rsi_v < 40:
@@ -1395,25 +1400,44 @@ if new_money > 0 and alloc["Total"] > 0:
                         else:
                             _insight = f"🟢 상승추세(RSI {_rsi_v:.0f}) — 적극 매수"
                     elif _etf_state == "bear":
-                        _adj = int(_raw * 0.5)
                         _insight = f"⚠️ 하락추세 — 분할 매수 (RSI {_rsi_v:.0f})"
                     elif _rsi_v < 35:
                         _insight = f"🎯 과매도(RSI {_rsi_v:.0f}) — 적극 매수"
 
-            _adj_amts.append(_adj)
+            _sell_amts.append(_sell)
+            _buy_eligible.append(_eligible)
             _insights.append(_insight)
+
         _rot_df["인사이트"] = _insights
 
-        # ── 추가투자 배분: 현재비중 < 목표비중인 항목 우선, 부족분 비율로 배분 ──
+        # ── 패스 2: 조정금액 산출 (매도수익 + 추가투자 → 매수 배분) ────────────
+        # 총 매도 수익 (음수 → 양수로)
+        _total_sell_proceeds = abs(sum(s for s in _sell_amts if s < 0))
+        _buy_budget = _total_sell_proceeds + new_money  # 매수에 쓸 수 있는 총액
+
+        # 매수 대상 행의 부족분 비율로 예산 배분
+        _deficit_vals = [
+            max(0, float(_rot_df.iloc[i]["목표비중(%)"]) - float(_rot_df.iloc[i]["현재비중(%)"]))
+            if _buy_eligible[i] else 0.0
+            for i in range(len(_rot_df))
+        ]
+        _total_def = sum(_deficit_vals) or 1.0
+        _buy_amts = [round(_d / _total_def * _buy_budget) for _d in _deficit_vals]
+
+        # 조정금액 = 매도(음수) or 매수(양수) or 0
+        _adj_amts = [
+            _sell_amts[i] if _sell_amts[i] < 0 else (_buy_amts[i] if _buy_eligible[i] else 0)
+            for i in range(len(_rot_df))
+        ]
+        _rot_df["조정금액(원)"] = _adj_amts
+
+        # ── 추가투자: new_money만 → 부족분 비례 배분 (매도수익 제외) ──────────
         _deficit = (_rot_df["목표비중(%)"] - _rot_df["현재비중(%)"]).clip(lower=0)
         _total_deficit = _deficit.sum()
         if _total_deficit > 0:
             _rot_df["추가투자(원)"] = (_deficit / _total_deficit * new_money).round(0).astype("Int64")
         else:
             _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
-
-        # 조정금액 = 추가투자(원) 기준으로 통일 (코인 매도 불가 등 인사이트 반영 후 실질 액션)
-        _rot_df["조정금액(원)"] = _rot_df["추가투자(원)"]
 
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
@@ -1424,8 +1448,8 @@ if new_money > 0 and alloc["Total"] > 0:
             "현재금액(원)": int(_rot_df["현재금액(원)"].sum()),
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
             "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
+            "조정금액(원)": int(_rot_df["조정금액(원)"].sum()),
             "추가투자(원)": int(new_money),
-            "조정금액(원)": int(new_money),
             "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
