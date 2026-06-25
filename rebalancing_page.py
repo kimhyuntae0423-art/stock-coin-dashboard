@@ -1642,9 +1642,13 @@ with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) ==
             _msg = "✅ GitHub에 저장됐습니다."
             if _h_updated:
                 _msg += " 보유현황도 반영됐어요." if _h_gh_ok else " (보유현황 GitHub 저장 실패 — 로컬만 반영)"
+            st.success(_msg)
         else:
-            _msg = "⚠️ GH_PAT 미설정 — 로컬에만 저장됐습니다. Streamlit Cloud 재시작 시 사라집니다."
-        st.success(_msg)
+            st.error(
+                "🚨 GitHub 저장 실패 — 앱 재시작 시 이력이 사라집니다!\n\n"
+                "**원인**: Streamlit Cloud Secrets에 GH_PAT 토큰이 없거나 만료됐습니다.\n\n"
+                "**해결**: Streamlit Cloud 대시보드 → 앱 Settings → Secrets 탭 → `GH_PAT` 값 확인/갱신"
+            )
         if _rb_skipped:
             st.warning(f"종목명을 찾지 못해 저장 제외: {', '.join(_rb_skipped)}")
         st.rerun()
