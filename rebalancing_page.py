@@ -1273,6 +1273,7 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df["현재금액(원)"] = (_rot_df["현재비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["목표금액(원)"] = (_rot_df["목표비중(%)"] / 100 * _rot_total).round(0).astype("Int64")
         _rot_df["매수/매도(원)"] = (_rot_df["목표금액(원)"].astype(float) - _rot_df["현재금액(원)"].astype(float)).round(0).astype("Int64")
+        _rot_df["추가투자(원)"] = (_rot_df["목표비중(%)"] / 100 * new_money).round(0).astype("Int64")
 
         # ── 인사이트 기반 조정 ────────────────────────────────────────
         # ETF 신호 맵: ticker → {rsi, ret1m}
@@ -1359,11 +1360,12 @@ if new_money > 0 and alloc["Total"] > 0:
             "목표금액(원)": int(_rot_df["목표금액(원)"].sum()),
             "매수/매도(원)": int(_rot_df["매수/매도(원)"].sum()),
             "조정금액(원)": int(_rot_df["조정금액(원)"].sum()),
+            "추가투자(원)": int(new_money),
             "인사이트": "", "설명": "", "가이드비중(%)": None,
         }])
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
         st.dataframe(
-            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "조정금액(원)", "인사이트"]],
+            _rot_df[["역할", "US ETF", "ISA(원화)", "계좌", "목표비중(%)", "현재비중(%)", "차이(%p)", "현재금액(원)", "목표금액(원)", "조정금액(원)", "추가투자(원)", "인사이트"]],
             hide_index=True, use_container_width=True,
             column_config={
                 "역할":        st.column_config.TextColumn("역할",        width="small"),
@@ -1378,6 +1380,8 @@ if new_money > 0 and alloc["Total"] > 0:
                 "목표금액(원)": st.column_config.NumberColumn("목표금액(원)", format="%,d", width="medium"),
                 "조정금액(원)": st.column_config.NumberColumn("조정금액(원)", format="%+,d", width="medium",
                                 help="인사이트 반영 후 실제 권장 매수/매도 금액 (양수=매수, 음수=매도)"),
+                "추가투자(원)": st.column_config.NumberColumn("추가투자(원)", format="%,d", width="medium",
+                                help="위의 추가 투자할 금액을 목표비중에 비례해 역할별로 배분"),
                 "인사이트":    st.column_config.TextColumn("인사이트",    width="large"),
             },
         )
