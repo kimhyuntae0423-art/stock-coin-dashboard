@@ -1489,7 +1489,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # 합계 행 강조 스타일
         _disp_cols = ["역할", "US ETF", "ISA(원화)", "계좌",
                       "목표비중(%)", "현재비중(%)", "차이(%p)",
-                      "현재금액(원)", "추가금액(원)", "목표금액(원)", "인사이트"]
+                      "목표금액(원)", "현재금액(원)", "추가금액(원)", "인사이트"]
         _rot_disp = _rot_df[_disp_cols].copy()
         def _style_sum_row(df):
             styles = pd.DataFrame("", index=df.index, columns=df.columns)
