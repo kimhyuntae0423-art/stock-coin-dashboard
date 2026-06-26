@@ -1450,43 +1450,41 @@ if new_money > 0 and alloc["Total"] > 0:
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
                 _z = f"비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 없음"
                 _sig = f"{_vix_str}, {_rsi_str}, {_avg_score:.0f}pt"
+                # 보유현황 액션 suffix — 항상 붙여서 두 신호를 동시에 표시
+                _pf_sfx = f"  [보유현황: {_kr_acts[0]}]" if _kr_acts else ""
+
                 if _raw < -5000:
-                    if _kr_sell:
-                        # 보유현황도 매도 방향 → 일치, 방향 강조
-                        _insight = f"🌡️ 보유 ETF 과열({_sig}) — {_o}, 차익실현 검토 (보유현황 신호 일치)"
-                    elif _vix_k == "fear":
-                        _insight = f"🔥 공포극단({_sig}) — {_o}지만 저점 매도 위험, 보류"
+                    if _vix_k == "fear":
+                        _insight = f"🔥 공포극단({_sig}) — {_o}지만 저점 매도 위험, 보류{_pf_sfx}"
                     elif _rsi_v < 30:
-                        _insight = f"🟡 과매도({_sig}) — {_o}지만 반등 가능, 매도 보류"
+                        _insight = f"🟡 과매도({_sig}) — {_o}지만 반등 가능, 매도 보류{_pf_sfx}"
                     elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — {_o}, 차익실현 고려"
+                        _insight = f"🌡️ 과열({_sig}) — {_o}, 차익실현 고려{_pf_sfx}"
                     else:
-                        _insight = f"🔵 {_vix_kr}({_sig}) — {_o}, 점진 축소"
+                        _insight = f"🔵 {_vix_kr}({_sig}) — {_o}, 점진 축소{_pf_sfx}"
                 elif _raw > 5000:
                     if _kr_sell:
-                        # 보유현황 매도 신호 ↔ 리밸런싱 매수 방향 불일치 → 경고
-                        _insight = f"⚠️ 보유 ETF 과열({_sig}) — {_b}이나 실보유 ETF 차익실현 구간, 과열 해소 후 매수"
+                        # 보유현황 매도 ↔ 리밸런싱 매수 불일치 → 명시적 경고
+                        _insight = f"⚠️ {_vix_kr}({_sig}) — {_b}이나 실보유 ETF 과열, 과열 해소 후 매수{_pf_sfx}"
                     elif _kr_buy:
-                        _insight = f"🔥 보유현황+공포({_sig}) — {_b}, 역발상 매수 (이중 신호) → 적극 매수"
+                        _insight = f"🔥 보유현황 역발상 매수+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수{_pf_sfx}"
                     elif _vix_k == "fear":
-                        _insight = f"🔥 공포극단({_sig}) — {_b}, 역발상 매수 타이밍 → 매수"
+                        _insight = f"🔥 공포극단({_sig}) — {_b}, 역발상 매수 타이밍 → 매수{_pf_sfx}"
                     elif _rsi_v < 30:
-                        _insight = f"🎯 과매도+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수"
+                        _insight = f"🎯 과매도+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수{_pf_sfx}"
                     elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — {_b}지만 고점 주의, 소량만"
+                        _insight = f"🌡️ 과열({_sig}) — {_b}지만 고점 주의, 소량만{_pf_sfx}"
                     elif _vix_k == "bear":
-                        _insight = f"⚠️ 약세({_sig}) — {_b}, 분할 매수"
+                        _insight = f"⚠️ 약세({_sig}) — {_b}, 분할 매수{_pf_sfx}"
                     else:
-                        _insight = f"🟢 {_vix_kr}({_sig}) — {_b} → 매수"
+                        _insight = f"🟢 {_vix_kr}({_sig}) — {_b} → 매수{_pf_sfx}"
                 else:
-                    if _kr_sell:
-                        _insight = f"🌡️ 보유 ETF 과열({_sig}) — 비중 달성이나 차익실현 검토"
-                    elif _vix_k in ("fear", "bear"):
-                        _insight = f"🟢 {_vix_kr}({_sig}) — 매수 우호적이나 {_z}"
+                    if _vix_k in ("fear", "bear"):
+                        _insight = f"🟢 {_vix_kr}({_sig}) — 매수 우호적이나 {_z}{_pf_sfx}"
                     elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — 고점 주의, {_z}"
+                        _insight = f"🌡️ 과열({_sig}) — 고점 주의, {_z}{_pf_sfx}"
                     else:
-                        _insight = f"🔵 {_vix_kr}({_sig}) — {_z}"
+                        _insight = f"🔵 {_vix_kr}({_sig}) — {_z}{_pf_sfx}"
 
             _buy_eligible.append(_eligible)
             _insights.append(_insight)
