@@ -641,6 +641,8 @@ if not holdings.empty:
     _ph_view = _ph_view.dropna(subset=["평가금액"])
     _ph_view = _ph_view[_ph_view["평가금액"] > 0].copy()
 
+    _ticker_action_map: dict = {}   # ticker(upper) → 보유현황 액션 레이블
+
     if not _ph_view.empty:
         _core_upper = {x.upper() for x in core_set}
         _ph_view["카테고리"] = _ph_view["ticker"].apply(
@@ -747,6 +749,11 @@ if not holdings.empty:
         _tbl["OBV추세"]   = [v.get("obv_slope") for v in _vsigs]
         _tbl["액션"]      = [_action(r, t, v)
                              for (_, r), t, v in zip(_tbl.iterrows(), _tsigs, _vsigs)]
+        # 리밸런싱 인사이트와 신호 통일을 위해 보유현황 액션 맵 저장
+        _ticker_action_map = {
+            str(r["ticker"]).upper(): str(r["액션"])
+            for _, r in _tbl.iterrows()
+        }
 
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
                            "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
@@ -1308,6 +1315,13 @@ if new_money > 0 and alloc["Total"] > 0:
                 if _ctk3 and _crole3 and _crole3 != "NAN":
                     _role_to_tks.setdefault(_crole3, []).append(_ctk3)
 
+        # 역할 → 실보유 KR ETF 보유현황 액션 맵 (보유현황과 신호 통일)
+        _role_to_kr_actions: dict = {}
+        for _role3, _tlist3 in _role_to_tks.items():
+            _acts3 = [_ticker_action_map[_t3] for _t3 in _tlist3 if _t3 in _ticker_action_map]
+            if _acts3:
+                _role_to_kr_actions[_role3] = _acts3
+
         # VIX 국면 (백테스트 검증, IC=0.14) — ETF 인사이트 핵심 드라이버
         _vix_key = _e_regime.get("key", "mixed")   # fear/complacent/bull/bear/mixed
         _vix_val = _e_regime.get("vix")
@@ -1380,6 +1394,16 @@ if new_money > 0 and alloc["Total"] > 0:
                             "🟢 매수 우호" if _avg_score > 100 else
                             "🔵 중립"      if _avg_score > 92  else "📉 매수 약화")
 
+            # 실보유 KR ETF 보유현황 액션 (보유현황쪽 신호와 통일)
+            _kr_acts  = _role_to_kr_actions.get(_uk, [])
+            _kr_sell  = any("차익실현" in _a or "분할매도" in _a for _a in _kr_acts)
+            _kr_buy   = any("역발상 추가매수" in _a for _a in _kr_acts)
+            _kr_label = next((
+                _a.split("🌡️")[-1].strip() if "🌡️" in _a else
+                _a.split("⚠️")[-1].strip() if "⚠️" in _a else _a
+                for _a in _kr_acts if ("차익실현" in _a or "분할매도" in _a)
+            ), "")
+
             _diff_pp = round(float(_rr.get("차이(%p)") or 0), 1)
 
             if _is_coin:
@@ -1427,7 +1451,10 @@ if new_money > 0 and alloc["Total"] > 0:
                 _z = f"비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 없음"
                 _sig = f"{_vix_str}, {_rsi_str}, {_avg_score:.0f}pt"
                 if _raw < -5000:
-                    if _vix_k == "fear":
+                    if _kr_sell:
+                        # 보유현황도 매도 방향 → 일치, 방향 강조
+                        _insight = f"🌡️ 보유 ETF 과열({_sig}) — {_o}, 차익실현 검토 (보유현황 신호 일치)"
+                    elif _vix_k == "fear":
                         _insight = f"🔥 공포극단({_sig}) — {_o}지만 저점 매도 위험, 보류"
                     elif _rsi_v < 30:
                         _insight = f"🟡 과매도({_sig}) — {_o}지만 반등 가능, 매도 보류"
@@ -1436,7 +1463,12 @@ if new_money > 0 and alloc["Total"] > 0:
                     else:
                         _insight = f"🔵 {_vix_kr}({_sig}) — {_o}, 점진 축소"
                 elif _raw > 5000:
-                    if _vix_k == "fear":
+                    if _kr_sell:
+                        # 보유현황 매도 신호 ↔ 리밸런싱 매수 방향 불일치 → 경고
+                        _insight = f"⚠️ 보유 ETF 과열({_sig}) — {_b}이나 실보유 ETF 차익실현 구간, 과열 해소 후 매수"
+                    elif _kr_buy:
+                        _insight = f"🔥 보유현황+공포({_sig}) — {_b}, 역발상 매수 (이중 신호) → 적극 매수"
+                    elif _vix_k == "fear":
                         _insight = f"🔥 공포극단({_sig}) — {_b}, 역발상 매수 타이밍 → 매수"
                     elif _rsi_v < 30:
                         _insight = f"🎯 과매도+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수"
@@ -1447,7 +1479,9 @@ if new_money > 0 and alloc["Total"] > 0:
                     else:
                         _insight = f"🟢 {_vix_kr}({_sig}) — {_b} → 매수"
                 else:
-                    if _vix_k in ("fear", "bear"):
+                    if _kr_sell:
+                        _insight = f"🌡️ 보유 ETF 과열({_sig}) — 비중 달성이나 차익실현 검토"
+                    elif _vix_k in ("fear", "bear"):
                         _insight = f"🟢 {_vix_kr}({_sig}) — 매수 우호적이나 {_z}"
                     elif _vix_k == "complacent":
                         _insight = f"🌡️ 과열({_sig}) — 고점 주의, {_z}"
