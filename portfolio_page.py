@@ -206,6 +206,15 @@ selected_person = st.selectbox(
 
 
 st.subheader("✏️ 보유 내역 추가 / 편집")
+from datetime import date as _pf_date_cls
+_pf_month = st.date_input(
+    "기준 월",
+    value=_pf_date_cls.today(),
+    format="YYYY-MM-DD",
+    key="pf_month_picker",
+    help="이 달 기준으로 보유현황을 입력합니다. 저장 후 리밸런싱 페이지에서 '이번 달 비중 저장'으로 이력에 기록하세요.",
+).strftime("%Y-%m")
+st.caption(f"📅 현재 입력 기준 월: **{_pf_month}**  |  저장 후 리밸런싱 탭 → '이번 달 비중 저장' 버튼으로 이력에 기록됩니다.")
 st.caption(
     "새 행은 맨 아래 + 버튼으로 추가. 행 삭제는 체크박스 → Delete. "
     "**티커를 직접 입력**하거나, 종목명 드롭다운 선택 후 💾 저장하면 티커 자동 입력. "

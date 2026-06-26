@@ -143,33 +143,38 @@ def _rb_gh_put(path: str, content_str: str, msg: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def _rb_load() -> list:
-    content, _ = _rb_gh_get("rebalancing_history.json")
-    if content is not None:
+_SNAP_FILE = "holdings_snapshots.json"
+
+
+def _snap_load() -> list:
+    raw, _ = _rb_gh_get(_SNAP_FILE)
+    if raw:
         try:
-            return _rb_json.loads(content)
+            return _rb_json.loads(raw)
         except Exception:
             return []
-    if _RB_HIST_FILE_PATH.exists():
+    _p = ROOT / _SNAP_FILE
+    if _p.exists():
         try:
-            return _rb_json.loads(_RB_HIST_FILE_PATH.read_text(encoding="utf-8"))
+            return _rb_json.loads(_p.read_text(encoding="utf-8"))
         except Exception:
             return []
     return []
 
 
-def _rb_save(hist: list) -> bool:
-    """이력 저장. GitHub API 성공 시 True, 로컬만 저장 시 False."""
-    json_str = _rb_json.dumps(hist, ensure_ascii=False, indent=2)
-    if _rb_gh_token():
-        ok, _ = _rb_gh_put("rebalancing_history.json", json_str, "data: 리밸런싱 이력 갱신")
-        if ok:
-            return True
-    _RB_HIST_FILE_PATH.write_text(json_str, encoding="utf-8")
-    return False
+def _snap_upsert(snaps: list, entry: dict) -> list:
+    """같은 month가 있으면 교체, 없으면 추가. 최신순 정렬."""
+    snaps = [s for s in snaps if s.get("month") != entry["month"]]
+    snaps.append(entry)
+    return sorted(snaps, key=lambda x: x.get("month", ""), reverse=True)
 
 
-_RB_HIST_FILE_PATH = ROOT / "rebalancing_history.json"
+def _snap_save(snaps: list) -> bool:
+    json_str = _rb_json.dumps(snaps, ensure_ascii=False, indent=2)
+    ok, _ = _rb_gh_put(_SNAP_FILE, json_str, "data: 월별 비중 스냅샷 갱신")
+    if not ok:
+        (ROOT / _SNAP_FILE).write_text(json_str, encoding="utf-8")
+    return ok
 
 # =====================================================================
 # 공통 데이터 로드
@@ -1616,6 +1621,41 @@ if new_money > 0 and alloc["Total"] > 0:
         )
         st.caption("목표금액 = 현재금액 + 추가금액.  추가금액 = 인사이트 반영 후 오늘 실행할 매수/매도 금액.")
 
+        # ── 월별 스냅샷 저장 ──────────────────────────────────────────
+        from datetime import date as _rb_date_cls
+        _sc_col1, _sc_col2 = st.columns([2, 2])
+        with _sc_col1:
+            _snap_month_sel = st.date_input(
+                "기준 월 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
+                key="snap_month_picker",
+                help="선택한 달의 기준으로 현재 비중을 스냅샷으로 저장합니다",
+            ).strftime("%Y-%m")
+        with _sc_col2:
+            st.write("")  # 세로 정렬용 공백
+            if st.button("📸 이번 달 비중 저장", use_container_width=True, key="snap_save_btn"):
+                _snap_alloc: dict = {}
+                _coin_pct2 = 0.0
+                for _, _sr2 in _rot_df.iterrows():
+                    _us2  = str(_sr2.get("US ETF", "")).upper()
+                    _ac2  = str(_sr2.get("계좌", ""))
+                    _pct2 = float(_sr2.get("현재비중(%)") or 0)
+                    if _us2 == "CASH" or _ac2 == "현금":
+                        _snap_alloc["cash"] = _pct2
+                    elif _ac2 == "코인" or "-USD" in _us2:
+                        _coin_pct2 += _pct2
+                    elif _us2 in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
+                        _snap_alloc[_us2] = _pct2
+                _snap_alloc["coin"] = round(_coin_pct2, 1)
+                _snap_entry = {"month": _snap_month_sel, "total": _rot_total,
+                               "alloc": _snap_alloc}
+                _cur_snaps = _snap_load()
+                _cur_snaps = _snap_upsert(_cur_snaps, _snap_entry)
+                _saved_ok  = _snap_save(_cur_snaps)
+                if _saved_ok:
+                    st.success(f"✅ {_snap_month_sel} 스냅샷 저장 완료")
+                else:
+                    st.warning(f"로컬 저장만 완료 (GitHub 동기화 실패 — GH_PAT 확인)")
+
         # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
         if "rotation_role" in core_etfs.columns and _held_map:
@@ -1850,392 +1890,43 @@ elif new_money > 0:
 
 st.divider()
 
-# ── 리밸런싱 이력 트래커 ──────────────────────────────────────────
-from datetime import date as _rb_date_cls
+# ── 월별 비중 변화 이력 ──────────────────────────────────────────
+st.subheader("📋 월별 비중 변화 이력")
+st.caption("위 리밸런싱 표에서 '이번 달 비중 저장'을 누를 때마다 자동으로 쌓입니다.")
 
-# 세션 내 캐시 (GitHub API 매 렌더마다 호출 방지)
-if "_rb_hist" not in st.session_state:
-    st.session_state["_rb_hist"] = _rb_load()
-_rb_hist = st.session_state["_rb_hist"]
-_rb_all_names      = sorted(set(NAMES.values()))
-_rb_name_to_ticker = {v: k for k, v in NAMES.items()}
-
-_rb_phase_options = ["공포 🔥", "회복 🌱", "확장 🚀", "과열 🌡️", "기타"]
-_rb_phase_map = {"fear": "공포 🔥", "recovery": "회복 🌱", "expansion": "확장 🚀", "overheated": "과열 🌡️"}
-try:
-    _rb_default_phase = _rb_phase_map.get(_phase, "기타")
-except NameError:
-    _rb_default_phase = "기타"
-
-# 실제 국면이 바뀌었을 때만 selectbox 초기값 갱신 (세션 캐시 방지)
-if st.session_state.get("_rb_tracked_phase") != _rb_default_phase:
-    st.session_state["rb_f_phase"] = _rb_default_phase
-    st.session_state["_rb_tracked_phase"] = _rb_default_phase
-
-st.subheader("📋 리밸런싱 이력")
-
-with st.expander("➕ 새 리밸런싱 기록 추가", expanded=len(_rb_hist) == 0):
-    st.caption("같은 날짜의 행은 하나의 이벤트로 묶임 · + 버튼으로 행 추가 · 체크 → Delete로 삭제  |  💡 구분 = **현금** → **단가(원)**에 보유 현금(원) 입력")
-    _rb_input_template = pd.DataFrame({
-        "날짜":     [_rb_date_cls.today()],
-        "구분":     ["매수"],
-        "종목명":   [""],
-        "수량":     [0.0],
-        "단가(원)": [0],
-        "메모":     [""],
-    })
-    _rb_edited = st.data_editor(
-        _rb_input_template,
-        num_rows="dynamic",
-        key="rb_trades_editor",
-        column_config={
-            "날짜":  st.column_config.DateColumn("날짜", width="small"),
-            "구분":  st.column_config.SelectboxColumn("구분", options=["매수", "매도", "현금"], width="small"),
-            "종목명": st.column_config.SelectboxColumn("종목명", options=_rb_all_names, width="large"),
-            "수량":  st.column_config.NumberColumn("수량", format="%.4g", min_value=0, width="small"),
-            "단가(원)": st.column_config.NumberColumn("단가(원)", format="%,d", min_value=0, width="medium"),
-            "메모": st.column_config.TextColumn("메모", width="large"),
-        },
-        use_container_width=True,
-    )
-    if st.button("💾 기록 저장 + 보유현황 반영", key="rb_save_btn", use_container_width=True):
-        import io as _io
-        _rb_skipped = []
-
-        # MVRV 이력으로 날짜별 국면 자동 계산
-        _mvrv_hist_f = RESULTS / "mvrv_history.csv"
-        _mvrv_hist_df = pd.DataFrame()
-        if _mvrv_hist_f.exists():
-            try:
-                _mvrv_hist_df = pd.read_csv(_mvrv_hist_f, index_col=0, parse_dates=True)
-            except Exception:
-                pass
-
-        def _phase_from_date(date_str: str) -> str:
-            try:
-                if not _mvrv_hist_df.empty:
-                    _ts = pd.Timestamp(date_str)
-                    _idx = _mvrv_hist_df.index.get_indexer([_ts], method="nearest")[0]
-                    _z = float(_mvrv_hist_df.iloc[_idx]["value"])
-                    if _z < 0:   return "공포 🔥"
-                    if _z < 2:   return "회복 🌱"
-                    if _z < 5:   return "확장 🚀"
-                    return "과열 🌡️"
-            except Exception:
-                pass
-            return _rb_default_phase
-
-        # + 버튼으로 추가한 행(현금 등)은 날짜가 NaT → 같은 이벤트로 묶이도록 채우기
-        _valid_dates = _rb_edited["날짜"].dropna()
-        if not _valid_dates.empty:
-            _rb_edited["날짜"] = _rb_edited["날짜"].fillna(_valid_dates.mode().iloc[0])
-
-        # 날짜 기준으로 그룹화
-        _rb_edited["_date_str"]  = _rb_edited["날짜"].astype(str)
-        _rb_edited["_group_key"] = _rb_edited["_date_str"]
-
-        # holdings 로드 (한 번만)
-        _h_path = ROOT / "holdings.csv"
-        _h_raw, _ = _rb_gh_get("holdings.csv")
-        if _h_raw:
-            _hdf = pd.read_csv(_io.StringIO(_h_raw))
-        elif _h_path.exists():
-            _hdf = pd.read_csv(_h_path)
-        else:
-            _hdf = pd.DataFrame(columns=["ticker","qty","buy_price","buy_date","notes","person"])
-        _hdf["ticker"]    = _hdf["ticker"].astype(str).str.strip()
-        _hdf["qty"]       = pd.to_numeric(_hdf["qty"],       errors="coerce").fillna(0)
-        _hdf["buy_price"] = pd.to_numeric(_hdf["buy_price"], errors="coerce").fillna(0)
-
-        _new_events = []
-        for _gkey, _grp in _rb_edited.groupby("_group_key", sort=False):
-            _ev_date  = str(_grp["_date_str"].iloc[0])
-            _ev_phase = _phase_from_date(_ev_date)
-            _ev_memo  = str(_grp["메모"].iloc[0] or "").strip()
-            # 현금 행: 구분 == "현금"인 행의 단가(원)을 보유현금으로 사용
-            _cash_rows = _grp[_grp["구분"].astype(str) == "현금"]
-            _ev_cash   = int(_cash_rows["단가(원)"].fillna(0).iloc[0] or 0) if not _cash_rows.empty else -1
-
-            buys, sells = [], []
-            for _, _row in _grp.iterrows():
-                if str(_row.get("구분")) == "현금":
-                    continue  # 현금 행은 trade 처리 제외
-                _name  = str(_row.get("종목명", "") or "").strip()
-                _qty   = float(_row.get("수량",   0) or 0)
-                _price = float(_row.get("단가(원)", 0) or 0)
-                _tk    = _rb_name_to_ticker.get(_name, "")
-                if not _name or _qty <= 0:
-                    continue
-                if not _tk:
-                    _rb_skipped.append(_name)
-                    continue
-                _trade = {"ticker": _tk, "qty": _qty, "unit_price": _price}
-                if str(_row.get("구분")) == "매도":
-                    sells.append(_trade)
-                else:
-                    buys.append(_trade)
-
-            _new_events.append({
-                "date": _ev_date, "phase": _ev_phase,
-                "memo": _ev_memo, "buys": buys, "sells": sells,
-                "cash": _ev_cash if _ev_cash >= 0 else None,
-            })
-
-            # holdings 반영
-            for _t in buys:
-                _tk, _qty, _up = _t["ticker"], _t["qty"], _t["unit_price"]
-                _mask = _hdf["ticker"] == _tk
-                if _mask.any():
-                    _oq = float(_hdf.loc[_mask, "qty"].iloc[0])
-                    _op = float(_hdf.loc[_mask, "buy_price"].iloc[0])
-                    _nq = _oq + _qty
-                    _np = (_oq * _op + _qty * _up) / _nq if _up > 0 and _nq > 0 else _op
-                    _hdf.loc[_mask, "qty"]       = _nq
-                    _hdf.loc[_mask, "buy_price"] = round(_np, 2)
-                else:
-                    _nr = {c: "" for c in _hdf.columns}
-                    _nr.update({"ticker": _tk, "qty": _qty, "buy_price": _up,
-                                "buy_date": _ev_date, "notes": "", "person": ""})
-                    _hdf = pd.concat([_hdf, pd.DataFrame([_nr])], ignore_index=True)
-            for _t in sells:
-                _tk, _qty = _t["ticker"], _t["qty"]
-                _mask = _hdf["ticker"] == _tk
-                if _mask.any():
-                    _nq = max(0, float(_hdf.loc[_mask, "qty"].iloc[0]) - _qty)
-                    if _nq == 0:
-                        _hdf = _hdf[~_mask].reset_index(drop=True)
-                    else:
-                        _hdf.loc[_mask, "qty"] = _nq
-
-            # CASH 갱신 — 현금 행이 있을 때만 (_ev_cash >= 0)
-            if _ev_cash >= 0:
-                _cash_person = selected_person if selected_person != "전체" else (
-                    all_persons[0] if all_persons else ""
-                )
-                _cash_hmask = (_hdf["ticker"].str.upper() == "CASH") & \
-                              (_hdf["person"].astype(str) == _cash_person)
-                if _cash_hmask.any():
-                    _hdf.loc[_cash_hmask, "qty"] = _ev_cash
-                else:
-                    _cr = {c: "" for c in _hdf.columns}
-                    _cr.update({"ticker": "CASH", "qty": _ev_cash,
-                                 "buy_price": 1, "notes": "보유 현금", "person": _cash_person})
-                    _hdf = pd.concat([_hdf, pd.DataFrame([_cr])], ignore_index=True)
-
-        # 이력 저장 (최신 순으로 앞에 삽입)
-        for _ev in reversed(_new_events):
-            _rb_hist.insert(0, _ev)
-        _rb_saved_to_gh = _rb_save(_rb_hist)
-        st.session_state["_rb_hist"] = _rb_hist
-
-        # holdings GitHub 저장
-        _hdf.to_csv(_h_path, index=False)
-        _h_gh_ok = False
-        if _rb_gh_token():
-            _h_gh_ok, _ = _rb_gh_put("holdings.csv", _hdf.to_csv(index=False), "data: 리밸런싱 후 보유현황 갱신")
-
-        if _rb_saved_to_gh:
-            _msg = f"✅ GitHub에 저장됐습니다 ({len(_new_events)}건)."
-            _msg += " 보유현황도 반영됐어요." if _h_gh_ok else " (보유현황 GitHub 저장 실패 — 로컬만 반영)"
-            st.success(_msg)
-        else:
-            st.error(
-                "🚨 GitHub 저장 실패 — 앱 재시작 시 이력이 사라집니다!\n\n"
-                "**해결**: Streamlit Cloud Settings → Secrets → `GH_PAT` 확인/갱신"
-            )
-        if _rb_skipped:
-            st.warning(f"종목명을 찾지 못해 저장 제외: {', '.join(_rb_skipped)}")
-        st.rerun()
-
-_BAD_TICKERS = {"NONE", "NAN", ""}
-
-if _rb_hist:
-    # ── 이벤트 삭제 UI ──────────────────────────────────────────────
-    _ev_labels = [
-        f"[{i+1}] {ev.get('date','')} {ev.get('phase','')} "
-        f"(매수 {len(ev.get('buys',[]))}건 · 매도 {len(ev.get('sells',[]))}건)"
-        for i, ev in enumerate(_rb_hist)
-    ]
-    _del_sel = st.multiselect("🗑️ 삭제할 이벤트 선택 (복수 가능)", options=list(range(len(_rb_hist))),
-                              format_func=lambda i: _ev_labels[i], key="rb_del_sel")
-    if _del_sel and st.button("선택 이벤트 삭제", key="rb_del_btn", type="secondary"):
-        _del_set = set(_del_sel)
-        _rb_hist = [ev for i, ev in enumerate(_rb_hist) if i not in _del_set]
-        _rb_save(_rb_hist)
-        st.session_state["_rb_hist"] = _rb_hist
-        st.rerun()
-
-    # 종목별 누적 매수·매도 금액 계산
-    _ticker_total_buy:  dict = {}
-    _ticker_total_sell: dict = {}
-    for _ev in _rb_hist:
-        for _t in _ev.get("buys", []):
-            _tk = str(_t.get("ticker", "")).upper()
-            if _tk and _tk not in _BAD_TICKERS:
-                _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
-                _ticker_total_buy[_tk] = _ticker_total_buy.get(_tk, 0) + _amt
-        for _t in _ev.get("sells", []):
-            _tk = str(_t.get("ticker", "")).upper()
-            if _tk and _tk not in _BAD_TICKERS:
-                _amt = float(_t.get("qty", 0) or 0) * float(_t.get("unit_price", 0) or 0)
-                _ticker_total_sell[_tk] = _ticker_total_sell.get(_tk, 0) + _amt
-
-    # ── ETF 목표비중 매핑 (_rot_df 기준, ticker → fraction 0-1) ──────
-    import re as _re
-    _ticker_to_목표pct: dict = {}  # rotation table 내 비중(100% 기준, CORE 내)
-    try:
-        if not _rot_df.empty and "목표비중(%)" in _rot_df.columns:
-            for _, _rrow in _rot_df.iterrows():
-                _목표w = float(_rrow.get("목표비중(%)", 0) or 0) / 100
-                _us = str(_rrow.get("US ETF", "")).strip().upper()
-                if _us:
-                    _ticker_to_목표pct[_us] = _목표w
-                _isa = str(_rrow.get("ISA(원화)", "") or "")
-                _km  = _re.search(r'\(([^)]+)\)', _isa)
-                if _km:
-                    _ticker_to_목표pct[_km.group(1).strip().upper()] = _목표w
-    except NameError:
-        pass
-    if not core_etfs.empty and "rotation_role" in core_etfs.columns:
-        _role_to_목표w = {str(r).strip().upper(): _ticker_to_목표pct.get(str(r).strip().upper(), 0)
-                          for r in core_etfs["rotation_role"].dropna().unique()}
-        for _, _crow in core_etfs.iterrows():
-            _ctk   = str(_crow.get("ticker", "")).strip().upper()
-            _crole = str(_crow.get("rotation_role", "")).strip().upper()
-            if _ctk and _crole and _ctk not in _ticker_to_목표pct:
-                _w = _role_to_목표w.get(_crole, 0)
-                if _w:
-                    _ticker_to_목표pct[_ctk] = _w
-
-    _alloc_total_val = alloc.get("Total", 0)
-    # 실제 목표금액 = 총자산 × core비중 × role비중 (target_core로 스케일 조정)
-    _core_factor = (target_core / 100) if target_core > 0 else 1.0
-    _etf_목표금액 = {_tk: int(_alloc_total_val * _w * _core_factor)
-                   for _tk, _w in _ticker_to_목표pct.items() if _w > 0}
-
-    # ── 현재 보유가치 매핑 (holdings × 현재가 / 총자산) ──────────────
-    # _rot_df["현재비중(%)"]는 US ETF만 포함해 분모가 틀림 → 직접 계산
-    _rb_현재가치_f: dict = {}  # ticker.upper() → fraction of total portfolio
-    try:
-        if not holdings.empty and not summary.empty and _alloc_total_val > 0:
-            _rb_h = holdings.copy()
-            _rb_h["ticker"] = _rb_h["ticker"].astype(str).str.upper()
-            _rb_latest = (summary.sort_values("date")
-                          .groupby("ticker").last()
-                          .reset_index()[["ticker", "close"]]
-                          .assign(ticker=lambda d: d["ticker"].astype(str).str.upper()))
-            _rb_h = _rb_h.merge(_rb_latest, on="ticker", how="left")
-            _rb_h["cur_val"] = (pd.to_numeric(_rb_h["qty"], errors="coerce") *
-                                pd.to_numeric(_rb_h["close"], errors="coerce"))
-            for _, _rh in _rb_h.iterrows():
-                _rtk  = str(_rh["ticker"]).upper()
-                _rval = float(_rh.get("cur_val") or 0)
-                if _rval > 0 and _rtk not in _BAD_TICKERS:
-                    _rb_현재가치_f[_rtk] = _rb_현재가치_f.get(_rtk, 0) + _rval / _alloc_total_val
-        # rotation_role 경유하여 US ETF 심볼에도 매핑 (역할 합산)
-        if not core_etfs.empty and "rotation_role" in core_etfs.columns:
-            _rb_role_val: dict = {}
-            for _, _crow in core_etfs.iterrows():
-                _ctk2  = str(_crow.get("ticker", "")).strip().upper()
-                _crole2 = str(_crow.get("rotation_role", "")).strip().upper()
-                if _ctk2 in _rb_현재가치_f and _crole2:
-                    _rb_role_val[_crole2] = _rb_role_val.get(_crole2, 0) + _rb_현재가치_f[_ctk2]
-            for _crole2, _rw in _rb_role_val.items():
-                _rb_현재가치_f[_crole2] = _rw
-    except Exception:
-        pass
-
-    _rb_table_rows = []
-    for _ei, _rb_ev in enumerate(_rb_hist):
-        _rb_ev_date  = _rb_ev.get("date", "")
-        _rb_ev_phase = _rb_ev.get("phase", "")
-        _rb_ev_memo  = _rb_ev.get("memo", "")
-        _rb_ev_buys  = [b for b in _rb_ev.get("buys",  []) if str(b.get("ticker","")).upper() not in _BAD_TICKERS]
-        _rb_ev_sells = [s for s in _rb_ev.get("sells", []) if str(s.get("ticker","")).upper() not in _BAD_TICKERS]
-        _rb_ev_cash  = _rb_ev.get("cash")  # 보유현금 (있을 때만)
-
-        # 이벤트 내 전체 거래금액 합계 (매수+매도) — 목표대비(%) 분모
-        _ev_total_all = sum(
-            float(t.get("qty", 0) or 0) * float(t.get("unit_price", 0) or 0)
-            for t in _rb_ev_buys + _rb_ev_sells
-        )
-
-        _trades = [("매수", t) for t in _rb_ev_buys] + [("매도", t) for t in _rb_ev_sells]
-        _first = True
-        if _trades:
-            for _side, _t in _trades:
-                _qty   = float(_t.get("qty", 0) or 0)
-                _price = float(_t.get("unit_price", 0) or 0)
-                _trade_amt = _qty * _price
-                _tk_upper  = str(_t.get("ticker","")).upper()
-                # 누적금액: 매수=역대 누적매수, 매도=현재 시가평가
-                _cur_f = _rb_현재가치_f.get(_tk_upper)
-                _cumul = int(_ticker_total_buy.get(_tk_upper, 0)) if _side == "매수" \
-                    else int((_cur_f or 0) * _alloc_total_val)
-                # 목표대비 = 현재보유가치 / (총자산 × core목표비중 × role목표비중)
-                _목표f_adj = _ticker_to_목표pct.get(_tk_upper, 0) * _core_factor
-                _pct = round((_cur_f or 0) / _목표f_adj * 100, 1) \
-                    if (_목표f_adj > 0 and _cur_f is not None) else None
-                _rb_table_rows.append({
-                    "날짜":        _rb_ev_date,
-                    "국면":        _rb_ev_phase,
-                    "구분":        _side,
-                    "종목명":      NAMES.get(_tk_upper, _t.get("ticker","")),
-                    "수량":        _qty if _qty else None,
-                    "단가(원)":    int(_price) if _price else None,
-                    "거래금액(원)": int(_trade_amt) if _trade_amt else None,
-                    "목표대비(%)":  _pct,
-                    "누적금액(원)": _cumul,
-                    "메모":        _rb_ev_memo if _first else "",
-                })
-                _first = False
-        elif _rb_ev_cash is None or _rb_ev_cash < 0:
-            # 거래도 없고 현금도 없을 때만 빈 행 표시
-            _rb_table_rows.append({
-                "날짜": _rb_ev_date, "국면": _rb_ev_phase, "구분": "",
-                "종목명": "", "수량": None, "단가(원)": None,
-                "거래금액(원)": None, "목표대비(%)": None, "누적금액(원)": None,
-                "메모": _rb_ev_memo,
-            })
-            _first = False
-
-        # 현금 행 (저장된 경우)
-        if _rb_ev_cash is not None and _rb_ev_cash >= 0:
-            _cash_target = _alloc_total_val * (target_cash / 100)
-            _cash_pct = round(_rb_ev_cash / _cash_target * 100, 1) if _cash_target > 0 else None
-            _rb_table_rows.append({
-                "날짜":        _rb_ev_date,
-                "국면":        _rb_ev_phase,
-                "구분":        "현금",
-                "종목명":      "보유현금",
-                "수량":        None,
-                "단가(원)":    None,
-                "거래금액(원)": int(_rb_ev_cash),
-                "목표대비(%)":  _cash_pct,
-                "누적금액(원)": int(_rb_ev_cash),
-                "메모":        "" if not _first else _rb_ev_memo,
-            })
-
-    _rb_df = pd.DataFrame(_rb_table_rows)
+_hist_snaps = _snap_load()
+if _hist_snaps:
+    _ROLE_LABELS = {
+        "VOO":  "미국주식(%)",
+        "SCHD": "배당/가치(%)",
+        "SOXX": "성장/반도체(%)",
+        "TLT":  "장기국채(%)",
+        "GLD":  "금(%)",
+        "coin": "코인(%)",
+        "cash": "현금(%)",
+    }
+    _hist_rows = []
+    for _hs in _hist_snaps:
+        _hrow = {"기준월": _hs.get("month", ""),
+                 "총자산(만원)": round(_hs.get("total", 0) / 10000)}
+        for _rk, _rlabel in _ROLE_LABELS.items():
+            _v = _hs.get("alloc", {}).get(_rk)
+            _hrow[_rlabel] = round(float(_v), 1) if _v is not None else None
+        _hist_rows.append(_hrow)
+    _hist_df = pd.DataFrame(_hist_rows)
     st.dataframe(
-        _rb_df,
+        _hist_df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "날짜":        st.column_config.TextColumn("날짜",        width="small"),
-            "국면":        st.column_config.TextColumn("국면",        width="small"),
-            "구분":        st.column_config.TextColumn("구분",        width="small"),
-            "종목명":      st.column_config.TextColumn("종목명",      width="large"),
-            "수량":        st.column_config.NumberColumn("수량",      format="%.4g", width="small"),
-            "단가(원)":    st.column_config.NumberColumn("단가(원)",   format="%,d",  width="medium"),
-            "거래금액(원)": st.column_config.NumberColumn("거래금액(원)", format="%,d", width="medium"),
-            "목표대비(%)": st.column_config.NumberColumn("목표대비(%)", format="%.1f%%", width="small"),
-            "누적금액(원)": st.column_config.NumberColumn("누적금액(원)", format="%,d", width="medium"),
-            "메모":        st.column_config.TextColumn("메모",        width="large"),
+            "기준월":      st.column_config.TextColumn("기준월", width="small"),
+            "총자산(만원)": st.column_config.NumberColumn("총자산(만원)", format="%,d", width="medium"),
+            **{_rl: st.column_config.NumberColumn(_rl, format="%.1f", width="small")
+               for _rl in _ROLE_LABELS.values()},
         },
     )
 else:
-    st.info("아직 기록이 없습니다. 위 폼으로 첫 번째 리밸런싱을 기록하세요.")
+    st.info("아직 기록이 없습니다. 위 리밸런싱 표 하단 '이번 달 비중 저장' 버튼을 눌러보세요.")
 
 st.divider()
 
