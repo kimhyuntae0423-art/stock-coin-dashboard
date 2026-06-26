@@ -1466,47 +1466,49 @@ if new_money > 0 and alloc["Total"] > 0:
                     elif _regime_v:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_z}"
             else:
-                _vix_str = f"VIX {_vix_val:.0f}" if _vix_val else _vix_kr
-                _rsi_str = f"RSI {_rsi_v:.0f}"
-                _b = f"비중 {_diff_pp:+.1f}%p 부족"
+                # ETF 인사이트: 결론(액션) 먼저, 이유 뒤 — 보유현황 신호 통합
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
-                _z = f"비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 없음"
-                _sig = f"{_vix_str}, {_rsi_str}, {_avg_score:.0f}pt"
-                # 보유현황 액션 suffix — 항상 붙여서 두 신호를 동시에 표시
-                _pf_sfx = f"  [보유현황: {_kr_acts[0]}]" if _kr_acts else ""
+                _b = f"비중 {_diff_pp:+.1f}%p 부족"
 
                 if _raw < -5000:
                     if _vix_k == "fear":
-                        _insight = f"🔥 공포극단({_sig}) — {_o}지만 저점 매도 위험, 보류{_pf_sfx}"
+                        _insight = f"🔥 축소 보류 — 공포 극단 구간이라 저점 매도 위험 ({_o})"
                     elif _rsi_v < 30:
-                        _insight = f"🟡 과매도({_sig}) — {_o}지만 반등 가능, 매도 보류{_pf_sfx}"
-                    elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — {_o}, 차익실현 고려{_pf_sfx}"
+                        _insight = f"🟡 매도 보류 — ETF 과매도 반등 가능 ({_o})"
+                    elif _vix_k == "complacent" or _kr_sell:
+                        _insight = f"🌡️ 단계적 축소 — {_o}, 과열 신호 겹침"
+                    elif _kr_acts:
+                        _insight = f"🔵 점진 축소 — {_o}, 기술적 이상 없으나 비중 조정 필요"
                     else:
-                        _insight = f"🔵 {_vix_kr}({_sig}) — {_o}, 점진 축소{_pf_sfx}"
+                        _insight = f"🔵 점진 축소 — {_o}"
                 elif _raw > 5000:
                     if _kr_sell:
-                        # 보유현황 매도 ↔ 리밸런싱 매수 불일치 → 명시적 경고
-                        _insight = f"⚠️ {_vix_kr}({_sig}) — {_b}이나 실보유 ETF 과열, 과열 해소 후 매수{_pf_sfx}"
+                        _insight = f"⚠️ 매수 보류 — 보유 ETF 과열 중, 과열 해소 후 진입 ({_b})"
                     elif _kr_buy:
-                        _insight = f"🔥 보유현황 역발상 매수+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수{_pf_sfx}"
+                        _insight = f"🔥 적극 매수 — {_b} + 보유현황 역발상 신호 이중 확인"
                     elif _vix_k == "fear":
-                        _insight = f"🔥 공포극단({_sig}) — {_b}, 역발상 매수 타이밍 → 매수{_pf_sfx}"
+                        _insight = f"🔥 역발상 매수 — {_b} + 공포 극단 구간, 역발상 타이밍"
                     elif _rsi_v < 30:
-                        _insight = f"🎯 과매도+{_vix_kr}({_sig}) — {_b}, 이중 신호 → 적극 매수{_pf_sfx}"
+                        _insight = f"🎯 적극 매수 — {_b} + ETF 과매도 이중 신호"
                     elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — {_b}지만 고점 주의, 소량만{_pf_sfx}"
+                        _insight = f"🌡️ 소량 분할 매수 — {_b}, 시장 과열 주의"
                     elif _vix_k == "bear":
-                        _insight = f"⚠️ 약세({_sig}) — {_b}, 분할 매수{_pf_sfx}"
+                        _insight = f"⚠️ 분할 매수 — {_b}, 약세 구간이나 비중 조정 필요"
                     else:
-                        _insight = f"🟢 {_vix_kr}({_sig}) — {_b} → 매수{_pf_sfx}"
+                        _insight = f"🟢 분할 매수 — {_b}"
                 else:
-                    if _vix_k in ("fear", "bear"):
-                        _insight = f"🟢 {_vix_kr}({_sig}) — 매수 우호적이나 {_z}{_pf_sfx}"
+                    if _kr_sell:
+                        _insight = "🌡️ 차익실현 검토 — 비중 달성 + 보유 ETF 과열"
+                    elif _vix_k in ("fear", "bear"):
+                        _insight = "🟢 현재 유지 — 비중 달성, 매수 환경 우호적이나 추가 불필요"
                     elif _vix_k == "complacent":
-                        _insight = f"🌡️ 과열({_sig}) — 고점 주의, {_z}{_pf_sfx}"
+                        _insight = "🌡️ 현재 유지 — 비중 달성 + 시장 과열, 신규 매수 없음"
                     else:
-                        _insight = f"🔵 {_vix_kr}({_sig}) — {_z}{_pf_sfx}"
+                        _insight = "🔵 현재 유지 — 비중 달성"
+
+            # 인사이트 "매수 보류"면 추가금액도 0 — 인사이트↔배분 일치
+            if _kr_sell and not _is_coin:
+                _eligible = False
 
             _buy_eligible.append(_eligible)
             _insights.append(_insight)
