@@ -1322,6 +1322,19 @@ if new_money > 0 and alloc["Total"] > 0:
             if _acts3:
                 _role_to_kr_actions[_role3] = _acts3
 
+        # ── 단일 소스 RSI 맵 — summary_signals(보유현황과 동일) ───────────────
+        # 리밸런싱 인사이트가 보유현황과 동일한 RSI를 표시하게 함
+        _kr_rsi_map: dict = {}
+        if not summary.empty:
+            _sm_reb = (summary.sort_values("date")
+                       .groupby("ticker").last().reset_index())
+            _rsi_col_reb = next((c for c in ["rsi14", "rsi"] if c in _sm_reb.columns), None)
+            if _rsi_col_reb:
+                for _, _smr in _sm_reb.iterrows():
+                    _rv = _smr.get(_rsi_col_reb)
+                    if _rv is not None and pd.notna(_rv):
+                        _kr_rsi_map[str(_smr["ticker"]).upper()] = float(_rv)
+
         # VIX 국면 (백테스트 검증, IC=0.14) — ETF 인사이트 핵심 드라이버
         _vix_key = _e_regime.get("key", "mixed")   # fear/complacent/bull/bear/mixed
         _vix_val = _e_regime.get("vix")
@@ -1331,7 +1344,8 @@ if new_money > 0 and alloc["Total"] > 0:
 
             Returns: (rsi, ret, is_coin, regime, vix_key, action, avg_score)
               - 코인: action = coin_backtest 액션(매수/보유/매도), avg_score = 0
-              - ETF:  action = "", avg_score = 역할 구성 티커 평균 score
+              - ETF:  RSI = 실보유 KR ETF 기준(보유현황과 동일 소스),
+                      score = US ETF 복합점수(백테스트 검증)
             """
             _uk = str(us_etf).upper()
             if account == "코인" or "-USD" in _uk:
@@ -1342,11 +1356,19 @@ if new_money > 0 and alloc["Total"] > 0:
             _tks = _role_to_tks.get(_uk, [])
             if not _tks:
                 return 50.0, 0.0, False, "", _vix_key, "", 100.0
-            _rsis   = [_sig_map[t]["rsi"]   for t in _tks if t in _sig_map]
+
+            # 복합점수·수익률 — US ETF 기반 (백테스트 IC=0.14 검증)
             _rets   = [_sig_map[t]["ret1m"] for t in _tks if t in _sig_map]
             _scores = [_sig_map[t]["score"] for t in _tks if t in _sig_map]
             _avg_sc = sum(_scores)/len(_scores) if _scores else 100.0
-            return (sum(_rsis)/len(_rsis) if _rsis else 50.0,
+
+            # RSI — 실보유 KR ETF 우선(보유현황과 동일 소스), 없으면 US ETF 폴백
+            _kr_rsis = [_kr_rsi_map[t] for t in _tks if t in _kr_rsi_map]
+            _us_rsis = [_sig_map[t]["rsi"] for t in _tks if t in _sig_map]
+            _rsi = (sum(_kr_rsis) / len(_kr_rsis) if _kr_rsis else
+                    sum(_us_rsis) / len(_us_rsis) if _us_rsis else 50.0)
+
+            return (_rsi,
                     sum(_rets)/len(_rets) if _rets else 0.0,
                     False, "", _vix_key, "", _avg_sc)
 
