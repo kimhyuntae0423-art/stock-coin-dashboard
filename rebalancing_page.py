@@ -1550,15 +1550,26 @@ if new_money > 0 and alloc["Total"] > 0:
                 break
 
         _rot_df["추가금액(원)"] = _buy_amts
-        # 목표금액 = 현재금액 + 추가금액 (항등식 — 항상 일치)
-        _rot_df["목표금액(원)"] = (_rot_df["현재금액(원)"].astype(float) +
-                                   _rot_df["추가금액(원)"].astype(float)).round(0).astype("Int64")
+
+        # 목표금액:
+        #   비중 초과 행 → 목표비중% × 현재총자산 (현재보다 낮아 → 매도 필요량 시각화)
+        #   비중 달성/부족 행 → 현재금액 + 추가금액 (이번 달 추가 후 예상금액)
+        _rn_vals   = _rot_df["_raw_need"].astype(float)
+        _by_weight = (_rot_df["목표비중(%)"].astype(float) / 100 * _rot_total).round(0)
+        _by_alloc  = (_rot_df["현재금액(원)"].astype(float) +
+                      _rot_df["추가금액(원)"].astype(float)).round(0)
+        _rot_df["목표금액(원)"] = pd.Series(
+            [int(_by_weight.iloc[i]) if _rn_vals.iloc[i] < -5000
+             else int(_by_alloc.iloc[i])
+             for i in range(len(_rot_df))]
+        ).astype("Int64")
+
         _rot_df.drop(columns=["_raw_need"], inplace=True)
 
         # 합계 행
         _rot_total_sum  = int(_rot_df["현재금액(원)"].sum())
         _rot_add_sum    = int(_rot_df["추가금액(원)"].sum())
-        _rot_target_sum = _rot_total_sum + _rot_add_sum
+        _rot_target_sum = int(_rot_df["목표금액(원)"].sum())  # 실제 목표금액 합계
         _rot_sum = pd.DataFrame([{
             "역할": "합계", "US ETF": "", "ISA(원화)": "", "계좌": "",
             "기본비중(%)": round(_rot_df["기본비중(%)"].sum(), 1),
