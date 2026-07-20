@@ -14,6 +14,10 @@ from scripts.asset_allocation import (
     load_core_etfs, classify_holdings, allocation_summary,
     rebalancing_actions,
 )
+from scripts.config import (
+    DEFAULT_TARGET_CORE, DEFAULT_TARGET_SATELLITE, DEFAULT_TARGET_CASH,
+    KEY_TARGET_CORE, KEY_TARGET_SATELLITE, KEY_TARGET_CASH,
+)
 from scripts.etf_recommend import (
     market_regime, score_etfs, tactical_alloc, enrich_with_volume,
     volume_signals, technical_signals,
@@ -317,9 +321,9 @@ _i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
         if not summary.empty else {}
 
 # alloc 사전 계산 — Core-Satellite 슬라이더 세션 상태로 읽기 (첫 렌더 시 기본값 사용)
-target_core      = int(st.session_state.get("tgt_core_", 80))
-target_satellite = int(st.session_state.get("tgt_sat_",  10))
-target_cash      = int(st.session_state.get("tgt_cash_", 10))
+target_core      = int(st.session_state.get(KEY_TARGET_CORE, DEFAULT_TARGET_CORE))
+target_satellite = int(st.session_state.get(KEY_TARGET_SATELLITE, DEFAULT_TARGET_SATELLITE))
+target_cash      = int(st.session_state.get(KEY_TARGET_CASH, DEFAULT_TARGET_CASH))
 # cash_amount는 위에서 holdings.csv CASH 티커로 읽음 (세션 상태 불필요)
 new_money        = float(st.session_state.get("new_money_input", 1_000_000))
 
@@ -991,11 +995,14 @@ st.subheader("📊 배분 현황 & 리밸런싱")
 
 ic1, ic2, ic3 = st.columns(3)
 with ic1:
-    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100, value=80, step=5, key="tgt_core_")
+    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100,
+                                   value=DEFAULT_TARGET_CORE, step=5, key=KEY_TARGET_CORE)
 with ic2:
-    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_sat_")
+    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100,
+                                        value=DEFAULT_TARGET_SATELLITE, step=5, key=KEY_TARGET_SATELLITE)
 with ic3:
-    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100, value=10, step=5, key="tgt_cash_")
+    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100,
+                                   value=DEFAULT_TARGET_CASH, step=5, key=KEY_TARGET_CASH)
 if target_core + target_satellite + target_cash != 100:
     st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
 

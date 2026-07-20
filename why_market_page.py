@@ -4,6 +4,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import yfinance as yf
 from pathlib import Path
+import sys
+
+sys.path.append(str(Path(__file__).resolve().parent))
+from scripts.config import (
+    DEFAULT_TARGET_CORE, DEFAULT_TARGET_SATELLITE, DEFAULT_TARGET_CASH,
+    KEY_TARGET_CORE, KEY_TARGET_SATELLITE, KEY_TARGET_CASH,
+)
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
@@ -83,13 +90,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 리밸런싱 페이지(rebalancing_page.py)와 같은 세션이면 실제 조정한 목표비중을 그대로 반영.
+# 아직 리밸런싱 페이지를 안 열어봤으면(session_state 비어있음) 공용 기본값(scripts/config.py) 사용.
+# 숫자를 여기서 다시 하드코딩하지 않는다 — 2026-07-20, 3개 소스(여기·rebalancing_page·
+# asset_allocation.py 기본값)가 제각각이던 것을 config.py 하나로 통일.
+_t_core = st.session_state.get(KEY_TARGET_CORE, DEFAULT_TARGET_CORE)
+_t_sat  = st.session_state.get(KEY_TARGET_SATELLITE, DEFAULT_TARGET_SATELLITE)
+_t_cash = st.session_state.get(KEY_TARGET_CASH, DEFAULT_TARGET_CASH)
+
 buckets = [
-    ("#3b82f6", "Core ETF", "63%", "시장 평균 수익 확보", "개별 종목 60~70%가 시장 못 이김"),
-    ("#a855f7", "Satellite", "15%", "알파 시도", "잃어도 치명적이지 않은 비중"),
-    ("#f59e0b", "BTC", "15%", "비대칭 옵션 (4년 사이클)", "알트 18%만 BTC 초과 → BTC만"),
-    ("#22c55e", "Cash", "7%", "폭락 시 추가매수 탄약", "-15% 조정 시 Core 추가매수"),
+    ("#3b82f6", "Core ETF", f"{_t_core}%", "시장 평균 수익 확보", "개별 종목 60~70%가 시장 못 이김"),
+    ("#a855f7", "Satellite", f"{_t_sat}%", "알파 시도 + BTC 비대칭 옵션",
+     "개별주 + 코인(BTC 포함). 잃어도 치명적이지 않은 비중"),
+    ("#22c55e", "Cash", f"{_t_cash}%", "폭락 시 추가매수 탄약", "-15% 조정 시 Core 추가매수"),
 ]
-cols = st.columns(4)
+cols = st.columns(3)
 for col, (color, name, pct, role, note) in zip(cols, buckets):
     col.markdown(
         f"""

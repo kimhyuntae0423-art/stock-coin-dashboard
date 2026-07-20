@@ -9,7 +9,10 @@ Core-Satellite 자산 배분 추적 + 리밸런싱 액션 생성.
 """
 from __future__ import annotations
 import pandas as pd
-from scripts.config import ROOT, CORE_ETF_FILE
+from scripts.config import (
+    ROOT, CORE_ETF_FILE,
+    DEFAULT_TARGET_CORE, DEFAULT_TARGET_SATELLITE, DEFAULT_TARGET_CASH,
+)
 
 # 순서 중요: 더 구체적인 규칙(SCHD, GLD, TLT)이 VOO보다 먼저 평가됨
 _ROLE_RULES: list[tuple[str, list[str]]] = [
@@ -60,7 +63,7 @@ def classify_holdings(holdings_df: pd.DataFrame,
     """holdings의 각 종목을 Core/Satellite로 분류.
 
     Core: core_etfs.csv 에 있는 ETF
-    Satellite: 그 외 개별주
+    Satellite: 그 외 개별주 + 코인(BTC 포함) — 별도 코인 버킷 없음, 2026-07-20 확정
     """
     if core_etf_tickers is None:
         core_etf_tickers = set(load_core_etfs()["ticker"].astype(str))
@@ -105,9 +108,9 @@ def allocation_summary(classified_holdings: pd.DataFrame,
 
 
 def deviation_from_target(summary: dict,
-                          target_core: float = 70,
-                          target_satellite: float = 20,
-                          target_cash: float = 10) -> dict:
+                          target_core: float = DEFAULT_TARGET_CORE,
+                          target_satellite: float = DEFAULT_TARGET_SATELLITE,
+                          target_cash: float = DEFAULT_TARGET_CASH) -> dict:
     """목표 비중 대비 편차 (백분율 포인트)."""
     return {
         "Core_dev": summary["Core_pct"] - target_core,
@@ -117,9 +120,9 @@ def deviation_from_target(summary: dict,
 
 
 def rebalancing_actions(summary: dict,
-                        target_core: float = 70,
-                        target_satellite: float = 20,
-                        target_cash: float = 10,
+                        target_core: float = DEFAULT_TARGET_CORE,
+                        target_satellite: float = DEFAULT_TARGET_SATELLITE,
+                        target_cash: float = DEFAULT_TARGET_CASH,
                         threshold_pp: float = 5.0) -> list[dict]:
     """리밸런싱 권장 액션 (±threshold_pp 초과 시 발동).
 

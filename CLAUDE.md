@@ -44,6 +44,9 @@ Streamlit 대시보드(QVGM 점수, 골든크로스, 코인 온체인 지표, �
 - **같은 자산에 대해서는 대시보드 전체에서 동일한 기준 적용** (한 곳에서 RSI 30 쓰면 모든 곳에서 RSI 30)
 - **새 신호를 추가하려면 results/backtest/ 에서 근거 먼저 확인** — 근거 없으면 추가 금지
 - **소스**: `results/backtest/rsi_signals.csv`, `cross_signals.csv`, `coin_mvrv_zones.csv`, `scripts/etf_recommend.py` 주석
+- **정책성 숫자(목표비중 등)는 scripts/config.py가 유일한 소스** — 페이지마다 하드코딩 금지.
+  Core-Satellite-Cash 3버킷 구조 확정(코인/BTC는 Satellite에 포함, 별도 버킷 없음).
+  `DEFAULT_TARGET_CORE/SATELLITE/CASH`, `KEY_TARGET_*` 상수를 모든 페이지가 import해서 씀 — 2026-07-20
 
 ---
 
