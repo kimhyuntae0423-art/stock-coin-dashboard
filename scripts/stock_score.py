@@ -137,25 +137,22 @@ def value_trap_penalty(value_score, state, return_12m_pct, rsi):
     return -0.5
 
 
-def overheat_penalty(rsi, high52_ratio) -> float:
+def overheat_penalty(high52_ratio) -> float:
     """단기 과열·정점 페널티 — 사용자 행동 방어 (FOMO 매수 방지).
 
     "최근 많이 오른 종목을 더 좋게 보는 인지편향"이 정점 매수 + 평균회귀
     손실로 이어지는 패턴을 시스템에서 자동으로 깎아줌.
 
-    조건 (최대 -0.6):
-    - RSI ≥ 75 또는 52주 고가 ≥ 97% → 단기 정점 부근
-    - RSI ≥ 70 또는 52주 고가 ≥ 93% → 매수 부담 구간
-    - RSI ≥ 65 또는 52주 고가 ≥ 88% → 약한 경고
+    RSI≥70/73/80 기반 과열 페널티는 CLAUDE.md 금지 신호(5일 적중률 41~47%,
+    동전던지기보다 나쁨)라 제거함 — 2026-07-20. 52주 고가 근접도(George-Hwang 2004,
+    검증된 별개 팩터)만 남긴다.
+
+    조건 (최대 -0.4):
+    - 52주 고가 ≥ 97% → 단기 정점 부근
+    - 52주 고가 ≥ 93% → 매수 부담 구간
+    - 52주 고가 ≥ 88% → 약한 경고
     """
     p = 0.0
-    if rsi is not None and not pd.isna(rsi):
-        if rsi >= 75:
-            p = min(p, -0.5)
-        elif rsi >= 70:
-            p = min(p, -0.3)
-        elif rsi >= 65:
-            p = min(p, -0.15)
     if high52_ratio is not None and not pd.isna(high52_ratio):
         if high52_ratio >= 0.97:
             p = min(p, -0.4)
@@ -381,7 +378,7 @@ def rank_stocks_v3(stocks_df: pd.DataFrame, apply_overlays: bool = True) -> pd.D
                 rsi=r.get("rsi14"),
             ), axis=1)
         df["overheat_penalty"] = df.apply(
-            lambda r: overheat_penalty(r.get("rsi14"), r.get("high52_ratio")), axis=1)
+            lambda r: overheat_penalty(r.get("high52_ratio")), axis=1)
         df["multi_exp_penalty"] = df.apply(
             lambda r: multiple_expansion_penalty(
                 r.get("return_12m_pct"),
