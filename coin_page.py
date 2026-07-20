@@ -212,23 +212,16 @@ st.divider()
 st.subheader("💰 매수 우선순위 추천")
 
 
-# MVRV 존 라벨 — 백테스트 검증된 1차 신호
+# MVRV 존 라벨 — 백테스트 검증된 1차 신호 (classify_regime()과 동일 기준, 단일 소스)
 _mvrv_now = M.get("mvrv_z")
 if _mvrv_now is not None:
-    if _mvrv_now < 0:
-        _mvrv_zone = "🟢 BTC 100% 구간 (역사적 바닥 근접)"
-        _mvrv_color = "success"
-    elif _mvrv_now < 1.5:
-        _mvrv_zone = "🔵 BTC 75% 구간 (저평가)"
-        _mvrv_color = "info"
-    elif _mvrv_now < 2.5:
-        _mvrv_zone = "🟠 BTC 45% 구간 (중립~과열 경계)"
-        _mvrv_color = "warning"
-    else:
-        _mvrv_zone = "🔴 BTC 20% 구간 (과열 — 비중 축소)"
-        _mvrv_color = "error"
-    getattr(st, _mvrv_color)(
-        f"**MVRV Z-Score 1차 신호 (백테스트 검증)**: {_mvrv_now:.2f} → {_mvrv_zone}  \n"
+    _mvrv_regime = classify_regime(_mvrv_now)
+    _mvrv_st_method = {
+        "deep_value": "success", "accumulation": "info",
+        "bull": "warning", "top": "error",
+    }.get(_mvrv_regime["regime"], "info")
+    getattr(st, _mvrv_st_method)(
+        f"**MVRV Z-Score 1차 신호 (백테스트 검증)**: {_mvrv_now:.2f} → {_mvrv_regime['label']}  \n"
         f"RSI>75 신호는 코인에서 적중률 45%(동전던지기), MVRV 구간이 더 신뢰할 수 있는 신호입니다."
     )
 

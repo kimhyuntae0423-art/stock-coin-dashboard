@@ -45,7 +45,8 @@ def generate_crypto_signals(df: pd.DataFrame) -> pd.DataFrame:
 def latest_crypto_signal(df: pd.DataFrame, regime: str = "unknown") -> dict:
     """
     BTC MVRV 레짐(regime)을 외부에서 주입받아 추천 행동을 결정.
-    regime ∈ {deep_value, accumulation, bull, late_bull, top, unknown}
+    regime ∈ {deep_value, accumulation, bull, top, unknown} — onchain.classify_regime()
+    (백테스트 검증 구간 0/1.5/2.5, coin_mvrv_zones.csv)과 동일 기준.
     """
     if df.empty:
         return {"action": "no_data"}
@@ -59,7 +60,6 @@ def latest_crypto_signal(df: pd.DataFrame, regime: str = "unknown") -> dict:
         "deep_value": "매수",
         "accumulation": "매수",
         "bull": "보유",
-        "late_bull": "매도",
         "top": "매도",
         "unknown": "보유",
     }.get(regime, "보유")

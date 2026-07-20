@@ -15,7 +15,7 @@ Streamlit 대시보드(QVGM 점수, 골든크로스, 코인 온체인 지표, �
 | 자산 | 허용 신호 | 근거 |
 |---|---|---|
 | **코인** | `regime` (coin_backtest.py 결과) | accumulation/markup/distribution/markdown |
-| **코인** | MVRV Z-score 구간 | <0: 바닥, 0~1.5: 저평가, 1.5~2.5: 경계, >2.5: 과열 |
+| **코인** | MVRV Z-score 구간 | <0: 바닥, 0~1.5: 저평가, 1.5~2.5: 경계, >2.5: 과열. scripts/onchain.py가 0/2/5/7 구간을 써서 이 표와 어긋나 있었음 — 2026-07-20 코드 수정으로 통일 |
 | **코인** | 알트 시즌 점수 | <25: BTC 시즌, >75: 알트 시즌 |
 | **ETF/주식** | VIX 국면 (market_regime) | IC=+0.14, p<0.001 ✅ 강력 검증 |
 | **ETF/주식** | 냉각지수 H15 (BB+MA 혼합) | IC=+0.087, p<0.001 ✅ 검증 |

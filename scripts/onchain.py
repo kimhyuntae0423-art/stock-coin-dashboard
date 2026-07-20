@@ -138,11 +138,12 @@ def compute_altcoin_season(coin_returns: dict, btc_return: float) -> dict:
 
 # ============= 점수화 & 종합 신호 =============
 def score_mvrv(z: float) -> int:
+    """백테스트 검증 구간(results/backtest/coin_mvrv_zones.csv, coin_page.py _mvrv_zone과 동일).
+    <0: BTC 100% / 0~1.5: BTC 75% / 1.5~2.5: BTC 45% / >2.5: BTC 20%(과열, 비중 축소)."""
     if z is None or pd.isna(z): return 0
     if z < 0: return 2
-    if z < 2: return 1
-    if z < 5: return 0
-    if z < 7: return -1
+    if z < 1.5: return 1
+    if z < 2.5: return 0
     return -2
 
 
@@ -184,18 +185,19 @@ def score_fng(score: float) -> int:
 
 
 def classify_regime(z_score: float) -> dict:
-    """기존 호환용 — MVRV Z-Score 단독 분류."""
+    """MVRV Z-Score 구간 분류 — 백테스트 검증 구간(coin_mvrv_zones.csv)과 통일.
+    coin_page.py의 _mvrv_zone(1차 신호 박스)과 동일한 0/1.5/2.5 경계를 쓴다.
+    이 결과는 run_analysis.py를 거쳐 crypto_analysis.latest_crypto_signal()의
+    base_action(매수/보유/매도)에 직접 반영되므로 경계가 어긋나면 안 된다."""
     if z_score is None or pd.isna(z_score):
         return {"regime": "unknown", "label": "데이터 없음", "color": "#888"}
     if z_score < 0:
-        return {"regime": "deep_value", "label": "🔥 자본 항복 (역사적 바닥)", "color": "#16a085"}
-    if z_score < 2:
-        return {"regime": "accumulation", "label": "🟢 누적 구간 (싸다)", "color": "#27ae60"}
-    if z_score < 5:
-        return {"regime": "bull", "label": "🔵 강세장 진행 중", "color": "#2980b9"}
-    if z_score < 7:
-        return {"regime": "late_bull", "label": "🟠 후기 강세 (주의)", "color": "#e67e22"}
-    return {"regime": "top", "label": "🔴 역사적 천정 (강한 매도)", "color": "#c0392b"}
+        return {"regime": "deep_value", "label": "🟢 BTC 100% 구간 (역사적 바닥 근접)", "color": "#16a085"}
+    if z_score < 1.5:
+        return {"regime": "accumulation", "label": "🔵 BTC 75% 구간 (저평가)", "color": "#27ae60"}
+    if z_score < 2.5:
+        return {"regime": "bull", "label": "🟠 BTC 45% 구간 (중립~과열 경계)", "color": "#e67e22"}
+    return {"regime": "top", "label": "🔴 BTC 20% 구간 (과열 — 비중 축소)", "color": "#c0392b"}
 
 
 def composite_score(scores: dict) -> dict:
