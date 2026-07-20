@@ -704,16 +704,46 @@ if not holdings.empty:
         _tbl["비중(%)"] = _tbl["평가금액"] / _ph_total * 100
 
         # ── 백테스트 기반 신호 추가 ─────────────────────────────────────────
+        # technical_signals/volume_signals는 results/{ticker}_signals.csv를 찾는데
+        # 코인 파일명은 results/coin_{ticker}_signals.csv라 코인은 전부 빈 값({})을 받아
+        # 기본값(ma_score=0 등)으로 조용히 대체되던 버그가 있었음(2026-07-20 발견) — 코인은
+        # 애초에 bb_pct/macd_hist/obv 컬럼 자체가 없어서 파일명만 고쳐도 못 씀. 코인은
+        # coin_summary.csv 기반 전용 로직(RSI H20 검증값·MVRV regime)으로 분리.
         _res_dir = ROOT / "results"
+        _is_coin_tk = _tbl["ticker"].str.contains("-USD", na=False)
         _vsigs, _tsigs = [], []
-        for _tk in _tbl["ticker"]:
-            _vsigs.append(volume_signals(str(_tk), _res_dir))
-            _tsigs.append(technical_signals(str(_tk), _res_dir))
+        for _tk, _is_c in zip(_tbl["ticker"], _is_coin_tk):
+            if _is_c:
+                _vsigs.append({})
+                _tsigs.append({})
+            else:
+                _vsigs.append(volume_signals(str(_tk), _res_dir))
+                _tsigs.append(technical_signals(str(_tk), _res_dir))
 
         # 1M 수익률 룩업 (summary_signals에서)
         _sum_latest = summary.sort_values("date").groupby("ticker").last().reset_index()
         _sum_latest["ticker"] = _sum_latest["ticker"].astype(str).str.upper()
         _ret1m_map = dict(zip(_sum_latest["ticker"], _sum_latest.get("return_1m_pct", pd.Series(dtype=float))))
+
+        # 코인 신호 맵 (coin_summary.csv — RSI<=25 과매도만 유효, H20 검증 / MVRV regime)
+        _coin_sig_map: dict = {}
+        if not _i_csum.empty:
+            for _, _cr in _i_csum.iterrows():
+                _coin_sig_map[str(_cr["ticker"]).upper()] = {
+                    "rsi": _cr.get("rsi14"), "regime": _cr.get("regime"),
+                    "action": _cr.get("action"),
+                }
+
+        def _coin_overheat_lbl(rsi):
+            if rsi is None or pd.isna(rsi):
+                return "—"
+            if rsi <= 25:
+                return "❄️ 과매도(반등여지)"   # H20 검증: 적중률 51~54%
+            return "➡️ 보통"
+
+        def _coin_action_lbl(action):
+            return {"매수": "💎 매수 우호(MVRV/RSI)", "보유": "✅ 유지",
+                    "매도": "🔴 비중 축소 검토(MVRV 과열)"}.get(str(action), "✅ 유지")
 
         def _overheat_lbl(t, v):
             ma  = t.get("ma_score", 0) or 0
@@ -749,11 +779,22 @@ if not holdings.empty:
                 return "❄️ 추세 약세 관망"
             return "✅ 유지"
 
-        _tbl["과열신호"]  = [_overheat_lbl(t, v) for t, v in zip(_tsigs, _vsigs)]
-        _tbl["거래량신호"] = [v.get("vol_label", "—") for v in _vsigs]
-        _tbl["OBV추세"]   = [v.get("obv_slope") for v in _vsigs]
-        _tbl["액션"]      = [_action(r, t, v)
-                             for (_, r), t, v in zip(_tbl.iterrows(), _tsigs, _vsigs)]
+        _overheat_col, _action_col = [], []
+        for (_, _row), _t, _v, _is_c in zip(_tbl.iterrows(), _tsigs, _vsigs, _is_coin_tk):
+            if _is_c:
+                _csig = _coin_sig_map.get(str(_row["ticker"]).upper(), {})
+                _overheat_col.append(_coin_overheat_lbl(_csig.get("rsi")))
+                _action_col.append(_coin_action_lbl(_csig.get("action")))
+            else:
+                _overheat_col.append(_overheat_lbl(_t, _v))
+                _action_col.append(_action(_row, _t, _v))
+
+        _tbl["과열신호"]  = _overheat_col
+        _tbl["거래량신호"] = [("—" if is_c else v.get("vol_label", "—"))
+                             for v, is_c in zip(_vsigs, _is_coin_tk)]
+        _tbl["OBV추세"]   = [(None if is_c else v.get("obv_slope"))
+                             for v, is_c in zip(_vsigs, _is_coin_tk)]
+        _tbl["액션"]      = _action_col
         # 리밸런싱 인사이트와 신호 통일을 위해 보유현황 액션 맵 저장
         _ticker_action_map = {
             str(r["ticker"]).upper(): str(r["액션"])
@@ -778,13 +819,14 @@ if not holdings.empty:
                 "수익률(%)":  st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
                 "비중(%)":    st.column_config.NumberColumn("비중(%)", format="%.1f"),
                 "과열신호":   st.column_config.TextColumn("과열신호",
-                              help="MA=3+BB>0.85 = 과열(IC 역방향 확인). 과열일수록 향후 수익 낮은 경향"),
+                              help="주식/ETF: MA=3+BB>0.85 = 과열(IC 역방향 확인). "
+                                   "코인: RSI<=25 과매도만 표시(H20 검증, 나머지는 신호 없음)"),
                 "거래량신호": st.column_config.TextColumn("거래량",
-                              help="거래량비율(IC=+0.04). 급증=기관 개입 추정"),
+                              help="거래량비율(IC=+0.04). 급증=기관 개입 추정. 코인은 데이터 없어 — 표시"),
                 "OBV추세":    st.column_config.NumberColumn("OBV(%)", format="%+.1f",
-                              help="10일 OBV 변화율. 양수=매집, 음수=분배"),
+                              help="10일 OBV 변화율. 양수=매집, 음수=분배. 코인은 데이터 없어 공란"),
                 "액션":       st.column_config.TextColumn("백테스트 액션",
-                              help="VIX·과열·거래량 신호 기반 행동 제안. 최종 결정은 직접 판단"),
+                              help="주식/ETF: VIX·과열·거래량 신호 기반. 코인: MVRV regime+RSI 기반(coin_summary.csv 동일 소스). 최종 결정은 직접 판단"),
             },
         )
 

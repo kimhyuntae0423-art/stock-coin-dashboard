@@ -39,6 +39,7 @@
 | 매크로 레이더 3개 지표 방향(구리/금비율·수익률곡선·달러강도) | `scripts/etf_recommend.py::macro_signals()` | `etf_page.py` | 2026-07-20 백테스트(H17~H19)로 방향 검증·수정 |
 | 보유종목 데이터 | `holdings.csv` | `portfolio_page.py`, `rebalancing_page.py` | person 컬럼으로 김현태/김보라 계좌 구분 |
 | "보기/계산 대상" 사람 필터 | 각 페이지 자체 `session_state` 키 (`person_filter` / `rebal_person_filter`) | `portfolio_page.py`, `rebalancing_page.py` | **의도적으로 분리** — 2026-07-20 사용자 확인, 연동하지 않기로 결정. 실수로 "통일" 시도하지 말 것 |
+| 종목별 기술적 신호 (과열신호/거래량신호/OBV) | `scripts/etf_recommend.py::technical_signals()`/`volume_signals()` — **주식·ETF 전용**(`results/{ticker}_signals.csv` 필요, bb_pct/macd_hist/obv 컬럼 기반) | `rebalancing_page.py`("보유 현황" 표, "🇰🇷 한국주식/ETF" 섹션), `scripts/etf_recommend.py::enrich_with_volume()` | **코인엔 못 씀** — 코인 시그널 파일(`coin_{ticker}_signals.csv`)엔 bb_pct/macd_hist/obv 컬럼 자체가 없음. 코인은 `coin_summary.csv`(rsi14/regime/action) 기반 전용 로직 사용 — 2026-07-20, "보유 현황" 표가 코인 티커를 그대로 이 함수들에 넘겨서 전부 빈 값→기본값 폴백되던 버그 발견·수정 (마침 보유 코인이 전부 큰 손실 중이라 우연히 같은 라벨로 안 들켰음). 새로 이런 종목별 신호 루프를 짤 때는 **항상 코인/주식 분기부터 확인**(`rebalancing_page.py:805`처럼 `-USD` 필터링) |
 
 ## 신규 기능 추가 시 체크리스트
 
