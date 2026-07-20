@@ -10,9 +10,7 @@ from scripts.etf_recommend import (
     market_regime, score_etfs, sector_cycles,
     macro_signals, enrich_with_volume,
 )
-
-BASE    = Path(__file__).resolve().parent
-RESULTS = BASE / "results"
+from scripts.config import RESULTS_DIR as RESULTS
 
 st.title("🏛️ 코어 ETF (참고)")
 st.caption("코어 ETF 수익률 비교 및 기본 정보. 매일 새벽 7시 자동 갱신.")

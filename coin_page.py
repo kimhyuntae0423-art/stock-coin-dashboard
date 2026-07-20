@@ -12,9 +12,7 @@ from scripts.onchain import (
     score_pi_cycle, score_fng, composite_score,
 )
 from scripts.ui import render_fng_gauge
-
-RESULTS = ROOT / "results"
-NAMES_FILE = ROOT / "coin_names.csv"
+from scripts.config import RESULTS_DIR as RESULTS, COIN_NAMES_FILE as NAMES_FILE
 
 
 def load_names() -> dict:

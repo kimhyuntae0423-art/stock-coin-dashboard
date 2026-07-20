@@ -12,12 +12,9 @@ ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
 from scripts.stock_score import rank_stocks
 from scripts.factor_calc import enrich_price_factors
-
-RESULTS = ROOT / "results"
-HOLDINGS_FILE = ROOT / "holdings.csv"
-NAMES_FILE = ROOT / "names.csv"
-COIN_NAMES_FILE = ROOT / "coin_names.csv"
-CORE_ETF_FILE = ROOT / "core_etfs.csv"
+from scripts.config import (
+    RESULTS_DIR as RESULTS, HOLDINGS_FILE, NAMES_FILE, COIN_NAMES_FILE, CORE_ETF_FILE,
+)
 
 
 def load_names() -> dict:

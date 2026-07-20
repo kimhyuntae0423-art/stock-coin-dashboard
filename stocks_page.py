@@ -8,10 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from scripts.stock_score import rank_stocks
 from scripts.factor_calc import enrich_price_factors
 from scripts.etf_recommend import market_regime
-
-BASE = Path(__file__).resolve().parent
-RESULTS = BASE / "results"
-NAMES_FILE = BASE / "names.csv"
+from scripts.config import RESULTS_DIR as RESULTS, NAMES_FILE
 
 
 def load_names() -> dict:

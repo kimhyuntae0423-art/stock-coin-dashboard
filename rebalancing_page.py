@@ -17,17 +17,13 @@ from scripts.asset_allocation import (
 from scripts.config import (
     DEFAULT_TARGET_CORE, DEFAULT_TARGET_SATELLITE, DEFAULT_TARGET_CASH,
     KEY_TARGET_CORE, KEY_TARGET_SATELLITE, KEY_TARGET_CASH,
+    RESULTS_DIR as RESULTS, HOLDINGS_FILE, NAMES_FILE, COIN_NAMES_FILE,
 )
 from scripts.etf_recommend import (
     market_regime, score_etfs, tactical_alloc, enrich_with_volume,
     volume_signals, technical_signals,
 )
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
-
-RESULTS = ROOT / "results"
-HOLDINGS_FILE = ROOT / "holdings.csv"
-NAMES_FILE = ROOT / "names.csv"
-COIN_NAMES_FILE = ROOT / "coin_names.csv"
 
 
 def _load_names() -> dict:

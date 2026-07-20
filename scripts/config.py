@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TICKERS_FILE  = ROOT / "tickers.csv"
 CORE_ETF_FILE = ROOT / "core_etfs.csv"
 NAMES_FILE    = ROOT / "names.csv"
+COIN_NAMES_FILE = ROOT / "coin_names.csv"
 HOLDINGS_FILE = ROOT / "holdings.csv"
 
 # 결과 디렉토리

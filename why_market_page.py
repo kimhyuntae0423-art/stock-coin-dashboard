@@ -10,9 +10,8 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from scripts.config import (
     DEFAULT_TARGET_CORE, DEFAULT_TARGET_SATELLITE, DEFAULT_TARGET_CASH,
     KEY_TARGET_CORE, KEY_TARGET_SATELLITE, KEY_TARGET_CASH,
+    RESULTS_DIR,
 )
-
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 
 @st.cache_data(ttl=3600)
