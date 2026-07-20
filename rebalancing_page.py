@@ -839,83 +839,30 @@ if not holdings.empty:
                 _an_coins["ticker"] = _an_coins["ticker"].astype(str).str.upper()
             except Exception:
                 _an_coins = pd.DataFrame()
-            _an_fx = _i_fx  # 코인 KRW 환율
-
-            _an_h = _tbl.copy()  # 이미 정렬된 보유 종목 (위에서 계산)
+            _an_h = _tbl.copy()  # 이미 신호 계산 완료된 보유 종목 (위 "보유 현황" 표와 동일 소스)
+            # 2026-07-20: 아래 두 섹션이 technical_signals를 다시 불러와 다른 임계값(BB<0.2 vs
+            # 위 표의 0.3, state vs ma_score)으로 액션을 재계산하고 있어서, 같은 종목·같은
+            # 시점에 위 표와 다른 결론이 나던 버그를 없애고 _an_h(=_tbl)의 계산을 그대로 재사용.
 
             # ── 한국주식 / ETF 분석 ──────────────────────────────────────────────
             _an_ks = _an_h[~_an_h["ticker"].str.contains("-USD", na=False)].copy()
             if not _an_ks.empty:
                 st.markdown("#### 🇰🇷 한국주식 / ETF")
 
-                _an_rows = []
-                for _, r in _an_ks.iterrows():
-                    tk   = str(r["ticker"]).upper()
-                    vsig = volume_signals(tk, _res_dir)
-                    tsig = technical_signals(tk, _res_dir)
-                    smr  = _an_summary[_an_summary["ticker"] == tk]
+                _an_ks["ticker_u"] = _an_ks["ticker"].astype(str).str.upper()
+                _an_ks = _an_ks.merge(
+                    _an_summary[["ticker", "state", "return_1m_pct", "return_12m_pct", "rsi14"]]
+                        .rename(columns={"ticker": "ticker_u"}),
+                    on="ticker_u", how="left",
+                )
+                _an_ks["추세"] = _an_ks["state"].apply(
+                    lambda s: f"{'🟢' if s == 'bull' else '🔴'} {s}" if pd.notna(s) else "—")
 
-                    state  = smr.iloc[0]["state"] if not smr.empty else "—"
-                    r1m    = float(smr.iloc[0]["return_1m_pct"])  if not smr.empty and pd.notna(smr.iloc[0]["return_1m_pct"])  else None
-                    r12m   = float(smr.iloc[0]["return_12m_pct"]) if not smr.empty and pd.notna(smr.iloc[0]["return_12m_pct"]) else None
-                    rsi    = float(smr.iloc[0]["rsi14"])           if not smr.empty and pd.notna(smr.iloc[0]["rsi14"])          else None
-
-                    ret   = float(r.get("수익률(%)") or 0)
-                    ma    = tsig.get("ma_score", 0) or 0
-                    bb    = float(tsig.get("bb_pct") or 0.5)
-                    vol_r = float(vsig.get("vol_ratio") or 1.0)
-                    vol_l = vsig.get("vol_label", "—")
-                    ovheat = ma == 3 and bb > 0.85
-
-                    # 액션 결정
-                    if state == "bear":
-                        if ret < -20:
-                            action = "🔴 추세 역전 + 손실 — 포지션 재검토"
-                        elif ret < 0:
-                            action = "🔴 하락추세 — 추가매수 보류"
-                        else:
-                            action = "⚠️ 하락추세 — 차익실현 고려"
-                    elif ovheat and ret > 30:
-                        action = "🌡️ 과열 + 고수익 — 분할 차익실현"
-                    elif ovheat and r1m is not None and r1m < 0:
-                        action = "⚠️ 과열 + 모멘텀 꺾임 — 분할매도 검토"
-                    elif "다이버전스" in vol_l and ret > 15:
-                        action = "⚠️ 가격↑ 거래량↓ — 상승 지속력 주의"
-                    elif bb < 0.2 and state == "bull":
-                        action = "❄️ 하단 지지 구간 — 분할매수 검토"
-                    elif vol_r >= 1.4 and state == "bull":
-                        action = "📈 거래량 급증 — 추세 강세"
-                    else:
-                        action = "✅ 유지"
-
-                    # 기술 등급
-                    if state == "bear":
-                        grade = "🔴 약세"
-                    elif ovheat:
-                        grade = "🌡️ 과열"
-                    elif ma >= 2 and bb > 0.5:
-                        grade = "🟢 강세"
-                    else:
-                        grade = "🟡 중립"
-
-                    _an_rows.append({
-                        "티커":     tk,
-                        "종목명":   r.get("종목명", tk),
-                        "수익률(%)": ret,
-                        "추세":     f"{'🟢' if state=='bull' else '🔴'} {state}",
-                        "1개월(%)":  r1m,
-                        "12개월(%)": r12m,
-                        "RSI":      rsi,
-                        "기술등급":  grade,
-                        "거래량":   vol_l,
-                        "분석액션":  action,
-                    })
-
-                _an_ks_df = pd.DataFrame(_an_rows)
-                # 기술등급 정렬: 약세 → 과열 → 중립 → 강세
-                _grade_order = {"🔴 약세": 0, "🌡️ 과열": 1, "🟡 중립": 2, "🟢 강세": 3}
-                _an_ks_df["_g"] = _an_ks_df["기술등급"].map(_grade_order).fillna(9)
-                _an_ks_df = _an_ks_df.sort_values("_g").drop(columns=["_g"])
+                _an_ks_df = _an_ks.rename(columns={
+                    "ticker": "티커", "return_1m_pct": "1개월(%)", "return_12m_pct": "12개월(%)",
+                    "rsi14": "RSI", "거래량신호": "거래량", "과열신호": "기술등급", "액션": "분석액션",
+                })[["티커", "종목명", "수익률(%)", "추세", "1개월(%)", "12개월(%)", "RSI",
+                    "기술등급", "거래량", "분석액션"]]
 
                 st.dataframe(
                     _an_ks_df,
@@ -932,66 +879,45 @@ if not holdings.empty:
                         "RSI":       st.column_config.NumberColumn("RSI", format="%.0f",
                                      help="70↑ 과열 / 30↓ 침체. 역방향 신호로 활용"),
                         "기술등급":  st.column_config.TextColumn("기술등급",
-                                     help="추세+과열 복합 판단"),
+                                     help="위 '보유 현황' 표의 과열신호와 동일 계산(재계산 안 함)"),
                         "거래량":    st.column_config.TextColumn("거래량신호"),
                         "분석액션":  st.column_config.TextColumn("분석 액션",
-                                     help="과열(IC 역방향 검증) + 추세(bear=손절 검토) 기반. 최종 결정은 직접 판단"),
+                                     help="위 '보유 현황' 표의 액션과 동일(재계산 안 함). 최종 결정은 직접 판단"),
                     },
                 )
                 st.caption("한국 개별주 모멘텀은 IC=0.065 — 방향은 맞으나 데이터 부족으로 통계 미검증. 과열·추세 신호 위주로 판단하세요.")
 
                 # 긴급 알림
-                _bear_holds = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🔴", na=False)]
-                _hot_holds  = _an_ks_df[_an_ks_df["분석액션"].str.startswith("🌡️", na=False)]
+                _bear_holds = _an_ks_df[_an_ks_df["추세"].str.contains("bear", na=False)]
+                _hot_holds  = _an_ks_df[_an_ks_df["기술등급"].str.contains("과열", na=False)]
                 if not _bear_holds.empty:
                     st.error(f"🔴 하락추세: {', '.join(_bear_holds['티커'])} — 추세 전환 확인 전 추가매수 자제 (bear추세 = 향후 수익 낮은 경향)")
                 if not _hot_holds.empty:
-                    st.warning(f"🌡️ 과열 차익실현 구간: {', '.join(_hot_holds['티커'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
+                    st.warning(f"🌡️ 과열 신호: {', '.join(_hot_holds['티커'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
 
             # ── 코인 분석 ────────────────────────────────────────────────────────
             _an_cu = _an_h[_an_h["ticker"].str.contains("-USD", na=False)].copy()
             if not _an_cu.empty and not _an_coins.empty:
                 st.markdown("#### 🪙 코인")
 
-                _coin_rows = []
-                for _, r in _an_cu.iterrows():
-                    tk  = str(r["ticker"]).upper()
-                    row = _an_coins[_an_coins["ticker"] == tk]
-                    if row.empty:
-                        continue
-                    cr   = row.iloc[0]
-                    ret  = float(r.get("수익률(%)") or 0)
-                    reg  = str(cr.get("regime", "—"))
-                    r90  = float(cr.get("return_90d_pct") or 0)
-                    rsi  = float(cr.get("rsi14") or 50)
-                    act_c = str(cr.get("action", "—"))
+                # 2026-07-20: 여기서 ret<-30 and rsi<35 같은 자체 임계값으로 코인 액션을
+                # 다시 계산했었는데, RSI<=30/35 과매도는 오늘 H20 백테스트로 "무효"(CLAUDE.md
+                # 등재)라고 이미 확인됨. coin_summary.csv 기반의 검증된 액션(위 "보유 현황"
+                # 표와 동일 소스, _tbl의 "액션")을 그대로 재사용.
+                _an_cu["ticker_u"] = _an_cu["ticker"].astype(str).str.upper()
+                _an_cu = _an_cu.merge(
+                    _an_coins[["ticker", "regime", "return_90d_pct", "rsi14", "action"]]
+                        .rename(columns={"ticker": "ticker_u"}),
+                    on="ticker_u", how="inner",
+                )
+                _an_cu_df = _an_cu.rename(columns={
+                    "ticker": "티커", "수익률(%)": "보유수익(%)", "regime": "코인국면",
+                    "return_90d_pct": "90d(%)", "rsi14": "RSI", "action": "코인신호",
+                    "액션": "분석액션",
+                })[["티커", "보유수익(%)", "코인국면", "90d(%)", "RSI", "코인신호", "분석액션"]] \
+                  .sort_values("보유수익(%)")
 
-                    # 코인 액션 판단
-                    if ret < -80:
-                        coin_action = "🔴 -80% 이상 손실 — 회복 불확실, 정리 검토"
-                    elif ret < -60:
-                        coin_action = "⚠️ 깊은 손실 — 핵심 코인 외 정리 고려"
-                    elif ret < -30 and rsi < 35:
-                        coin_action = "❄️ 누적 손실 + RSI 침체 — 분할 물타기 or 관망"
-                    elif reg == "accumulation" and rsi < 40 and ret > -20:
-                        coin_action = "📥 매집 국면 + RSI 침체 — 분할매수 고려"
-                    elif reg == "accumulation":
-                        coin_action = "📥 매집 국면 — 관망 유지"
-                    else:
-                        coin_action = "✅ 유지"
-
-                    _coin_rows.append({
-                        "티커":       tk,
-                        "보유수익(%)": ret,
-                        "코인국면":    reg,
-                        "90d(%)":     r90,
-                        "RSI":        rsi,
-                        "코인액션":    act_c,
-                        "분석액션":    coin_action,
-                    })
-
-                if _coin_rows:
-                    _an_cu_df = pd.DataFrame(_coin_rows).sort_values("보유수익(%)")
+                if not _an_cu_df.empty:
                     st.dataframe(
                         _an_cu_df,
                         hide_index=True, use_container_width=True,
@@ -1001,8 +927,9 @@ if not holdings.empty:
                             "코인국면":    st.column_config.TextColumn("국면"),
                             "90d(%)":      st.column_config.NumberColumn("90일(%)", format="%+.1f"),
                             "RSI":         st.column_config.NumberColumn("RSI", format="%.0f"),
-                            "코인액션":    st.column_config.TextColumn("코인신호"),
-                            "분석액션":    st.column_config.TextColumn("분석 액션"),
+                            "코인신호":    st.column_config.TextColumn("코인신호"),
+                            "분석액션":    st.column_config.TextColumn("분석 액션",
+                                          help="위 '보유 현황' 표와 동일(coin_summary.csv 기반, 재계산 안 함)"),
                         },
                     )
 

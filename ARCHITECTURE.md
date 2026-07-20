@@ -40,6 +40,7 @@
 | 보유종목 데이터 | `holdings.csv` | `portfolio_page.py`, `rebalancing_page.py` | person 컬럼으로 김현태/김보라 계좌 구분 |
 | "보기/계산 대상" 사람 필터 | 각 페이지 자체 `session_state` 키 (`person_filter` / `rebal_person_filter`) | `portfolio_page.py`, `rebalancing_page.py` | **의도적으로 분리** — 2026-07-20 사용자 확인, 연동하지 않기로 결정. 실수로 "통일" 시도하지 말 것 |
 | 종목별 기술적 신호 (과열신호/거래량신호/OBV) | `scripts/etf_recommend.py::technical_signals()`/`volume_signals()` — **주식·ETF 전용**(`results/{ticker}_signals.csv` 필요, bb_pct/macd_hist/obv 컬럼 기반) | `rebalancing_page.py`("보유 현황" 표, "🇰🇷 한국주식/ETF" 섹션), `scripts/etf_recommend.py::enrich_with_volume()` | **코인엔 못 씀** — 코인 시그널 파일(`coin_{ticker}_signals.csv`)엔 bb_pct/macd_hist/obv 컬럼 자체가 없음. 코인은 `coin_summary.csv`(rsi14/regime/action) 기반 전용 로직 사용 — 2026-07-20, "보유 현황" 표가 코인 티커를 그대로 이 함수들에 넘겨서 전부 빈 값→기본값 폴백되던 버그 발견·수정 (마침 보유 코인이 전부 큰 손실 중이라 우연히 같은 라벨로 안 들켰음). 새로 이런 종목별 신호 루프를 짤 때는 **항상 코인/주식 분기부터 확인**(`rebalancing_page.py:805`처럼 `-USD` 필터링) |
+| **보유종목 "액션"(매수/보유/매도류) 판정** | `rebalancing_page.py` "보유 현황" 표(`_overheat_lbl`/`_action`, 코인은 `coin_summary.csv`의 `action`) | 같은 파일의 "📊 보유 종목 종합 분석" 익스팬더(🇰🇷 한국주식/ETF, 🪙 코인 섹션) | **2026-07-20 통합**: "종합 분석" 익스팬더가 technical_signals를 다시 불러와 다른 임계값(BB<0.2 vs 위 표 0.3, `state` vs `ma_score`)으로 액션을 재계산해서, 같은 종목·같은 시점에 두 표가 다른 결론을 내던 버그. 코인 쪽은 한술 더 떠 RSI<35/40(H20 백테스트로 이미 "무효" 판정난 임계값, 위 행 참고)을 썼음 — CLAUDE.md 위반. `_tbl`(위 표)의 계산 결과를 그대로 재사용하도록 통합. 앱 전체에서 "이 종목 사야 하나"를 계산하는 곳은 이제 여기(_tbl) + `portfolio_page.py::holding_signal()` 2곳뿐 — 둘은 페이지 성격이 달라(리밸런싱 vs 보유관리) 의도적으로 별개 유지 |
 
 ## 신규 기능 추가 시 체크리스트
 
