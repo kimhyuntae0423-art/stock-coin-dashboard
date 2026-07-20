@@ -185,9 +185,9 @@ st.divider()
 # ── 추천 섹션 ─────────────────────────────────────────────────────────────────
 st.subheader("🎯 ETF 배분 점수")
 st.info(
-    "**백테스트 결과 반영**: ETF 모멘텀 순위 IC=0.019 (p=0.61, 유의성 없음)  \n"
-    "→ 배분점수는 **섹터사이클(실제 드라이버)** + **VIX 국면** 이 결정. 모멘텀은 25% 보조 가중치만 적용  \n"
-    "→ **과열 신호(IC 역방향 검증)**와 **VIX 타이밍(IC=0.14)** 만 통계적으로 신뢰 가능"
+    "**백테스트 결과 반영**: ETF 모멘텀 순위 IC=0.019, 섹터사이클 IC=-0.023 (둘 다 p>0.3, 유의성 없음)  \n"
+    "→ 배분점수는 **VIX 국면(IC=0.14, 유일하게 검증된 드라이버)** 만으로 계산. 섹터사이클·모멘텀은 표에 참고용으로만 표시  \n"
+    "→ **과열 신호(H10, 약하게 유효)**로 추가 감점, **VIX 타이밍**만 배분 비중에 반영"
 )
 
 _cy_df = sector_cycles(summary)
@@ -227,13 +227,11 @@ def _entry_desc(bb, ma) -> str:
 
 if not _valid.empty:
     # 상대적 저점 순위 기준 Top 5 (H15 검증 — 낮은 BB + 낮은 MA = 향후 수익 좋은 경향)
-    # RSI<75 필터 (극단 과열 제외)
+    # RSI<75 필터·bull상태 필터는 미검증/역방향 신호(CLAUDE.md 금지 목록)라 사용하지 않음
     if "냉각지수" in _valid.columns:
-        _cool_sorted = _valid[_valid["rsi14"] < 75].sort_values(
-            "냉각지수", ascending=False, na_position="last"
-        )
+        _cool_sorted = _valid.sort_values("냉각지수", ascending=False, na_position="last")
     else:
-        _cool_sorted = _valid[_valid["rsi14"] < 75]
+        _cool_sorted = _valid
     _bull_ok = _cool_sorted.head(5)
     _watch   = _valid[~_valid.index.isin(_bull_ok.index)].head(3)
 
@@ -329,17 +327,18 @@ if not _valid.empty:
                          help="IC=-0.023, p=0.34 → ±5% 참고만"),
             "배분점수": st.column_config.ProgressColumn("배분점수",
                          format="%.0f", min_value=0, max_value=180,
-                         help="섹터사이클×VIX국면 기반. 상대적 저점 순위를 함께 참고하세요"),
+                         help="VIX국면(IC=0.14, 유일한 검증 드라이버) 기반. 상대적 저점 순위를 함께 참고하세요"),
         },
     )
 
     if not _watch.empty:
-        with st.expander("👀 제외 ETF (Bear 추세 또는 RSI ≥ 70)"):
+        with st.expander("👀 상대적 저점 순위 밖 ETF (Top5 미포함)"):
             for _, row in _watch.iterrows():
-                reason = "Bear 추세" if row["state"] != "bull" else f"RSI {row['rsi14']:.0f} 과열"
+                cr = row.get("냉각순위")
+                cr_str = f"저점순위 #{int(cr)}" if pd.notna(cr) else "저점순위 —"
                 cy = row.get("섹터사이클", "—")
-                cy_str = f" · 사이클 {cy}" if pd.notna(cy) and cy != "—" else ""
-                st.markdown(f"- **{row['ticker']}** {row['name']} — 12개월 {row['return_12m_pct']:+.1f}% / {reason}{cy_str}")
+                cy_str = f" · 사이클 {cy}(참고)" if pd.notna(cy) and cy != "—" else ""
+                st.markdown(f"- **{row['ticker']}** {row['name']} — 12개월 {row['return_12m_pct']:+.1f}% / {cr_str}{cy_str}")
 
 st.divider()
 

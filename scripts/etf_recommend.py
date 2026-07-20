@@ -439,12 +439,13 @@ def sector_cycles(summary_df: pd.DataFrame) -> pd.DataFrame:
 
 def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
                    regime: dict = None) -> pd.DataFrame:
-    """사이클배율 + VIX 기반 전술적 배분 계산.
+    """VIX 국면 기반 전술적 배분 계산.
 
     백테스트 검증 반영:
       VIX>25 → 공격/핵심 버킷 추가 오버웨이트 (역발상, IC=0.14 검증)
       VIX<13 → 공격 버킷 소폭 언더웨이트 (과열 경계)
       과열신호(⚠️) ETF → 전술비중 추가 감점
+      섹터사이클(IC=-0.023, 예측력 없음)은 배분 계산에서 제외
 
     Returns scored_df에 추가 컬럼:
         기본비중, 전술비중, 기본배분, 전술배분, 배분차이, 전환신호
@@ -469,15 +470,14 @@ def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
     n = len(df)
     df["기본비중"] = 1 / n
 
-    # 전술비중 = 기본비중 × 사이클배율 × VIX 버킷 배율
+    # 전술비중 = 기본비중 × VIX 버킷 배율 × 과열 감점 (섹터사이클은 예측력 없어 제외)
     def _tact_mult(row):
-        cy  = float(row.get("사이클배율", 1.0) or 1.0)
         bkt = str(row.get("버킷", "핵심"))
         vh  = vix_adj.get(bkt, 1.0)
         # 과열 신호 있으면 추가 언더웨이트
         overheat = str(row.get("과열신호", ""))
         oh = 0.90 if "⚠️ 과열" in overheat else 1.0
-        return cy * vh * oh
+        return vh * oh
 
     raw = df.apply(_tact_mult, axis=1) * df["기본비중"]
     df["전술비중"] = raw / raw.sum()
@@ -490,21 +490,18 @@ def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
     def _rotation_signal(row):
         r12  = row.get("return_12m_pct", 0) or 0
         r1   = row.get("return_1m_pct",  0) or 0
-        cy   = row.get("사이클배율", 1.0) or 1.0
         rsi  = row.get("rsi14", 50) or 50
         over = str(row.get("과열신호", ""))
-        # 과열 + 전환 동시 → 강한 경고
+        # 사이클배율(IC=-0.023, 예측력 없음)은 사용하지 않음 — 과열신호(H10)·수익률만 근거로 사용
         if "⚠️ 과열" in over and r12 > 20 and r1 < 0:
             return "🚨 과열+전환 경고"
         if r12 > 20 and r1 < 0 and rsi < 50:
             return "⚠️ 전환 주의"
-        if r12 > 15 and cy < 1.0:
+        if "⚠️ 과열" in over or "🌡️" in over:
             return "📉 모멘텀 둔화"
-        if cy >= 1.12:
-            return "🔥 강세 유지"
-        if cy >= 1.0:
-            return "✅ 중립"
-        return "❄️ 약세"
+        if "❄️ 하단 지지" in over:
+            return "🔥 반등 여력"
+        return "✅ 중립"
 
     df["전환신호"] = df.apply(_rotation_signal, axis=1)
     return df
@@ -555,17 +552,16 @@ def score_etfs(etf_df: pd.DataFrame, summary_df: pd.DataFrame, regime_key: str) 
     valid["mom_score"] = (valid["r12_rank"] * 0.7 + valid["r1_rank"] * 0.3) * 100
 
     # 백테스트 검증 결과 요약:
-    #   H8  VIX 역발상    IC=+0.14  p<0.001  ✅ 강력 유효 → bucket_weight 핵심 드라이버
-    #   H10 과열조합      IC=+0.028 p=0.023  ⚠️ 약하게 유효 → overheat penalty 유지
-    #   H12 섹터사이클    IC=-0.023 p=0.34   ❌ 예측력 없음 → 배율 ±5%로 축소
-    #   H13 Bull추세필터  IC=-0.047 p=0.010  ⚠️ 역방향 → 필터 완화
-    #   H1  모멘텀        IC=+0.019 p=0.61   ❌ 예측력 없음 → 10% 보조만
+    #   H8  VIX 역발상    IC=+0.14  p<0.001  ✅ 강력 유효 → 점수의 유일한 드라이버
+    #   H10 과열조합      IC=+0.028 p=0.023  ⚠️ 약하게 유효 → enrich_with_volume 감점으로 별도 반영
+    #   H12 섹터사이클    IC=-0.023 p=0.34   ❌ 예측력 없음 → 점수 미반영, 표에는 참고용으로만 표시
+    #   H13 Bull추세필터  IC=-0.047 p=0.010  ❌ 역방향(쓸수록 손해) → 점수·필터 어디에도 미사용
+    #   H1  모멘텀        IC=+0.019 p=0.61   ❌ 예측력 없음 → 점수 미반영, mom_score는 표시만
     #
-    # 점수 = 100(균등 기준) × VIX국면배율 × 섹터사이클배율(±5%) × (모멘텀 10% 보조)
-    # 배분은 VIX 타이밍이 가장 중요, 섹터·모멘텀은 참고 수준
+    # 점수 = 100(균등 기준) × VIX국면배율. 섹터사이클·모멘텀은 검증 실패로 점수에서 제외.
     w = _BUCKET_WEIGHT.get(regime_key, _BUCKET_WEIGHT["mixed"])
     valid["score"] = valid.apply(
-        lambda r: (100 + r["mom_score"] * 0.10 - 5) * w.get(r["버킷"], 1.0) * float(r["사이클배율"]),
+        lambda r: 100 * w.get(r["버킷"], 1.0),
         axis=1,
     )
 
