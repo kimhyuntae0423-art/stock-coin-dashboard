@@ -418,7 +418,6 @@ def holding_signal(row):
     is_etf = ticker in _ETF_TICKERS
     mom_rank_h = row.get("mom_rank_h")
     action = row.get("action")
-    rsi = row.get("rsi14")
     pnl_pct = row.get("수익률(%)")
 
     # ── ETF: 리밸런싱으로 관리 — 손실 기반 신호 없음 ──────────────
@@ -557,11 +556,6 @@ def holding_signal(row):
     # ─ 데드크로스 — 보조 참고 ────────────────────────────────────
     if action in ("매도", "미보유"):
         reasons.append("데드크로스/하락추세 — 보조 참고 (50.8% 적중, 단독 신뢰도 낮음)")
-        severity = max(severity, 1)
-
-    # ─ RSI 극단 과매수 ────────────────────────────────────────────
-    if pd.notna(rsi) and rsi >= 80:
-        reasons.append(f"RSI {rsi:.0f} — 극단 과매수. 강한 추세에서는 계속 오를 수 있음")
         severity = max(severity, 1)
 
     if severity == 2:

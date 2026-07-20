@@ -7,7 +7,7 @@ Streamlit으로 만든 한·미 주식 + 암호화폐 종합 분석 대시보드
 ## 주요 기능
 
 ### 📈 주식 페이지
-- **CNN Fear & Greed Index** — 시장 심리 게이지
+- **시장 국면 (VIX 기반 market_regime)** — ETF/리밸런싱 페이지와 동일 기준, IC=+0.14 백테스트 검증
 - **QVM 종합 점수** — Value(PER/PBR) · Quality(ROE) · Momentum(12M 수익률) · Technical(RSI) 4-팩터 점수 시스템
 - **매수 우선순위 TOP 5** — 종합 점수 기반 추천
 - 골든/데드 크로스 (50/200일선) 추세 시그널
@@ -24,7 +24,7 @@ Streamlit으로 만든 한·미 주식 + 암호화폐 종합 분석 대시보드
 - yfinance — 가격 데이터
 - 네이버 금융 — 한국 주식 PER/PBR
 - bitcoin-data.com — BTC 온체인 지표 (MVRV, NUPL, Puell)
-- CNN, Alternative.me — Fear & Greed 지수
+- Alternative.me — 코인 Fear & Greed 지수
 
 ## 로컬 실행
 ```bash
