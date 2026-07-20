@@ -5,10 +5,9 @@ import plotly.graph_objects as go
 import sys
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from scripts.fear_greed import fetch_cnn_fear_greed
-from scripts.ui import render_fng_gauge
 from scripts.stock_score import rank_stocks
 from scripts.factor_calc import enrich_price_factors
+from scripts.etf_recommend import market_regime
 
 BASE = Path(__file__).resolve().parent
 RESULTS = BASE / "results"
@@ -66,27 +65,21 @@ funda_file = RESULTS / "fundamentals.csv"
 funda = pd.read_csv(funda_file) if funda_file.exists() else pd.DataFrame(columns=["ticker"])
 
 
-# ============== F&G (항상 상단) ==============
-@st.cache_data(ttl=3600)
-def _cached_cnn_fng():
-    return fetch_cnn_fear_greed()
-
-
-st.subheader("🧠 시장 심리 (Fear & Greed Index)")
-fng_col1, fng_col2 = st.columns([1, 2])
-with fng_col1:
-    render_fng_gauge(_cached_cnn_fng(), "CNN 공포·탐욕 지수")
-with fng_col2:
-    st.markdown(
-        """
-**해석 기준**
-- **0~25 극단적 공포** — 역사적 매수 기회 구간
-- **25~45 공포** · **45~55 중립** · **55~75 탐욕**
-- **75~100 극단적 탐욕** — 과열, 조정 가능성
-
-> *남들이 탐욕스러울 때 두려워하고, 남들이 두려워할 때 탐욕스러워라.* — 워런 버핏
-"""
-    )
+# ============== 시장 국면 (항상 상단, ETF/리밸런싱 페이지와 동일 기준) ==============
+_regime = market_regime(summary)
+st.subheader(f"🌐 시장 국면: {_regime['label']}")
+st.caption(
+    f"{_regime['desc']} — VIX 역발상 신호 (IC=0.14, p<0.001, 검증됨). "
+    "ETF·리밸런싱 페이지와 동일한 국면 판정 기준을 사용합니다."
+)
+_rg1, _rg2, _rg3, _rg4 = st.columns(4)
+_rg1.metric("시장 브레드스", f"{_regime['breadth']:.0f}%",
+            help="전체 추적 종목 중 골든크로스(bull) 비율")
+_rg2.metric("SPY 1개월", f"{_regime['spy_1m']:+.1f}%")
+_rg3.metric("SPY 12개월", f"{_regime['spy_12m']:+.1f}%")
+_rg4.metric("채권(TLT) 1개월", f"{_regime['tlt_1m']:+.1f}%",
+            delta="채권 우세" if _regime["bond_winning"] else "주식 우세",
+            delta_color="inverse" if _regime["bond_winning"] else "normal")
 
 st.divider()
 
