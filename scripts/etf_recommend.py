@@ -137,10 +137,11 @@ def technical_signals(ticker: str, results_dir) -> dict:
 def macro_signals(summary_df: pd.DataFrame) -> dict:
     """매크로 선행 지표 계산 — 기존 ETF 데이터로 추정.
 
-    구리/금 비율  : 경기 선행 (구리↑/금↑ = 성장 기대)
-    TLT vs SHY   : 수익률 곡선 대리 (장기채>단기채 = 안전자산 선호)
-    VIX 레벨     : 공포 지수 (>25 = 매수 기회, <15 = 과열 경계)
-    HYG/LQD 대리 : 신용 위험 (COPX vs BND로 대체)
+    백테스트 검증 결과 (H17~H19, scripts/signal_validation.py::run_macro_validation):
+      구리/금 비율   IC=-0.37 p<0.001 ✅ 역방향 — 구리 과열일수록 SPY 향후 수익 낮음 (기존 라벨 반대로 수정)
+      수익률 곡선    IC=+0.25 p<0.001 ✅ 정방향 — 안전자산 선호 높을수록 SPY 향후 수익 낮음 (기존 라벨 그대로)
+      달러 강도      IC=+0.16 p=0.007 ✅ 정방향 — 강달러일수록 SPY 향후 수익 높음 (신규 방향 라벨 추가)
+      VIX 레벨      : 공포 지수 (>25 = 매수 기회, <15 = 과열 경계) — market_regime()에서 별도 검증(IC=0.14)
 
     Returns dict with regime_tilt adjustments per bucket.
     """
@@ -156,21 +157,21 @@ def macro_signals(summary_df: pd.DataFrame) -> dict:
 
     out = {}
 
-    # 구리/금 비율 → 경기 선행 (COPX 1M - GLD 1M)
+    # 구리/금 비율 (COPX 1M - GLD 1M) — IC=-0.37 역방향 검증: 구리 과열 = 향후 수익 저조
     copx = _r("COPX"); gld = _r("GLD")
     if copx is not None and gld is not None:
         cu_au = round(copx - gld, 2)
         out["구리금비율"] = cu_au
-        out["경기신호"]  = ("📈 성장 기대" if cu_au > 2 else
-                           ("📉 위험회피" if cu_au < -2 else "➡️ 중립"))
+        out["경기신호"]  = ("⚠️ 과열 경계 (향후 수익 저조 경향)" if cu_au > 2 else
+                           ("✅ 저점 신호 (향후 수익 양호 경향)" if cu_au < -2 else "➡️ 중립"))
 
-    # 수익률 곡선 (TLT 1M vs SHY 1M) — 장기채가 더 오르면 안전자산 선호
+    # 수익률 곡선 (TLT 1M vs SHY 1M) — IC=+0.25 검증: 안전자산 선호 높으면 향후 수익 저조
     tlt = _r("TLT"); shy = _r("SHY")
     if tlt is not None and shy is not None:
         curve = round(tlt - shy, 2)
         out["수익률곡선"] = curve
-        out["곡선신호"]  = ("⚠️ 안전자산선호" if curve > 2 else
-                           ("✅ 위험자산선호" if curve < -2 else "➡️ 중립"))
+        out["곡선신호"]  = ("⚠️ 안전자산선호 (향후 수익 저조 경향)" if curve > 2 else
+                           ("✅ 위험자산선호 (향후 수익 양호 경향)" if curve < -2 else "➡️ 중립"))
 
     # VIX (^VIX가 summary에 있으면 사용)
     vix_row = latest[latest["ticker"].isin(["^VIX", "VIX"])]
@@ -182,11 +183,11 @@ def macro_signals(summary_df: pd.DataFrame) -> dict:
                           ("✅ 안정"               if vix > 12 else
                            "🌡️ 과열 경계")))
 
-    # 달러 강도 (DXJ 1M > VEU 1M → 달러 강세 가능성 높음)
+    # 달러 강도 (DXJ 1M vs VEU 1M) — IC=+0.16 검증: 강달러일수록 향후 수익 양호
     dxj = _r("DXJ"); veu = _r("VEU")
     if dxj is not None and veu is not None:
-        out["달러강도"] = ("강달러 추정" if dxj > veu + 2 else
-                          ("약달러 추정" if dxj < veu - 2 else "중립"))
+        out["달러강도"] = ("강달러 (향후 수익 양호 경향)" if dxj > veu + 2 else
+                          ("약달러 (향후 수익 저조 경향)" if dxj < veu - 2 else "중립"))
 
     return out
 

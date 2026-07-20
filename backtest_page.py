@@ -941,13 +941,16 @@ with tab_val:
 |---|---|---|---|---|
 | **VIX 역발상** | +0.14 | <0.001 | ✅ 강력 | ✅ VIX국면 배율 핵심 |
 | **H15 상대저점** | +0.087 | <0.001 | ✅ 강력 | ✅ 저점 순위 컬럼 |
+| **구리/금 비율(H17)** | -0.37 | <0.001 | ✅ 강력·역방향 | ✅ 매크로 레이더 라벨 반영 |
+| **수익률곡선(H18)** | +0.25 | <0.001 | ✅ 강력 | ✅ 매크로 레이더 라벨 반영 |
+| **달러강도(H19)** | +0.16 | 0.007 | ✅ 확인 | ✅ 매크로 레이더 라벨 반영 |
 | **BB 위치** | -0.087 | <0.001 | ✅ 역방향 | ✅ 과열 페널티 |
 | **MA 정렬** | -0.065 | 0.002 | ✅ 역방향 | ✅ 과열 페널티 |
 | **RSI 기울기** | -0.066 | 0.001 | ✅ 역방향 | ✅ 과열 경보 표시 |
 | **거래량 비율** | +0.040 | 0.001 | ⚠️ 약함 | ⚠️ 참고 표시만 |
-| **12M 모멘텀** | +0.019 | 0.61 | ❌ 없음 | ❌ 10% 보조만 |
-| **섹터사이클** | -0.023 | 0.34 | ❌ 없음 | ❌ ±5%로 축소 |
-| **Bull추세 필터** | -0.047 | 0.010 | ⚠️ 역방향 | ❌ 필터 완화 |
+| **12M 모멘텀** | +0.019 | 0.61 | ❌ 없음 | ❌ 점수 미반영, 표시만 |
+| **섹터사이클** | -0.023 | 0.34 | ❌ 없음 | ❌ 점수 미반영, 표시만 |
+| **Bull추세 필터** | -0.047 | 0.010 | ⚠️ 역방향 | ❌ 점수·필터 어디에도 미사용 |
 | **MACD** | ≈0 | 0.58 | ❌ 없음 | ❌ 제거됨 |
 """)
     st.success("배분의 실질 드라이버: **VIX 국면**(강력 검증) × **H15 상대저점**(검증됨).  \n"
@@ -970,3 +973,24 @@ with tab_val:
             if not _sdf.empty:
                 st.dataframe(_sdf[["id","가설","예측창","IC","t통계","p값","적중률(%)","검증결과"]],
                     hide_index=True, use_container_width=True)
+
+    # 매크로 레이더 신호 검증 (H17~H19)
+    with st.expander("7️⃣ 매크로 레이더 신호 검증 (H17~H19)"):
+        st.caption("etf_page.py '매크로 레이더' 패널의 구리/금비율·수익률곡선·달러강도 3개 신호. "
+                   "VIX(H8)와 동일하게 SPY 향후수익 대비 월별 시계열 IC로 검증.")
+        _macro_file = RESULTS_DIR / "macro_validation.csv"
+        _run_macro  = st.button("▶ 매크로 레이더 검증 실행 (약 10초)")
+        if _run_macro or _macro_file.exists():
+            if _run_macro:
+                with st.spinner("H17~H19 검증 중..."):
+                    from scripts.signal_validation import run_macro_validation
+                    _mdf = run_macro_validation(RESULTS_DIR)
+                    _mdf.to_csv(_macro_file, index=False, encoding="utf-8-sig")
+                    st.success("완료!")
+            else:
+                _mdf = pd.read_csv(_macro_file)
+            if not _mdf.empty:
+                st.dataframe(_mdf[["id","가설","예측창","IC","t통계","p값","적중률(%)","검증결과"]],
+                    hide_index=True, use_container_width=True)
+                st.warning("H17 구리/금비율은 기존 UI 라벨(경기 기대=긍정)과 반대 방향으로 검증됨 — "
+                           "macro_signals()에서 라벨을 뒤집어 반영 완료.")

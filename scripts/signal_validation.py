@@ -66,6 +66,33 @@ HYPOTHESES_SYSTEM = [
     },
 ]
 
+HYPOTHESES_MACRO = [
+    {
+        "id":        "H17",
+        "name":      "구리/금 비율 (경기 선행)",
+        "pair":      ("COPX", "GLD"),
+        "direction": "higher_is_better",
+        "desc":      "COPX 1M - GLD 1M(경기 기대)이 높을수록 SPY 향후 수익이 좋을 것이다",
+        "ref":       "매크로 레이더 패널 근거 검증",
+    },
+    {
+        "id":        "H18",
+        "name":      "수익률 곡선 (안전자산 선호)",
+        "pair":      ("TLT", "SHY"),
+        "direction": "lower_is_better",
+        "desc":      "TLT 1M - SHY 1M(안전자산 선호)이 낮을수록(위험선호) SPY 향후 수익이 좋을 것이다",
+        "ref":       "매크로 레이더 패널 근거 검증",
+    },
+    {
+        "id":        "H19",
+        "name":      "달러 강도 (DXJ vs VEU)",
+        "pair":      ("DXJ", "VEU"),
+        "direction": "higher_is_better",
+        "desc":      "DXJ 1M - VEU 1M(달러 강세)이 높을수록 SPY 향후 수익이 좋을 것이다",
+        "ref":       "매크로 레이더 패널 근거 검증",
+    },
+]
+
 HYPOTHESES_COMPOSITE = [
     {
         "id":        "H9",
@@ -437,6 +464,77 @@ def run_system_validation(results_dir=None) -> pd.DataFrame:
                 "적중률(%)": d["hit_rate"],
                 "표본수":    d["n"],
                 "검증결과":  _verdict(d["ic"], d["p_value"]),
+                "설명":      hyp["desc"],
+            })
+    return pd.DataFrame(ic_rows)
+
+
+def run_macro_validation(results_dir=None) -> pd.DataFrame:
+    """
+    H17~H19: etf_page.py 매크로 레이더 패널의 3개 신호 검증.
+    - H17: 구리/금 비율 (COPX 1M - GLD 1M) → SPY 향후수익
+    - H18: 수익률 곡선 (TLT 1M - SHY 1M) → SPY 향후수익
+    - H19: 달러 강도 (DXJ 1M - VEU 1M) → SPY 향후수익
+    VIX(H8)와 동일하게 단일 시계열 신호이므로 월별 단면이 아닌 월별 시계열 IC로 검증한다.
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    def _close(ticker: str) -> pd.Series:
+        f = results_dir / f"{ticker}_signals.csv"
+        if not f.exists():
+            return pd.Series(dtype=float)
+        df = pd.read_csv(f)
+        dc = [c for c in df.columns if c.lower() == "date"]
+        if not dc:
+            return pd.Series(dtype=float)
+        df = df.rename(columns={dc[0]: "date"})
+        df["date"] = pd.to_datetime(df["date"])
+        return df.set_index("date")["Close"].sort_index()
+
+    spy = _close("SPY")
+    if spy.empty:
+        return pd.DataFrame()
+    fwd = {w: spy.pct_change(w).shift(-w) * 100 for w in FWD_WINDOWS}
+
+    ic_rows = []
+    for hyp in HYPOTHESES_MACRO:
+        a, b = hyp["pair"]
+        close_a, close_b = _close(a), _close(b)
+        if close_a.empty or close_b.empty:
+            continue
+        sig = (close_a.pct_change(22) - close_b.pct_change(22)) * 100
+        if hyp["direction"] == "lower_is_better":
+            sig = -sig
+        for fwd_days in FWD_WINDOWS:
+            fwd_label = f"{fwd_days // 22}M"
+            merged = pd.concat([sig.rename("sig"), fwd[fwd_days].rename("fwd")], axis=1).dropna()
+            if len(merged) < 60:
+                continue
+            merged["ym"] = merged.index.to_period("M")
+            monthly_ics = [
+                stats.pearsonr(grp["sig"], grp["fwd"])[0]
+                for _, grp in merged.groupby("ym") if len(grp) >= 5
+            ]
+            monthly_ics = [x for x in monthly_ics if not np.isnan(x)]
+            if not monthly_ics:
+                continue
+            ic_arr = np.array(monthly_ics)
+            ic_mean = float(np.mean(ic_arr))
+            t_stat = ic_mean / (float(np.std(ic_arr, ddof=1)) / np.sqrt(len(ic_arr)))
+            p_val = float(2 * (1 - stats.t.cdf(abs(t_stat), df=len(ic_arr) - 1)))
+            hit = ((merged["sig"] > merged["sig"].median()) == (merged["fwd"] > 0)).mean() * 100
+            ic_rows.append({
+                "id":        hyp["id"],
+                "가설":      hyp["name"],
+                "예측창":    fwd_label,
+                "IC":        round(ic_mean, 4),
+                "t통계":     round(t_stat, 2),
+                "p값":       round(p_val, 4),
+                "적중률(%)": round(float(hit), 1),
+                "표본수":    len(merged),
+                "검증결과":  _verdict(round(ic_mean, 4), round(p_val, 4)),
                 "설명":      hyp["desc"],
             })
     return pd.DataFrame(ic_rows)
