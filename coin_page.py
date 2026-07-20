@@ -222,7 +222,8 @@ if _mvrv_now is not None:
     }.get(_mvrv_regime["regime"], "info")
     getattr(st, _mvrv_st_method)(
         f"**MVRV Z-Score 1차 신호 (백테스트 검증)**: {_mvrv_now:.2f} → {_mvrv_regime['label']}  \n"
-        f"RSI>75 신호는 코인에서 적중률 45%(동전던지기), MVRV 구간이 더 신뢰할 수 있는 신호입니다."
+        f"코인 RSI 과매수(70/75/80)는 H20 백테스트 적중률 34~47%(동전던지기보다 나쁨) — "
+        f"MVRV 구간이 훨씬 더 신뢰할 수 있는 신호입니다."
     )
 
 st.markdown(
@@ -234,7 +235,7 @@ st.markdown(
 1. **MVRV Z-Score** (1차 신호, 백테스트 검증) — 현재 구간별 BTC 최적 비중
 2. 종합 점수가 **+0.5 이상**이면 매수 추천 활성화 (현재 평균 **{comp['avg']:+.2f}**)
 3. **비트코인 시즌**이면 → BTC, ETH 위주 / **알트시즌**이면 → BTC를 앞서는 알트 우선
-4. RSI < 35 과매도 +0.5 가산 (백테스트 56% 검증) / RSI > 75는 소폭 -0.2만 (코인은 역모멘텀 아님)
+4. RSI <= 25 과매도만 +0.3 가산 (H20 적중률 51~54%, 약한 신호) — 과매수 페널티는 제거함(적중률 34~47%로 역방향/무효 확인)
 """
 )
 
@@ -255,14 +256,12 @@ def recommend_score(row, comp_avg, alt_regime, btc_ret_90d):
             if coin_90d > btc_ret_90d:
                 score += 0.5  # 강한 알트 가산
 
-    # 2. RSI 보정 — 코인은 역모멘텀(낮은 RSI가 매수 기회, 높은 RSI는 페널티 소폭만)
-    # 백테스트: RSI>75 과매수 후 22d 수익률 45% → 동전던지기 수준, 강한 페널티 제거
-    # RSI<35 과매도 후 22d 수익률 56% → 유효, 보너스 유지
-    if pd.notna(rsi):
-        if rsi > 75:
-            score -= 0.2          # 과매수 소폭 페널티 (기존 -1.0 → -0.2)
-        elif rsi < 35:
-            score += 0.5          # 과매도 가산 (백테스트 검증 56%)
+    # 2. RSI 보정 — H20 백테스트(scripts/signal_validation.run_coin_rsi_validation) 결과 반영
+    # 과매수 RSI>70/75/80 페널티는 적중률 34~47%(동전던지기보다 나쁨, 임계값 높을수록 더 나쁨)로 전부 제거.
+    # 코인은 RSI가 높을수록 오히려 상승 지속 경향 — 주식식 역모멘텀 가정이 틀렸음.
+    # RSI<=25 과매도만 적중률 51~54%로 약하게 유효 → 소폭 가산만 유지.
+    if pd.notna(rsi) and rsi <= 25:
+        score += 0.3          # 과매도 가산 (약한 신호, H20 적중률 51~54%)
 
     # 3. 90일 모멘텀(역으로): 너무 떨어진 건 추가 매수 기회, 너무 오른 건 소폭 페널티
     if coin_90d is not None:
@@ -343,9 +342,8 @@ if mvrv_hist_file.exists() and mvrv_z is not None:
     fig_z.add_trace(go.Scatter(x=hist.index, y=hist[z_col], name="MVRV Z-Score",
                                line=dict(color="#9b59b6", width=2)))
     for y0, y1, c, txt in [
-        (-2, 0, "#16a085", "항복"), (0, 2, "#27ae60", "누적"),
-        (2, 5, "#3498db", "강세"), (5, 7, "#e67e22", "후기 강세"),
-        (7, 12, "#c0392b", "천정")
+        (-2, 0, "#16a085", "BTC 100%"), (0, 1.5, "#27ae60", "BTC 75%"),
+        (1.5, 2.5, "#e67e22", "BTC 45%"), (2.5, 12, "#c0392b", "BTC 20%(과열)"),
     ]:
         fig_z.add_hrect(y0=y0, y1=y1, fillcolor=c, opacity=0.12, line_width=0,
                         annotation_text=txt, annotation_position="left")
@@ -398,11 +396,10 @@ c5.metric("90일 수익률", fmt(row.get("return_90d_pct"), "{:+.1f}", "%"))
 rsi = row.get("rsi14")
 if pd.notna(rsi):
     if rsi >= 80:
-        st.error(f"RSI {rsi:.1f} — **극단 과매수**")
-    elif rsi >= 70:
-        st.warning(f"RSI {rsi:.1f} — 과매수")
+        st.info(f"RSI {rsi:.1f} — 강한 상승 모멘텀. 코인은 과매수가 매도 신호로 작동하지 않음 "
+                f"(H20 백테스트: RSI≥80 적중률 34%, 오히려 상승 지속 경향)")
     elif rsi <= 25:
-        st.success(f"RSI {rsi:.1f} — **극단 과매도** (반등 가능성)")
+        st.success(f"RSI {rsi:.1f} — 과매도 (약한 반등 신호, H20 적중률 51~54%)")
 
 df_file = RESULTS / f"coin_{sel}_signals.csv"
 if df_file.exists():

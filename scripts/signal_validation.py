@@ -540,6 +540,73 @@ def run_macro_validation(results_dir=None) -> pd.DataFrame:
     return pd.DataFrame(ic_rows)
 
 
+COIN_RSI_THRESHOLDS = {
+    "과매수": [70, 75, 80],
+    "과매도": [35, 30, 25],
+}
+
+
+def run_coin_rsi_validation(results_dir=None) -> pd.DataFrame:
+    """
+    H20: 코인 RSI 임계값 검증 — coin_page.py(75/35), crypto_analysis.py(80/25),
+    coin_page.py 상세뷰(80/70/25) 3벌로 흩어져 있던 임계값 중 실제로 유효한 걸 찾는다.
+    레벨 기준(해당일 RSI가 임계값 이상/이하인 모든 날)으로 향후수익·적중률을 측정.
+    과매수: 이후 수익률이 음수면 적중 / 과매도: 이후 수익률이 양수면 적중.
+    """
+    if results_dir is None:
+        results_dir = RESULTS_DIR
+    results_dir = Path(results_dir)
+
+    files = [f for f in results_dir.glob("coin_*_signals.csv")]
+    rows = []
+    for f in files:
+        try:
+            df = pd.read_csv(f)
+            dc = [c for c in df.columns if c.lower() == "date"]
+            if not dc or "rsi14" not in df.columns:
+                continue
+            df = df.rename(columns={dc[0]: "date"})
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            if len(df) < 250:
+                continue
+            for w in FWD_WINDOWS:
+                df[f"fwd_{w}d"] = df["Close"].pct_change(w).shift(-w) * 100
+            df["ticker"] = f.stem.replace("coin_", "").replace("_signals", "")
+            rows.append(df)
+        except Exception:
+            continue
+    if not rows:
+        return pd.DataFrame()
+    panel = pd.concat(rows).reset_index()
+
+    out_rows = []
+    for direction, thresholds in COIN_RSI_THRESHOLDS.items():
+        for th in thresholds:
+            mask = panel["rsi14"] >= th if direction == "과매수" else panel["rsi14"] <= th
+            for w in FWD_WINDOWS:
+                fwd_col = f"fwd_{w}d"
+                sub = panel.loc[mask, fwd_col].dropna()
+                if len(sub) < 30:
+                    continue
+                if direction == "과매수":
+                    hit = (sub < 0).mean() * 100
+                else:
+                    hit = (sub > 0).mean() * 100
+                out_rows.append({
+                    "id": "H20", "구분": direction, "임계값": th,
+                    "예측창": f"{w // 22}M", "표본수": len(sub),
+                    "평균수익(%)": round(float(sub.mean()), 2),
+                    "적중률(%)": round(float(hit), 1),
+                    "검증결과": (
+                        "✅ 유효" if hit >= 55 else
+                        "⚠️ 약함" if hit >= 50 else
+                        "❌ 무효(동전던지기 이하)"
+                    ),
+                })
+    return pd.DataFrame(out_rows)
+
+
 def run_composite_validation(results_dir=None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     H9~H11: 복합 점수 예측력 + 추천 vs 비추천 수익 격차 검증.

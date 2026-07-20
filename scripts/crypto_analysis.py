@@ -3,13 +3,13 @@
 
 핵심 아이디어:
 1. **MVRV Z-Score (BTC)**가 시장 사이클 레짐을 결정 — 모든 코인이 이 레짐을 따라간다고 봄
-2. **RSI(14)**는 개별 코인의 과매수/과매도를 보정
+2. **RSI(14)**는 개별 코인의 과매도만 보정 (과매수 오버라이드는 H20 백테스트에서
+   적중률 34~47%로 동전던지기보다 나빠 제거함 — scripts/signal_validation.run_coin_rsi_validation)
 3. 시각적으로 50/200일 이동평균선과 BMSB도 표시(참고용)
 
 행동 결정 우선순위:
-  1) 개별 코인 RSI ≥ 80  →  매도 (극단 과열)
-  2) 개별 코인 RSI ≤ 25 AND 레짐이 deep_value/accumulation  →  매수
-  3) 레짐 매핑 그대로
+  1) 개별 코인 RSI ≤ 25 AND 레짐이 deep_value/accumulation  →  매수
+  2) 레짐 매핑 그대로
 """
 import pandas as pd
 import ta
@@ -53,7 +53,6 @@ def latest_crypto_signal(df: pd.DataFrame, regime: str = "unknown") -> dict:
 
     last = df.iloc[-1]
     rsi = float(last.get("rsi14", float("nan")))
-    is_overbought_extreme = rsi == rsi and rsi >= 80
     is_oversold_extreme = rsi == rsi and rsi <= 25
 
     base_action = {
@@ -64,10 +63,8 @@ def latest_crypto_signal(df: pd.DataFrame, regime: str = "unknown") -> dict:
         "unknown": "보유",
     }.get(regime, "보유")
 
-    # 우선순위: 개별 코인의 RSI 극단치가 레짐을 오버라이드
-    if is_overbought_extreme:
-        action = "매도"
-    elif is_oversold_extreme and regime in ("deep_value", "accumulation"):
+    # 우선순위: 개별 코인의 극단 과매도만 레짐을 오버라이드 (과매수 오버라이드는 역방향 검증되어 제거)
+    if is_oversold_extreme and regime in ("deep_value", "accumulation"):
         action = "매수"
     else:
         action = base_action

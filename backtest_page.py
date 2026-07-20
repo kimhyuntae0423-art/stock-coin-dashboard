@@ -994,3 +994,25 @@ with tab_val:
                     hide_index=True, use_container_width=True)
                 st.warning("H17 구리/금비율은 기존 UI 라벨(경기 기대=긍정)과 반대 방향으로 검증됨 — "
                            "macro_signals()에서 라벨을 뒤집어 반영 완료.")
+
+    # 코인 RSI 임계값 검증 (H20)
+    with st.expander("8️⃣ 코인 RSI 임계값 검증 (H20)"):
+        st.caption("coin_page.py·crypto_analysis.py에 흩어져 있던 코인 RSI 임계값(70/75/80 과매수, "
+                   "25/30/35 과매도) 3벌을 레벨 기준 적중률로 검증.")
+        _coin_rsi_file = RESULTS_DIR / "coin_rsi_validation.csv"
+        _run_coin_rsi  = st.button("▶ 코인 RSI 검증 실행 (약 10초)")
+        if _run_coin_rsi or _coin_rsi_file.exists():
+            if _run_coin_rsi:
+                with st.spinner("H20 검증 중..."):
+                    from scripts.signal_validation import run_coin_rsi_validation
+                    _rdf = run_coin_rsi_validation(RESULTS_DIR)
+                    _rdf.to_csv(_coin_rsi_file, index=False, encoding="utf-8-sig")
+                    st.success("완료!")
+            else:
+                _rdf = pd.read_csv(_coin_rsi_file)
+            if not _rdf.empty:
+                st.dataframe(_rdf[["구분","임계값","예측창","표본수","적중률(%)","검증결과"]],
+                    hide_index=True, use_container_width=True)
+                st.warning("과매수(70/75/80) 전부 적중률 34~47%(동전던지기보다 나쁨, 임계값 높을수록 더 나쁨) "
+                           "— 코인은 RSI 높을수록 상승 지속 경향. 과매수 페널티/매도 오버라이드 전부 제거 완료. "
+                           "과매도는 RSI<=25만 약하게(51~54%) 유효해서 그 기준으로 통일함.")
