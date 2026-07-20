@@ -110,11 +110,14 @@ PHASE_LABELS = {
     "overheated": "🌡️ 과열",
 }
 
+# market_regime()의 regime_key(브레드스·SPY모멘텀·채권상대강도 복합판정)가 있으면 그걸 우선 쓰고
+# (_REGIME_TO_PHASE 매핑), regime_key가 없을 때만 아래 VIX 단독 기준으로 폴백한다(get_phase() 참고).
+# 설명 문구도 실제 판정 기준(regime 우선)에 맞춰 VIX 수치 대신 국면 조건으로 표기.
 PHASE_DESCS = {
-    "fear":       "VIX>25 — 채권·금 확대, 주식 축소. 공포 극단이 최고 매수 타이밍.",
-    "recovery":   "VIX 20~25 — 주식 비중 회복. 성장주·반도체 선행.",
-    "expansion":  "VIX 13~20 — 주식·원자재 확대. 경기 민감 섹터 집중.",
-    "overheated": "VIX<13 — 방어·배당 강화. 현금(CMA/파킹)으로 다음 조정 대비.",
+    "fear":       "시장국면=fear (VIX>30 + SPY 1개월 하락) — 채권·금 확대, 주식 축소. 공포 극단이 최고 매수 타이밍.",
+    "recovery":   "시장국면=bear (브레드스 낮음·급락·채권우세 중 하나) — 주식 비중 회복 관찰 단계. 성장주·반도체 선행.",
+    "expansion":  "시장국면=bull/mixed (risk-on 또는 방향성 불명확) — 주식·원자재 확대. 경기 민감 섹터 집중.",
+    "overheated": "시장국면=complacent (VIX<13 + 브레드스 65%↑) — 방어·배당 강화. 현금(CMA/파킹)으로 다음 조정 대비.",
 }
 
 # ── market_regime() key → 로테이션 국면 매핑 ────────────────────────────────
