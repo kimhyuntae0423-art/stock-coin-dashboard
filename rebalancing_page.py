@@ -724,6 +724,8 @@ if not holdings.empty:
         _sum_latest = summary.sort_values("date").groupby("ticker").last().reset_index()
         _sum_latest["ticker"] = _sum_latest["ticker"].astype(str).str.upper()
         _ret1m_map = dict(zip(_sum_latest["ticker"], _sum_latest.get("return_1m_pct", pd.Series(dtype=float))))
+        _trend_map = dict(zip(_sum_latest["ticker"], _sum_latest.get("state", pd.Series(dtype=object))))
+        _rsi_map   = dict(zip(_sum_latest["ticker"], _sum_latest.get("rsi14", pd.Series(dtype=float))))
 
         # 코인 신호 맵 (coin_summary.csv — RSI<=25 과매도만 유효, H20 검증 / MVRV regime)
         _coin_sig_map: dict = {}
@@ -795,6 +797,35 @@ if not holdings.empty:
         _tbl["OBV추세"]   = [(None if is_c else v.get("obv_slope"))
                              for v, is_c in zip(_vsigs, _is_coin_tk)]
         _tbl["액션"]      = _action_col
+
+        # 추세/국면·RSI·모멘텀(%) — "보유 종목 종합 분석" 익스팬더가 따로 있었으나 위와
+        # 완전히 같은 값을 다른 이름으로 중복 표시하고 있어서 2026-07-20 이 표 하나로 통합.
+        # 주식/ETF: state(골든·데드크로스)·summary RSI·1개월 수익률 / 코인: MVRV regime·
+        # coin RSI·90일 수익률 — 자산별로 의미가 달라 컬럼 하나에 같이 담되 헬프텍스트로 구분.
+        def _trend_disp(tk, is_c):
+            if is_c:
+                return str(_coin_sig_map.get(tk, {}).get("regime") or "—")
+            s = _trend_map.get(tk)
+            return f"{'🟢' if s == 'bull' else '🔴'} {s}" if s else "—"
+
+        def _rsi_disp(tk, is_c):
+            v = _coin_sig_map.get(tk, {}).get("rsi") if is_c else _rsi_map.get(tk)
+            return round(float(v), 1) if v is not None and pd.notna(v) else None
+
+        _coin_ret90_map = {str(r["ticker"]).upper(): r.get("return_90d_pct")
+                            for _, r in _i_csum.iterrows()} if not _i_csum.empty else {}
+
+        _trend_col, _rsi_col, _mom_col = [], [], []
+        for _tk, _is_c in zip(_tbl["ticker"], _is_coin_tk):
+            _tk_u = str(_tk).upper()
+            _trend_col.append(_trend_disp(_tk_u, _is_c))
+            _rsi_col.append(_rsi_disp(_tk_u, _is_c))
+            _mom_col.append(_coin_ret90_map.get(_tk_u) if _is_c else _ret1m_map.get(_tk_u))
+
+        _tbl["추세/국면"] = _trend_col
+        _tbl["RSI"]      = _rsi_col
+        _tbl["모멘텀(%)"] = _mom_col
+
         # 리밸런싱 인사이트와 신호 통일을 위해 보유현황 액션 맵 저장
         _ticker_action_map = {
             str(r["ticker"]).upper(): str(r["액션"])
@@ -803,6 +834,7 @@ if not holdings.empty:
 
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
                            "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
+                           "추세/국면", "RSI", "모멘텀(%)",
                            "과열신호", "거래량신호", "OBV추세", "액션"]].copy()
         st.dataframe(
             _tbl_show, hide_index=True, use_container_width=True,
@@ -818,6 +850,12 @@ if not holdings.empty:
                 "손익":       st.column_config.NumberColumn("손익", format="%+,.0f"),
                 "수익률(%)":  st.column_config.NumberColumn("수익률(%)", format="%+.2f"),
                 "비중(%)":    st.column_config.NumberColumn("비중(%)", format="%.1f"),
+                "추세/국면":  st.column_config.TextColumn("추세/국면",
+                              help="주식/ETF: 골든·데드크로스 기반 state. 코인: MVRV regime"),
+                "RSI":        st.column_config.NumberColumn("RSI", format="%.0f",
+                              help="주식/ETF: summary_signals 기준. 코인: coin_summary 기준"),
+                "모멘텀(%)":  st.column_config.NumberColumn("모멘텀(%)", format="%+.1f",
+                              help="주식/ETF: 1개월 수익률. 코인: 90일 수익률 (자산마다 기준 기간 다름)"),
                 "과열신호":   st.column_config.TextColumn("과열신호",
                               help="주식/ETF: MA=3+BB>0.85 = 과열(IC 역방향 확인). "
                                    "코인: RSI<=25 과매도만 표시(H20 검증, 나머지는 신호 없음)"),
@@ -830,129 +868,26 @@ if not holdings.empty:
             },
         )
 
-        # ── 보유 종목 종합 분석 익스팬더 ────────────────────────────────────────
-        with st.expander("📊 보유 종목 종합 분석", expanded=False):
-            _an_summary = summary.sort_values("date").groupby("ticker").last().reset_index()
-            _an_summary["ticker"] = _an_summary["ticker"].astype(str).str.upper()
-            try:
-                _an_coins = pd.read_csv(ROOT / "results" / "coin_summary.csv")
-                _an_coins["ticker"] = _an_coins["ticker"].astype(str).str.upper()
-            except Exception:
-                _an_coins = pd.DataFrame()
-            _an_h = _tbl.copy()  # 이미 신호 계산 완료된 보유 종목 (위 "보유 현황" 표와 동일 소스)
-            # 2026-07-20: 아래 두 섹션이 technical_signals를 다시 불러와 다른 임계값(BB<0.2 vs
-            # 위 표의 0.3, state vs ma_score)으로 액션을 재계산하고 있어서, 같은 종목·같은
-            # 시점에 위 표와 다른 결론이 나던 버그를 없애고 _an_h(=_tbl)의 계산을 그대로 재사용.
-
-            # ── 한국주식 / ETF 분석 ──────────────────────────────────────────────
-            _an_ks = _an_h[~_an_h["ticker"].str.contains("-USD", na=False)].copy()
-            if not _an_ks.empty:
-                st.markdown("#### 🇰🇷 한국주식 / ETF")
-
-                _an_ks["ticker_u"] = _an_ks["ticker"].astype(str).str.upper()
-                _an_ks = _an_ks.merge(
-                    _an_summary[["ticker", "state", "return_1m_pct", "return_12m_pct", "rsi14"]]
-                        .rename(columns={"ticker": "ticker_u"}),
-                    on="ticker_u", how="left",
-                )
-                _an_ks["추세"] = _an_ks["state"].apply(
-                    lambda s: f"{'🟢' if s == 'bull' else '🔴'} {s}" if pd.notna(s) else "—")
-
-                _an_ks_df = _an_ks.rename(columns={
-                    "ticker": "티커", "return_1m_pct": "1개월(%)", "return_12m_pct": "12개월(%)",
-                    "rsi14": "RSI", "거래량신호": "거래량", "과열신호": "기술등급", "액션": "분석액션",
-                })[["티커", "종목명", "수익률(%)", "추세", "1개월(%)", "12개월(%)", "RSI",
-                    "기술등급", "거래량", "분석액션"]]
-
-                st.dataframe(
-                    _an_ks_df,
-                    hide_index=True, use_container_width=True,
-                    column_config={
-                        "티커":      st.column_config.TextColumn("티커"),
-                        "종목명":    st.column_config.TextColumn("종목명"),
-                        "수익률(%)": st.column_config.NumberColumn("보유수익(%)", format="%+.1f"),
-                        "추세":      st.column_config.TextColumn("추세"),
-                        "1개월(%)":  st.column_config.NumberColumn("1개월(%)", format="%+.1f",
-                                     help="한국 개별주 모멘텀 IC=0.065 (방향 맞으나 통계 미검증 — 참고용)"),
-                        "12개월(%)": st.column_config.NumberColumn("12개월(%)", format="%+.1f",
-                                     help="한국 개별주 모멘텀 IC=0.065 (방향 맞으나 통계 미검증 — 참고용)"),
-                        "RSI":       st.column_config.NumberColumn("RSI", format="%.0f",
-                                     help="70↑ 과열 / 30↓ 침체. 역방향 신호로 활용"),
-                        "기술등급":  st.column_config.TextColumn("기술등급",
-                                     help="위 '보유 현황' 표의 과열신호와 동일 계산(재계산 안 함)"),
-                        "거래량":    st.column_config.TextColumn("거래량신호"),
-                        "분석액션":  st.column_config.TextColumn("분석 액션",
-                                     help="위 '보유 현황' 표의 액션과 동일(재계산 안 함). 최종 결정은 직접 판단"),
-                    },
-                )
-                st.caption("한국 개별주 모멘텀은 IC=0.065 — 방향은 맞으나 데이터 부족으로 통계 미검증. 과열·추세 신호 위주로 판단하세요.")
-
-                # 긴급 알림
-                _bear_holds = _an_ks_df[_an_ks_df["추세"].str.contains("bear", na=False)]
-                _hot_holds  = _an_ks_df[_an_ks_df["기술등급"].str.contains("과열", na=False)]
-                if not _bear_holds.empty:
-                    st.error(f"🔴 하락추세: {', '.join(_bear_holds['티커'])} — 추세 전환 확인 전 추가매수 자제 (bear추세 = 향후 수익 낮은 경향)")
-                if not _hot_holds.empty:
-                    st.warning(f"🌡️ 과열 신호: {', '.join(_hot_holds['티커'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
-
-            # ── 코인 분석 ────────────────────────────────────────────────────────
-            _an_cu = _an_h[_an_h["ticker"].str.contains("-USD", na=False)].copy()
-            if not _an_cu.empty and not _an_coins.empty:
-                st.markdown("#### 🪙 코인")
-
-                # 2026-07-20: 여기서 ret<-30 and rsi<35 같은 자체 임계값으로 코인 액션을
-                # 다시 계산했었는데, RSI<=30/35 과매도는 오늘 H20 백테스트로 "무효"(CLAUDE.md
-                # 등재)라고 이미 확인됨. coin_summary.csv 기반의 검증된 액션(위 "보유 현황"
-                # 표와 동일 소스, _tbl의 "액션")을 그대로 재사용.
-                _an_cu["ticker_u"] = _an_cu["ticker"].astype(str).str.upper()
-                _an_cu = _an_cu.merge(
-                    _an_coins[["ticker", "regime", "return_90d_pct", "rsi14", "action"]]
-                        .rename(columns={"ticker": "ticker_u"}),
-                    on="ticker_u", how="inner",
-                )
-                _an_cu_df = _an_cu.rename(columns={
-                    "ticker": "티커", "수익률(%)": "보유수익(%)", "regime": "코인국면",
-                    "return_90d_pct": "90d(%)", "rsi14": "RSI", "action": "코인신호",
-                    "액션": "분석액션",
-                })[["티커", "보유수익(%)", "코인국면", "90d(%)", "RSI", "코인신호", "분석액션"]] \
-                  .sort_values("보유수익(%)")
-
-                if not _an_cu_df.empty:
-                    st.dataframe(
-                        _an_cu_df,
-                        hide_index=True, use_container_width=True,
-                        column_config={
-                            "티커":        st.column_config.TextColumn("티커"),
-                            "보유수익(%)": st.column_config.NumberColumn("보유수익(%)", format="%+.1f"),
-                            "코인국면":    st.column_config.TextColumn("국면"),
-                            "90d(%)":      st.column_config.NumberColumn("90일(%)", format="%+.1f"),
-                            "RSI":         st.column_config.NumberColumn("RSI", format="%.0f"),
-                            "코인신호":    st.column_config.TextColumn("코인신호"),
-                            "분석액션":    st.column_config.TextColumn("분석 액션",
-                                          help="위 '보유 현황' 표와 동일(coin_summary.csv 기반, 재계산 안 함)"),
-                        },
-                    )
-
-                    # 심각한 손실 코인 경보
-                    _deep_loss = _an_cu_df[_an_cu_df["보유수익(%)"] < -60]
-                    _accum_ok  = _an_cu_df[
-                        (_an_cu_df["코인국면"] == "accumulation") & (_an_cu_df["보유수익(%)"] > -30)
-                    ]
-                    if not _deep_loss.empty:
-                        st.error(
-                            f"🔴 60% 이상 손실 코인 {len(_deep_loss)}종: "
-                            f"{', '.join(_deep_loss['티커'].tolist())} — "
-                            "원금 회복에 각각 150~900% 상승 필요. 포지션 재검토 권장"
-                        )
-                    if not _accum_ok.empty:
-                        st.info(
-                            f"📥 매집 국면 + 손실 소폭: {', '.join(_accum_ok['티커'].tolist())} — "
-                            "분할매수 검토 가능 구간 (단, 코인 변동성 유의)"
-                        )
-
-            st.caption(
-                "분석 기준: 기술 신호(백테스트 IC 검증) + 코인 온체인 국면. "
-                "최종 매수·매도 결정은 공식 공시·실적·본인 위험 감내 범위 확인 후 내리세요."
+        # 긴급 알림 (구 "보유 종목 종합 분석" 익스팬더에 있던 것 — 표 통합하며 같이 이동)
+        _bear_holds = _tbl_show[_tbl_show["추세/국면"].astype(str).str.contains("bear", na=False)]
+        _hot_holds  = _tbl_show[_tbl_show["과열신호"].astype(str).str.contains("과열", na=False)]
+        _deep_loss_coins = _tbl_show[(_tbl_show["카테고리"] == "코인") & (_tbl_show["수익률(%)"] < -60)]
+        if not _bear_holds.empty:
+            st.error(f"🔴 하락추세: {', '.join(_bear_holds['ticker'])} — 추세 전환 확인 전 추가매수 자제 (bear추세 = 향후 수익 낮은 경향)")
+        if not _hot_holds.empty:
+            st.warning(f"🌡️ 과열 신호: {', '.join(_hot_holds['ticker'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
+        if not _deep_loss_coins.empty:
+            st.error(
+                f"🔴 60% 이상 손실 코인 {len(_deep_loss_coins)}종: "
+                f"{', '.join(_deep_loss_coins['ticker'].tolist())} — "
+                "원금 회복에 각각 150~900% 상승 필요. 포지션 재검토 권장"
+            )
+        _accum_ok_coins = _tbl_show[(_tbl_show["카테고리"] == "코인") & (_tbl_show["추세/국면"] == "accumulation")
+                                     & (_tbl_show["수익률(%)"] > -30)]
+        if not _accum_ok_coins.empty:
+            st.info(
+                f"📥 매집 국면 + 손실 소폭: {', '.join(_accum_ok_coins['ticker'].tolist())} — "
+                "분할매수 검토 가능 구간 (단, 코인 변동성 유의)"
             )
 
 st.divider()
