@@ -16,6 +16,7 @@ from scripts.config import (
     RESULTS_DIR as RESULTS, HOLDINGS_FILE, NAMES_FILE, COIN_NAMES_FILE, CORE_ETF_FILE,
 )
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
+from scripts.onchain import classify_regime, REGIME_LABEL_KR
 
 
 def load_names() -> dict:
@@ -416,18 +417,19 @@ def holding_signal(row):
                     btc_pb is not None and btc_rsi is not None
                     and btc_pb > 1.0 and btc_rsi > 70
                 )
-                if z < 0:
+                _regime = classify_regime(z)["regime"]
+                if _regime == "deep_value":
                     return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
-                elif z < 1.5:
+                elif _regime == "accumulation":
                     suffix = f" · BB 모멘텀 강화(%B {btc_pb:.2f}, RSI {btc_rsi:.0f}, 백테스트 +23%, 81%)" if btc_momentum else ""
                     return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간 (BTC 75% 구간){suffix}"
-                elif z < 2.5:
+                elif _regime == "bull":
                     return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전 (BTC 45% 구간)"
                 else:
                     return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
 
             # 알트코인: BB + 손익 복합 신호
-            cycle_ctx = f"MVRV Z {z:.2f}({'축적' if z < 1.5 else '과열 경계' if z < 2.5 else '과열'})"
+            cycle_ctx = f"MVRV Z {z:.2f}({REGIME_LABEL_KR[classify_regime(z)['regime']]})"
             bb = _coin_bb(ticker)
             pct_b = bb["pct_b"] if bb else None
             rsi_bb = bb["rsi14"] if bb else None
@@ -479,11 +481,12 @@ def holding_signal(row):
                     f"BB 하단 이탈+RSI 과매도(%B {pct_b:.2f}, RSI {rsi_bb:.0f})"
                     f" — 평균회귀 반등 후보 (백테스트 +21.4%, 57%). {cycle_ctx}",
                 )
-            if z < 0:
+            _regime = classify_regime(z)["regime"]
+            if _regime == "deep_value":
                 return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접"
-            elif z < 1.5:
+            elif _regime == "accumulation":
                 return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간"
-            elif z < 2.5:
+            elif _regime == "bull":
                 return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전"
             else:
                 return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간"
@@ -1443,14 +1446,13 @@ for _, row in view.iterrows():
         elif is_coin:
             if _mvrv_z_now is not None:
                 _z = _mvrv_z_now
-                if _z < 0:
-                    _mz_lbl = "🟢 역사적 바닥 근접 (BTC 100% 구간)"
-                elif _z < 1.5:
-                    _mz_lbl = "🟢 저평가 (BTC 75% 구간)"
-                elif _z < 2.5:
-                    _mz_lbl = "🟠 과열 경계 (BTC 45% 구간)"
-                else:
-                    _mz_lbl = "🔴 과열 (BTC 20% 구간)"
+                _regime = classify_regime(_z)["regime"]
+                _mz_lbl = {
+                    "deep_value":   "🟢 역사적 바닥 근접 (BTC 100% 구간)",
+                    "accumulation": "🟢 저평가 (BTC 75% 구간)",
+                    "bull":         "🟠 과열 경계 (BTC 45% 구간)",
+                    "top":          "🔴 과열 (BTC 20% 구간)",
+                }.get(_regime, "⚪ 데이터 없음")
                 st.info(
                     f"**BTC MVRV Z-Score {_z:.2f}** → {_mz_lbl}  \n"
                     "포트폴리오 신호의 근거. 코인 탭에서 전체 온체인 지표 확인 가능."
@@ -1460,7 +1462,7 @@ for _, row in view.iterrows():
                 _cs = pd.read_csv(_cs_file)
                 _cs_row = _cs[_cs["ticker"] == ticker]
                 if not _cs_row.empty:
-                    regime = _cs_row.iloc[0].get("regime", "-")
+                    regime = REGIME_LABEL_KR.get(_cs_row.iloc[0].get("regime"), "-")
                     r90 = _cs_row.iloc[0].get("return_90d_pct")
                     st.caption(
                         f"사이클 국면: **{regime}**  |  90일 수익률: **{r90:+.1f}%**"

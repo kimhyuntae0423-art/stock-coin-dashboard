@@ -25,6 +25,7 @@ from scripts.etf_recommend import (
 )
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
+from scripts.onchain import REGIME_LABEL_KR
 
 
 def _load_names() -> dict:
@@ -837,16 +838,13 @@ if not holdings.empty:
         # 주식/ETF: state(골든·데드크로스)·summary RSI·1개월 수익률 / 코인: MVRV regime·
         # coin RSI·90일 수익률 — 자산별로 의미가 달라 컬럼 하나에 같이 담되 헬프텍스트로 구분.
         # 원문(bull/bear, accumulation 등)은 무슨 뜻인지 바로 안 와닿는다는 사용자
-        # 피드백(2026-07-22) — 쉬운 한글로 표시. 코인 라벨은 인사이트 문구에 이미
-        # 쓰는 _REGIME_KR(아래 1300행대)과 같은 단어를 씀(매집/상승/배분/하락 통일).
+        # 피드백(2026-07-22) — 쉬운 한글로 표시. 코인 단어는 scripts.onchain.REGIME_LABEL_KR
+        # 하나로 통일(2026-07-22) — rebalancing_page/portfolio_page가 각자 이 5단계를
+        # 따로 재구현하며 다른 어휘로 갈라졌던 문제를 SSOT 하나로 정리.
         _STATE_KR = {"bull": "🟢 상승", "bear": "🔴 하락"}
-        _COIN_REGIME_KR = {
-            "deep_value":   "🟢 바닥권",
-            "accumulation": "🔵 매집",
-            "bull":         "🟠 중립~과열",
-            "top":          "🔴 과열",
-            "unknown":      "⚪ 데이터부족",
-        }
+        _REGIME_EMOJI_KR = {"deep_value": "🟢", "accumulation": "🔵", "bull": "🟠",
+                             "top": "🔴", "unknown": "⚪"}
+        _COIN_REGIME_KR = {k: f"{_REGIME_EMOJI_KR[k]} {v}" for k, v in REGIME_LABEL_KR.items()}
 
         def _trend_disp(tk, is_c):
             if is_c:
@@ -1343,17 +1341,12 @@ if new_money > 0 and alloc["Total"] > 0:
                     sum(_rets)/len(_rets) if _rets else 0.0,
                     False, "", _vix_key, "", _avg_sc)
 
-        # regime 한글 레이블 — coin_summary.csv의 regime은 scripts/onchain.py::classify_regime()의
-        # {deep_value, accumulation, bull, top, unknown} 5단계(MVRV Z-Score 기준). 예전 값
-        # (markup/distribution/markdown)은 실제로 안 쓰이는 다른 어휘였음 — "accumulation" 외
-        # regime에서 인사이트 문구에 빈 문자열이 새던 버그 발견(2026-07-22), 같이 수정.
-        _REGIME_KR = {
-            "deep_value":   "바닥권",
-            "accumulation": "매집",
-            "bull":         "중립",
-            "top":          "과열",
-            "unknown":      "미확인",
-        }
+        # regime 한글 레이블 — scripts.onchain.REGIME_LABEL_KR SSOT 재사용(2026-07-22).
+        # 예전엔 여기 로컬 dict가 markup/distribution/markdown이라는 실제로 안 쓰이는
+        # 어휘를 썼고, 아래 코인 인사이트 분기(_raw</>5000)도 같은 어휘로 조건을 걸어서
+        # "accumulation" 외 regime(bull/top/deep_value)에서 인사이트가 밋밋한 기본
+        # 문구로 새던 버그가 있었음 — 분기 조건도 같이 실제 taxonomy로 수정.
+        _REGIME_KR = REGIME_LABEL_KR
         # VIX 국면 한글 레이블 (etf_recommend 검증 기준)
         _VIX_KR = {
             "fear":       "공포 극단",
@@ -1412,34 +1405,36 @@ if new_money > 0 and alloc["Total"] > 0:
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
                 _z = f"비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 없음"
                 if _raw < -5000:
-                    if _regime_v == "accumulation":
-                        _insight = f"🟡 매집 구간({_rsi_str}) — 바닥권, {_o}지만 매도 보류 권장"
-                    elif _regime_v == "distribution":
-                        _insight = f"🔴 배분 구간({_rsi_str}) — {_o}, 익절 매도 고려"
-                    elif _regime_v == "markup":
-                        _insight = f"🟢 상승 구간({_rsi_str}) — {_o}, 천천히 축소"
+                    if _regime_v in ("deep_value", "accumulation"):
+                        _insight = f"🟡 {_regime_kr} 구간({_rsi_str}) — 저평가, {_o}지만 매도 보류 권장"
+                    elif _regime_v == "top":
+                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_o}, 익절 매도 고려"
+                    elif _regime_v == "bull":
+                        _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — {_o}, 천천히 축소"
                     elif _rsi_v <= 25:
                         _insight = f"🟡 과매도({_rsi_str}, 51~54%) — {_o}지만 저점 매도 위험, 보류"
                     else:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_o}, 점진 축소"
                 elif _raw > 5000:
-                    if _regime_v == "accumulation" and _rsi_v <= 25:
-                        _insight = f"🎯 매집+과매도({_rsi_str}, 51~54%) — 최적 진입 조건. {_b} → 적극 매수"
-                    elif _regime_v == "accumulation":
-                        _insight = f"🟢 매집 구간({_rsi_str}) — {_b} → 분할 매수"
-                    elif _regime_v == "distribution":
-                        _insight = f"🔴 배분 구간({_rsi_str}) — {_b}지만 고점 위험, 보류"
-                    elif _regime_v == "markdown":
-                        _insight = f"⚠️ 하락 구간({_rsi_str}) — {_b}, 소량 분할만"
+                    if _regime_v in ("deep_value", "accumulation") and _rsi_v <= 25:
+                        _insight = f"🎯 {_regime_kr}+과매도({_rsi_str}, 51~54%) — 최적 진입 조건. {_b} → 적극 매수"
+                    elif _regime_v in ("deep_value", "accumulation"):
+                        _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — {_b} → 분할 매수"
+                    elif _regime_v == "top":
+                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_b}지만 고점 위험, 보류"
+                    elif _regime_v == "bull" and _rsi_v <= 25:
+                        _insight = f"🎯 과매도({_rsi_str}, 51~54%) — {_b}, 반등 확률 높음 → 매수"
+                    elif _regime_v == "bull":
+                        _insight = f"⚠️ {_regime_kr} 구간({_rsi_str}) — {_b}, 소량 분할만"
                     elif _rsi_v <= 25:
                         _insight = f"🎯 과매도({_rsi_str}, 51~54%) — {_b}, 반등 확률 높음 → 매수"
                     else:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_b} → 매수"
                 else:
-                    if _regime_v in ("accumulation", "markup"):
+                    if _regime_v in ("deep_value", "accumulation"):
                         _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — 매수 신호 우호적이나 {_z}"
-                    elif _regime_v == "distribution":
-                        _insight = f"🔴 배분 구간({_rsi_str}) — {_z}, 매도 검토"
+                    elif _regime_v == "top":
+                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_z}, 매도 검토"
                     elif _regime_v:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_z}"
             else:

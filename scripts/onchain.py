@@ -200,6 +200,19 @@ def classify_regime(z_score: float) -> dict:
     return {"regime": "top", "label": "🔴 BTC 20% 구간 (과열 — 비중 축소)", "color": "#c0392b"}
 
 
+# regime → 짧은 한글 단어 (표 셀·인사이트 문구용 공용 SSOT).
+# rebalancing_page.py·portfolio_page.py가 각자 이 5단계를 따로 재구현하면서
+# distribution/markup/markdown 같은 실제로 안 쓰이는 어휘로 갈라졌던 문제가
+# 있었음(2026-07-22 발견) — 이후로는 이 dict 하나만 참조하도록 통일.
+REGIME_LABEL_KR = {
+    "deep_value":   "바닥권",
+    "accumulation": "매집",
+    "bull":         "중립~과열",
+    "top":          "과열",
+    "unknown":      "미확인",
+}
+
+
 def composite_score(scores: dict) -> dict:
     """
     각 지표 점수(-2~+2)의 평균. 누락 지표는 제외.
