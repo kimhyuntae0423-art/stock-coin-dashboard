@@ -45,7 +45,7 @@ _ins_br   = _regime.get("breadth", 0.0)
 _oh_list  = [
     f"{r['ticker']} ({r.get('과열신호','')})"
     for _, r in _valid.iterrows()
-    if "⚠️" in str(r.get("과열신호", "")) or "🔥" in str(r.get("과열신호", ""))
+    if "과열" in str(r.get("과열신호", ""))
 ] if not _valid.empty and "과열신호" in _valid.columns else []
 
 if _ins_vix > 25:
@@ -103,8 +103,8 @@ if _oh_list:
 _c1, _c2, _c3, _c4 = st.columns(4)
 _c1.metric("📊 데이터 수집", f"{len(_valid)} / {len(_all)}개")
 _c2.metric("📈 Bull 추세",   f"{int((_valid['state']=='bull').sum())}개")
-if not _valid.empty:
-    _best12 = _all.dropna(subset=["return_12m_pct"]).sort_values("return_12m_pct", ascending=False)
+_best12 = _all.dropna(subset=["return_12m_pct"]).sort_values("return_12m_pct", ascending=False)
+if not _best12.empty:
     _c3.metric(f"🥇 12M 최고 ({_best12.iloc[0]['ticker']})",  f"{_best12.iloc[0]['return_12m_pct']:+.1f}%")
     _c4.metric(f"🥉 12M 최저 ({_best12.iloc[-1]['ticker']})", f"{_best12.iloc[-1]['return_12m_pct']:+.1f}%")
 
@@ -262,7 +262,7 @@ if not _valid.empty:
                     bb_str = f"BB={bb_v:.2f}" if pd.notna(bb_v) else ""
                     ma_str = f"MA={int(ma_v)}/3" if pd.notna(ma_v) else ""
                     st.caption(f"{bb_str} · {ma_str}")
-                if "⚠️" in oh:
+                if "과열" in oh:
                     st.caption("⚠️ 과열 주의")
 
     st.divider()

@@ -15,6 +15,7 @@ from scripts.factor_calc import enrich_price_factors
 from scripts.config import (
     RESULTS_DIR as RESULTS, HOLDINGS_FILE, NAMES_FILE, COIN_NAMES_FILE, CORE_ETF_FILE,
 )
+from scripts.holdings_io import parse_buy_dates, format_buy_dates
 
 
 def load_names() -> dict:
@@ -26,34 +27,7 @@ def load_names() -> dict:
     return names
 
 
-def build_asset_options() -> list[tuple[str, str]]:
-    rows = []
-    if CORE_ETF_FILE.exists():
-        etf_df = pd.read_csv(CORE_ETF_FILE)
-        for _, r in etf_df.iterrows():
-            t = str(r["ticker"])
-            name = str(r["name"])
-            cur = str(r.get("currency", ""))
-            tag = "국내 ETF" if cur == "KRW" else "해외 ETF"
-            rows.append((f"{name}  ({t}) · {tag}", t))
-    if COIN_NAMES_FILE.exists():
-        coin_df = pd.read_csv(COIN_NAMES_FILE)
-        for _, r in coin_df.iterrows():
-            t = str(r["ticker"])
-            rows.append((f"{r['name']}  ({t}) · 코인", t))
-    if NAMES_FILE.exists():
-        names_df = pd.read_csv(NAMES_FILE)
-        for _, r in names_df.iterrows():
-            t = str(r["ticker"])
-            tag = "한국 주식" if t.endswith(".KS") or t.endswith(".KQ") else "미국 주식"
-            rows.append((f"{r['name']}  ({t}) · {tag}", t))
-    return rows
-
-
 NAMES = load_names()
-ASSET_OPTIONS = build_asset_options()
-ASSET_LABEL_TO_TICKER = {label: ticker for label, ticker in ASSET_OPTIONS}
-ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
 # 종목명 → 티커 역방향 매핑 (테이블 첫 열 자동완성용)
 _NAME_TO_TICKER: dict[str, str] = {}
@@ -80,8 +54,6 @@ def _get_usdkrw() -> float:
     except Exception:
         pass
     return 1380.0
-ASSET_LABEL_TO_TICKER = {label: ticker for label, ticker in ASSET_OPTIONS}
-ASSET_LABELS = [label for label, _ in ASSET_OPTIONS]
 
 
 def _load_holdings() -> pd.DataFrame:
@@ -146,10 +118,6 @@ st.title("💼 보유 종목")
 st.caption("장기 분할매수 포트폴리오 추적. 매수 내역 입력 → 수익률·비중·매도신호 자동 계산.")
 
 holdings = _load_holdings()
-
-# CASH 행은 person 필터 전에 전체 합산 (person 값 무관)
-_cash_all_mask = holdings["ticker"].str.upper() == "CASH"
-_cash_held_all = float(holdings.loc[_cash_all_mask, "qty"].sum()) if _cash_all_mask.any() else 0.0
 
 summary_file = RESULTS / "summary_signals.csv"
 funda_file = RESULTS / "fundamentals.csv"
@@ -218,16 +186,20 @@ st.caption(
     "저장 후 반드시 '✅ GitHub에 저장 완료' 메시지를 확인하세요 — 뜨지 않으면 데이터가 사라질 수 있습니다."
 )
 
-_edit_cols = ["ticker", "qty", "buy_price", "person", "notes"]
+_edit_cols = ["ticker", "qty", "buy_price", "buy_date", "person", "notes"]
 _edit_df = holdings[_edit_cols].copy() if all(c in holdings.columns for c in _edit_cols) else holdings[["ticker", "qty", "buy_price"]].copy()
 _edit_df["ticker"] = _edit_df["ticker"].fillna("").astype(str)
 _edit_df["qty"] = pd.to_numeric(_edit_df["qty"], errors="coerce").fillna(0.0)
 _edit_df["buy_price"] = pd.to_numeric(_edit_df["buy_price"], errors="coerce").fillna(0.0)
+if "buy_date" in _edit_df.columns:
+    _edit_df["buy_date"] = parse_buy_dates(_edit_df["buy_date"])
+else:
+    _edit_df["buy_date"] = None
 _edit_df["person"] = _edit_df["person"].fillna("").astype(str) if "person" in _edit_df.columns else ""
 _edit_df["notes"] = _edit_df["notes"].fillna("").astype(str) if "notes" in _edit_df.columns else ""
 # 종목명 열 추가 (첫 열)
 _edit_df.insert(0, "종목명", _edit_df["ticker"].map(NAMES).fillna(""))
-_edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"})
+_edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "buy_date": "매수일", "person": "이름", "notes": "메모"})
 
 # 선택한 사람만 편집 테이블에 표시
 if selected_person != "전체":
@@ -256,6 +228,7 @@ edited_partial = st.data_editor(
         ),
         "수량": st.column_config.NumberColumn("수량", format="%.8g"),
         "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
+        "매수일": st.column_config.DateColumn("매수일", format="YYYY-MM-DD", help="비워두면 미기록으로 저장됩니다."),
         "이름": st.column_config.TextColumn("이름", width="small"),
         "메모": st.column_config.TextColumn("메모"),
     },
@@ -270,17 +243,15 @@ for idx, row in edited_partial.iterrows():
             edited_partial.at[idx, "티커"] = derived
 
 edited_cur = edited_partial.drop(columns=["종목명"]).rename(
-    columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"}
+    columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "매수일": "buy_date", "이름": "person", "메모": "notes"}
 )
-edited_cur["buy_date"] = ""
+edited_cur["buy_date"] = format_buy_dates(edited_cur["buy_date"])
 
 # 다른 사람 데이터 합쳐서 전체 저장용 DataFrame 구성
 if selected_person != "전체" and _others is not None and not _others.empty:
     edited = pd.concat([edited_cur, _others], ignore_index=True)
 else:
     edited = edited_cur.copy()
-    if selected_person == "전체" and "buy_date" in holdings.columns and len(holdings) == len(edited):
-        edited["buy_date"] = holdings["buy_date"].values
 
 # 현황 계산용은 현재 편집 대상만
 holdings_view = edited_cur.copy()
@@ -328,8 +299,11 @@ view = view[view["ticker"].astype(str).str.strip() != ""].copy()
 view["ticker"] = view["ticker"].astype(str).str.strip().str.upper()
 
 # CASH 행 분리: 별도 지표로 표시, 주식 분석에서 제외
-# (person 필터 후 view에 CASH가 없을 수 있으므로 상단에서 계산한 _cash_held_all 사용)
-_cash_held = _cash_held_all
+# view는 이미 선택된 사람(selected_person) 기준으로 필터된 holdings_view에서 나온 것이라
+# 여기서 바로 합산하면 person 필터가 자연히 적용된다 — 2026-07-21, 이전엔 person 필터
+# 적용 전 전체 합계를 별도로 써서 "김보라"를 선택해도 김현태 현금까지 섞여 나오던 버그.
+_cash_mask = view["ticker"] == "CASH"
+_cash_held = float(view.loc[_cash_mask, "qty"].sum()) if _cash_mask.any() else 0.0
 view       = view[view["ticker"] != "CASH"].copy()
 
 if not combined_summary.empty:
@@ -1172,10 +1146,17 @@ for _, row in view.iterrows():
             _rsi_v = _latest.get("rsi14")
             if pd.notna(_rsi_v):
                 _rsi_v = float(_rsi_v)
+                # RSI>=70을 과열/약세 신호로 쓰지 않는다 — CLAUDE.md 검증 결과 주식 47%,
+                # 코인/알트 34~45%(역방향)로 전부 무효. BTC만 위 핵심지표 카드에서
+                # "강세 지속" 참고로 표시하므로 여기서도 동일하게 취급(상단 지표 카드와
+                # 결론이 반대로 나오던 버그 수정 — 2026-07-21).
                 if _rsi_v >= 70:
-                    _bear_items.append(("📊",
-                        f"RSI가 {_rsi_v:.0f}으로 과열 구간(70+)에 진입했습니다. "
-                        f"단기간에 너무 많이 올랐다는 신호로, 숨 고르기(조정)가 올 수 있습니다."))
+                    if is_btc:
+                        _bull_items.append(("📊",
+                            f"RSI가 {_rsi_v:.0f}으로 높지만, BTC는 RSI 70+ 구간에서 상승이 "
+                            f"이어지는 경향이 있어 과열 신호로 보지 않습니다."))
+                    # 알트/개별주는 RSI 70+가 검증된 매도·조정 신호가 아니므로(적중률 낮음)
+                    # 강세/약세 어느 쪽에도 넣지 않는다.
                 elif _rsi_v <= 30:
                     _bull_items.append(("📊",
                         f"RSI가 {_rsi_v:.0f}으로 낙폭 과다 구간(30 이하)입니다. "
@@ -1299,13 +1280,23 @@ for _, row in view.iterrows():
                     f"단기 평균선이 장기 평균선보다 {abs(_syn_spd):.1f}% 낮아 뚜렷한 하락 추세입니다.")
 
         # 2. 모멘텀 + RSI 조합 문장
+        # RSI>=70을 과열/조정 신호로 쓰지 않는다 — CLAUDE.md 검증 결과 주식 47%, 코인/알트
+        # 34~45%(역방향)로 전부 무효. BTC만 위 핵심지표 카드처럼 "강세 지속" 참고로 취급
+        # (핵심지표 카드와 결론이 반대로 나오던 버그 수정 — 2026-07-21).
+        _rsi_warn = pd.notna(_syn_rsi) and _syn_rsi >= 70 and not is_btc
         if _syn_mh is not None and _syn_rsi is not None:
-            if _syn_mh > 0 and _syn_rsi < 70:
+            if _syn_mh > 0 and not _rsi_warn:
                 _syn_parts.append(
-                    f"모멘텀이 강화되고 있고 RSI({_syn_rsi:.0f})도 과열 구간이 아니라 추세가 이어질 여지가 있습니다.")
-            elif _syn_mh > 0 and _syn_rsi >= 70:
+                    f"모멘텀이 강화되고 있고 RSI({_syn_rsi:.0f})도 " +
+                    ("BTC 특성상 " if is_btc and _syn_rsi >= 70 else "") +
+                    "과열 구간이 아니라 추세가 이어질 여지가 있습니다.")
+            elif _syn_mh > 0 and _rsi_warn:
                 _syn_parts.append(
-                    f"모멘텀은 강하지만 RSI({_syn_rsi:.0f})가 과열 구간이라 단기 숨 고르기가 올 수 있습니다.")
+                    f"모멘텀은 강하고 RSI({_syn_rsi:.0f})는 높은 편이지만, 이 자산군에서 RSI 70+는 "
+                    f"검증된 조정 신호가 아니라서 모멘텀 쪽에 더 무게를 둡니다.")
+            elif _syn_mh <= 0 and _rsi_warn:
+                _syn_parts.append(
+                    f"RSI({_syn_rsi:.0f})가 높은 편이고 모멘텀도 약해지고 있어 추세 지속 여부 확인이 필요합니다.")
             elif _syn_mh <= 0 and _syn_rsi > 30:
                 _syn_parts.append(
                     f"RSI({_syn_rsi:.0f})는 적정 범위지만 모멘텀이 약해지고 있어 추세 지속 여부 확인이 필요합니다.")
@@ -1314,7 +1305,11 @@ for _, row in view.iterrows():
                     f"RSI({_syn_rsi:.0f})가 낙폭 과다 구간이고 모멘텀도 약합니다. 반등 가능성은 있으나 추세 전환 확인이 먼저입니다.")
         elif _syn_rsi is not None:
             if _syn_rsi >= 70:
-                _syn_parts.append(f"RSI {_syn_rsi:.0f}으로 단기 과열 — 단기 조정 가능성이 있습니다.")
+                if is_btc:
+                    _syn_parts.append(
+                        f"RSI {_syn_rsi:.0f}으로 높지만, BTC는 이 구간에서 상승이 이어지는 경향이 있어 "
+                        f"과열로 보지 않습니다.")
+                # 주식/알트는 RSI 70+가 검증된 신호가 아니므로 언급하지 않음
             elif _syn_rsi <= 30:
                 _syn_parts.append(f"RSI {_syn_rsi:.0f}으로 낙폭 과다 — 기술적 반등 가능성이 있습니다.")
 

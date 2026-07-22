@@ -238,21 +238,18 @@ st.markdown(
 )
 
 # 추천 점수 계산
-def recommend_score(row, comp_avg, alt_regime, btc_ret_90d):
+def recommend_score(row, comp_avg, alt_regime):
     """코인별 매수 추천 점수"""
     score = comp_avg  # 시장 베이스
     ticker = row["ticker"]
     rsi = row.get("rsi14")
-    coin_90d = row.get("return_90d_pct")
 
-    # 1. 시장 시즌 보정
+    # 1. 시장 시즌 보정 — 알트시즌 점수 자체는 검증된 신호(CLAUDE.md)이지만, "개별
+    # 코인이 BTC 90일 수익률을 넘었는가"라는 상대모멘텀 조건은 별도 백테스트가 없어
+    # (2026-07-21 재검증) 제거. 시즌 규정 자체를 근거로 한 BTC/ETH 가산만 유지.
     if alt_regime == "bitcoin_season":
         if ticker in ("BTC-USD", "ETH-USD"):
             score += 0.5    # BTC·ETH 가산
-    elif alt_regime == "altcoin_season":
-        if ticker != "BTC-USD" and coin_90d is not None and btc_ret_90d is not None:
-            if coin_90d > btc_ret_90d:
-                score += 0.5  # 강한 알트 가산
 
     # 2. RSI 보정 — H20 백테스트(scripts/signal_validation.run_coin_rsi_validation) 결과 반영
     # 과매수 RSI>70/75/80 페널티는 적중률 34~47%(동전던지기보다 나쁨, 임계값 높을수록 더 나쁨)로 전부 제거.
@@ -261,19 +258,18 @@ def recommend_score(row, comp_avg, alt_regime, btc_ret_90d):
     if pd.notna(rsi) and rsi <= 25:
         score += 0.3          # 과매도 가산 (약한 신호, H20 적중률 51~54%)
 
-    # 3. 90일 모멘텀(역으로): 너무 떨어진 건 추가 매수 기회, 너무 오른 건 소폭 페널티
-    if coin_90d is not None:
-        if coin_90d < -30:
-            score += 0.3
-        elif coin_90d > 100:
-            score -= 0.3
+    # (2026-07-21) 90일 모멘텀 기반 보정은 제거함 — 임계값(-30%/+100%)이 코인
+    # 대상 백테스트 없이 하드코딩돼 있었음(재검증 결과: CLAUDE.md의 "모멘텀 단독
+    # 신호 IC=+0.019, p=0.61"은 ETF/주식 12M 모멘텀 검증치이지 코인 90일 임계값
+    # 검증이 아님 — 잘못 인용했었음, 정정). 위 RSI≤25 가산과 달리 코인 자체
+    # 검증 결과가 아예 없어서 "근거 없으면 추가 금지" 원칙에 따라 제거.
 
     return round(score, 2)
 
 
 rec_df = summary.copy()
 rec_df["추천 점수"] = rec_df.apply(
-    lambda r: recommend_score(r, comp["avg"], alt_regime, btc_90d), axis=1
+    lambda r: recommend_score(r, comp["avg"], alt_regime), axis=1
 )
 rec_df["코인명"] = rec_df["ticker"].map(NAMES).fillna("-")
 rec_df = rec_df.sort_values("추천 점수", ascending=False).reset_index(drop=True)

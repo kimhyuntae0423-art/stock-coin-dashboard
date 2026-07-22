@@ -477,7 +477,9 @@ def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
         vh  = vix_adj.get(bkt, 1.0)
         # 과열 신호 있으면 추가 언더웨이트
         overheat = str(row.get("과열신호", ""))
-        oh = 0.90 if "⚠️ 과열" in overheat else 1.0
+        # "🌡️ 과열+거래량"(거래량 급증 동반, 가장 강한 신호)도 잡아야 한다 — 예전엔
+        # "⚠️ 과열" 정확일치만 확인해서 이 신호가 전술비중 감점에서 빠졌었음(2026-07-21).
+        oh = 0.90 if "과열" in overheat else 1.0
         return vh * oh
 
     raw = df.apply(_tact_mult, axis=1) * df["기본비중"]
@@ -494,11 +496,12 @@ def tactical_alloc(scored_df: pd.DataFrame, total_amount: float,
         rsi  = row.get("rsi14", 50) or 50
         over = str(row.get("과열신호", ""))
         # 사이클배율(IC=-0.023, 예측력 없음)은 사용하지 않음 — 과열신호(H10)·수익률만 근거로 사용
-        if "⚠️ 과열" in over and r12 > 20 and r1 < 0:
+        # "과열" 부분일치로 "⚠️ 과열"과 "🌡️ 과열+거래량"을 모두 잡는다(2026-07-21 수정).
+        if "과열" in over and r12 > 20 and r1 < 0:
             return "🚨 과열+전환 경고"
         if r12 > 20 and r1 < 0 and rsi < 50:
             return "⚠️ 전환 주의"
-        if "⚠️ 과열" in over or "🌡️" in over:
+        if "과열" in over or "🌡️" in over:
             return "📉 모멘텀 둔화"
         if "❄️ 하단 지지" in over:
             return "🔥 반등 여력"

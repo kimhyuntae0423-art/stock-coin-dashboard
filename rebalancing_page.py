@@ -24,6 +24,7 @@ from scripts.etf_recommend import (
     volume_signals, technical_signals,
 )
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
+from scripts.holdings_io import parse_buy_dates, format_buy_dates
 
 
 def _load_names() -> dict:
@@ -185,16 +186,9 @@ st.caption("코어-위성 자산배분 추적 · 추천 분산 포트폴리오."
 holdings = _load_holdings()
 
 # ── CASH 먼저 추출 (person 필터 전) ───────────────────────────────
-# CASH 행은 person 필드 값에 무관하게 항상 집계
-_cash_mask  = holdings["ticker"].str.upper() == "CASH"
-if _cash_mask.any():
-    _cr = holdings.loc[_cash_mask].copy()
-    _cq = pd.to_numeric(_cr["qty"],       errors="coerce").fillna(0)
-    _cb = pd.to_numeric(_cr["buy_price"], errors="coerce").fillna(1).replace(0, 1)
-    cash_amount = float((_cq * _cb).sum())
-else:
-    cash_amount = 0.0
-holdings    = holdings[~_cash_mask].copy()
+_cash_row_mask = holdings["ticker"].str.upper() == "CASH"
+_cash_rows     = holdings.loc[_cash_row_mask].copy()
+holdings       = holdings[~_cash_row_mask].copy()
 
 all_persons = sorted([p for p in holdings["person"].unique() if p and str(p).strip()])
 selected_person = st.selectbox(
@@ -203,6 +197,17 @@ selected_person = st.selectbox(
     index=0,
     key="rebal_person_filter",
 )
+
+# CASH 합계 — 선택된 사람 기준(전체면 전체 합산). 2026-07-21: 이전엔 person 필드 값에
+# 무관하게 항상 전체 합산이라 "김보라"를 선택해도 김현태 현금까지 섞여 나오던 버그.
+_cr = _cash_rows if selected_person == "전체" else _cash_rows[_cash_rows["person"] == selected_person]
+if not _cr.empty:
+    _cq = pd.to_numeric(_cr["qty"],       errors="coerce").fillna(0)
+    _cb = pd.to_numeric(_cr["buy_price"], errors="coerce").fillna(1).replace(0, 1)
+    cash_amount = float((_cq * _cb).sum())
+else:
+    cash_amount = 0.0
+
 if selected_person != "전체":
     holdings = holdings[holdings["person"] == selected_person].copy()
 
@@ -227,11 +232,15 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         _he_show   = _he_full.copy()
         _he_others = pd.DataFrame()
 
+    if "buy_date" in _he_show.columns:
+        _he_show["buy_date"] = parse_buy_dates(_he_show["buy_date"])
+    else:
+        _he_show["buy_date"] = None
     _he_show.insert(0, "종목명", _he_show["ticker"].map(NAMES).fillna(""))
     _he_show = _he_show.rename(columns={
-        "ticker": "티커", "qty": "수량", "buy_price": "매수가", "person": "이름", "notes": "메모"
+        "ticker": "티커", "qty": "수량", "buy_price": "매수가", "buy_date": "매수일", "person": "이름", "notes": "메모"
     })
-    _he_disp_cols = [c for c in ["종목명","티커","수량","매수가","이름","메모"] if c in _he_show.columns]
+    _he_disp_cols = [c for c in ["종목명","티커","수량","매수가","매수일","이름","메모"] if c in _he_show.columns]
 
     _he_edited = st.data_editor(
         _he_show[_he_disp_cols],
@@ -242,6 +251,7 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
             "티커":   st.column_config.TextColumn("티커", width="small"),
             "수량":   st.column_config.NumberColumn("수량", format="%.8g"),
             "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
+            "매수일": st.column_config.DateColumn("매수일", format="YYYY-MM-DD"),
             "이름":   st.column_config.TextColumn("이름", width="small"),
             "메모":   st.column_config.TextColumn("메모"),
         },
@@ -257,9 +267,9 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
                 _he_cp.at[_hi, "티커"] = _he_name_to_ticker.get(_hnm, "")
 
         _he_cur = _he_cp.drop(columns=["종목명"]).rename(columns={
-            "티커": "ticker", "수량": "qty", "매수가": "buy_price", "이름": "person", "메모": "notes"
+            "티커": "ticker", "수량": "qty", "매수가": "buy_price", "매수일": "buy_date", "이름": "person", "메모": "notes"
         })
-        _he_cur["buy_date"] = ""
+        _he_cur["buy_date"] = format_buy_dates(_he_cur["buy_date"])
         _he_cur = _he_cur[
             _he_cur["ticker"].astype(str).str.strip().str.upper().isin(["", "NONE", "NAN"]) == False
         ]
@@ -1062,7 +1072,7 @@ if new_money > 0 and alloc["Total"] > 0:
             else:
                 if "전환 주의" in sig or "❄️ 약세" == sig:
                     return "⛔ 매수 보류"
-                if row.get("전술비중(%)") or 0 > 3 and "🔥" in sig:
+                if (row.get("전술비중(%)") or 0) > 3 and "🔥" in sig:
                     return "🆕 신규매수 적극"
                 if (row.get("전술비중(%)") or 0) > 2:
                     return "🆕 신규매수 검토"
@@ -1341,7 +1351,9 @@ if new_money > 0 and alloc["Total"] > 0:
             _diff_pp = round(float(_rr.get("차이(%p)") or 0), 1)
 
             if _is_coin:
-                # 코인: regime(coin_backtest ✅) + RSI<30(58% ✅)
+                # 코인: regime(coin_backtest ✅) + RSI<=25(H20 검증, 51~54% ✅)
+                # RSI<30·"58%"는 공통(비코인) 규칙 값 — 코인엔 CLAUDE.md가 RSI<=25만 허용
+                # (run_coin_rsi_validation, 2026-07-20). _coin_overheat_lbl()과 통일 — 2026-07-21.
                 _rsi_str = f"RSI {_rsi_v:.0f}"
                 _b = f"비중 {_diff_pp:+.1f}%p 부족"
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
@@ -1353,21 +1365,21 @@ if new_money > 0 and alloc["Total"] > 0:
                         _insight = f"🔴 배분 구간({_rsi_str}) — {_o}, 익절 매도 고려"
                     elif _regime_v == "markup":
                         _insight = f"🟢 상승 구간({_rsi_str}) — {_o}, 천천히 축소"
-                    elif _rsi_v < 30:
-                        _insight = f"🟡 과매도({_rsi_str}, 58%) — {_o}지만 저점 매도 위험, 보류"
+                    elif _rsi_v <= 25:
+                        _insight = f"🟡 과매도({_rsi_str}, 51~54%) — {_o}지만 저점 매도 위험, 보류"
                     else:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_o}, 점진 축소"
                 elif _raw > 5000:
-                    if _regime_v == "accumulation" and _rsi_v < 30:
-                        _insight = f"🎯 매집+과매도({_rsi_str}, 58%) — 최적 진입 조건. {_b} → 적극 매수"
+                    if _regime_v == "accumulation" and _rsi_v <= 25:
+                        _insight = f"🎯 매집+과매도({_rsi_str}, 51~54%) — 최적 진입 조건. {_b} → 적극 매수"
                     elif _regime_v == "accumulation":
                         _insight = f"🟢 매집 구간({_rsi_str}) — {_b} → 분할 매수"
                     elif _regime_v == "distribution":
                         _insight = f"🔴 배분 구간({_rsi_str}) — {_b}지만 고점 위험, 보류"
                     elif _regime_v == "markdown":
                         _insight = f"⚠️ 하락 구간({_rsi_str}) — {_b}, 소량 분할만"
-                    elif _rsi_v < 30:
-                        _insight = f"🎯 과매도({_rsi_str}, 58%) — {_b}, 반등 확률 높음 → 매수"
+                    elif _rsi_v <= 25:
+                        _insight = f"🎯 과매도({_rsi_str}, 51~54%) — {_b}, 반등 확률 높음 → 매수"
                     else:
                         _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_b} → 매수"
                 else:
@@ -1643,9 +1655,14 @@ if new_money > 0 and alloc["Total"] > 0:
             _this_month_proceeds = float(_r_sell_disp["1차(이번 달)"].sum())
 
         # ── 2단계 — 매수 배분 (위 표의 추가금액(원) 직접 사용) ──────────────
+        # _rot_df 맨 끝에 위 "배분 현황" 표용 합계 행(역할="합계", US ETF="")이
+        # 이미 붙어 있다(1508행) — US ETF!="CASH" 조건만으로는 이 행이 안 걸러져서
+        # 매수 배분표에 "합계" 행이 데이터 행처럼 섞여 들어가고, 그 아래 진짜 합계가
+        # 그걸 한 번 더 더해서 이중 집계되던 버그 — 2026-07-21 발견·수정.
         _buy_rows = _rot_df[
             (_rot_df["추가금액(원)"].astype(float) > 0) &
-            (_rot_df["US ETF"].str.upper() != "CASH")
+            (_rot_df["US ETF"].str.upper() != "CASH") &
+            (_rot_df["역할"] != "합계")
         ].copy()
 
         if not _buy_rows.empty:

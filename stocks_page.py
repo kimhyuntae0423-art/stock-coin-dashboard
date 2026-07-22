@@ -152,12 +152,13 @@ score_disp["추세"] = score_disp["action"].map(action_color).fillna(score_disp[
 
 # ── 12-1M 모멘텀 분위 (백테스트 검증 신호) ─────────────────
 def _add_mom_quartile(df: pd.DataFrame) -> pd.DataFrame:
-    r12 = pd.to_numeric(df.get("return_12m_pct", pd.Series(dtype=float)), errors="coerce")
-    r1  = pd.to_numeric(df.get("return_1m_pct",  pd.Series(dtype=float)), errors="coerce")
-    mom = r12 - r1  # 12-1M 모멘텀
+    # scores_df(rank_stocks 결과)의 z_momentum은 scripts/factor_calc.py::momentum_12_1()
+    # (진짜 12-1 모멘텀, 백테스트 검증)에서 나온다. 여기서 return_12m_pct - return_1m_pct로
+    # 다시 계산하면 전혀 다른 값이 되고, 지난달 급락한 종목일수록 이 값이 더 커져서
+    # "모멘텀 상위 25%"로 뽑히는 반대 결과가 나온다 — 2026-07-21 발견·수정.
+    mom = pd.to_numeric(df.get("z_momentum", pd.Series(dtype=float)), errors="coerce")
     valid = mom.notna()
     df = df.copy()
-    df["mom_12_1"] = mom
     df["mom_rank"] = None
     if valid.sum() >= 4:
         df.loc[valid, "mom_rank"] = pd.qcut(
@@ -441,11 +442,11 @@ with tab_compare:
             "우선순위 점수": compare["우선순위 점수"].map(lambda v: f"{v:+.2f}"),
             "QVGM 점수": compare["composite"].map(lambda v: f"{v:+.2f}"),
             "추세": compare["추세"],
-            "가치 (V)": compare["value_score"],
-            "품질 (Q)": compare["quality_score"],
-            "성장 (G)": compare["growth_score"],
-            "모멘텀 (M)": compare["momentum_score"],
-            "기술적 (T)": compare["technical_score"],
+            "가치 (V)": compare["value_score"].map(lambda v: fmt(v, "{:+d}")),
+            "품질 (Q)": compare["quality_score"].map(lambda v: fmt(v, "{:+d}")),
+            "성장 (G)": compare["growth_score"].map(lambda v: fmt(v, "{:+d}")),
+            "모멘텀 (M)": compare["momentum_score"].map(lambda v: fmt(v, "{:+d}")),
+            "기술적 (T)": compare["technical_score"].map(lambda v: fmt(v, "{:+d}")),
             "종가": compare["close"].map(lambda v: f"{v:,.2f}"),
             "PER": compare["per"].map(lambda v: fmt(v)),
             "PBR": compare["pbr"].map(lambda v: fmt(v)),
@@ -467,7 +468,11 @@ with tab_detail:
     tickers = sorted(summary["ticker"].tolist())
     sel = st.selectbox("티커 선택", tickers, format_func=label)
 
-    sel_row = score_disp[score_disp["ticker"] == sel].iloc[0]
+    _sel_rows = score_disp[score_disp["ticker"] == sel]
+    if _sel_rows.empty:
+        st.warning(f"{label(sel)}의 점수 데이터가 아직 없습니다 (펀더멘털 데이터 미확보 가능성).")
+        st.stop()
+    sel_row = _sel_rows.iloc[0]
     row = summary[summary["ticker"] == sel].iloc[0]
 
     st.markdown(f"### {label(sel)}")
@@ -630,32 +635,35 @@ with tab_detail:
     # 백테스트
     st.markdown("#### 간이 백테스트 (골든크로스 vs 매수후보유)")
     df_bt = df.dropna(subset=["ma50", "ma200"]).copy()
-    df_bt["position"] = (df_bt["ma50"] > df_bt["ma200"]).astype(int)
-    df_bt["ret"] = df_bt["Close"].pct_change().fillna(0)
-    df_bt["strategy_ret"] = df_bt["position"].shift(1).fillna(0) * df_bt["ret"]
-    df_bt["strategy_cum"] = (1 + df_bt["strategy_ret"]).cumprod()
-    df_bt["bh_cum"] = (1 + df_bt["ret"]).cumprod()
+    if df_bt.empty:
+        st.info("200일 이동평균 계산에 필요한 데이터가 아직 부족해 백테스트를 표시할 수 없습니다.")
+    else:
+        df_bt["position"] = (df_bt["ma50"] > df_bt["ma200"]).astype(int)
+        df_bt["ret"] = df_bt["Close"].pct_change().fillna(0)
+        df_bt["strategy_ret"] = df_bt["position"].shift(1).fillna(0) * df_bt["ret"]
+        df_bt["strategy_cum"] = (1 + df_bt["strategy_ret"]).cumprod()
+        df_bt["bh_cum"] = (1 + df_bt["ret"]).cumprod()
 
-    last_bt = df_bt.iloc[-1]
-    years = (df_bt.index[-1] - df_bt.index[0]).days / 365.25
-    cagr_strat = last_bt["strategy_cum"] ** (1 / years) - 1 if years > 0 else 0
-    cagr_bh = last_bt["bh_cum"] ** (1 / years) - 1 if years > 0 else 0
+        last_bt = df_bt.iloc[-1]
+        years = (df_bt.index[-1] - df_bt.index[0]).days / 365.25
+        cagr_strat = last_bt["strategy_cum"] ** (1 / years) - 1 if years > 0 else 0
+        cagr_bh = last_bt["bh_cum"] ** (1 / years) - 1 if years > 0 else 0
 
-    b1, b2, b3, b4 = st.columns(4)
-    b1.metric("전략 누적수익률", f"{(last_bt['strategy_cum']-1)*100:,.1f}%")
-    b2.metric("매수후보유 누적수익률", f"{(last_bt['bh_cum']-1)*100:,.1f}%")
-    b3.metric("전략 CAGR", f"{cagr_strat*100:,.2f}%")
-    b4.metric("매수후보유 CAGR", f"{cagr_bh*100:,.2f}%")
+        b1, b2, b3, b4 = st.columns(4)
+        b1.metric("전략 누적수익률", f"{(last_bt['strategy_cum']-1)*100:,.1f}%")
+        b2.metric("매수후보유 누적수익률", f"{(last_bt['bh_cum']-1)*100:,.1f}%")
+        b3.metric("전략 CAGR", f"{cagr_strat*100:,.2f}%")
+        b4.metric("매수후보유 CAGR", f"{cagr_bh*100:,.2f}%")
 
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=df_bt.index, y=df_bt["strategy_cum"],
-                              name="골든크로스 전략"))
-    fig2.add_trace(go.Scatter(x=df_bt.index, y=df_bt["bh_cum"],
-                              name="매수 후 보유"))
-    fig2.update_layout(height=350, hovermode="x unified",
-                       legend=dict(orientation="h"),
-                       yaxis_title="누적 (1.0 = 원금)")
-    st.plotly_chart(fig2, use_container_width=True)
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=df_bt.index, y=df_bt["strategy_cum"],
+                                  name="골든크로스 전략"))
+        fig2.add_trace(go.Scatter(x=df_bt.index, y=df_bt["bh_cum"],
+                                  name="매수 후 보유"))
+        fig2.update_layout(height=350, hovermode="x unified",
+                           legend=dict(orientation="h"),
+                           yaxis_title="누적 (1.0 = 원금)")
+        st.plotly_chart(fig2, use_container_width=True)
 
     st.caption(
         "백테스트는 수수료/세금/슬리피지를 반영하지 않습니다. "

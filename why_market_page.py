@@ -12,6 +12,9 @@ from scripts.config import (
     KEY_TARGET_CORE, KEY_TARGET_SATELLITE, KEY_TARGET_CASH,
     RESULTS_DIR,
 )
+from scripts.returns import compute_returns
+
+_BENCH_TICKER = {"US": "SPY", "KR": "069500.KS", "Coin": "BTC-USD"}
 
 
 @st.cache_data(ttl=3600)
@@ -35,12 +38,10 @@ def load_returns():
         if len(df) < 50: return None
         f_, l_ = float(df["Close"].iloc[0]), float(df["Close"].iloc[-1])
         days = (df.index[-1] - df.index[0]).days
-        if days == 0: return None
-        return {
-            "start": df.index[0], "end": df.index[-1],
-            "total_ret": round((l_/f_-1)*100, 1),
-            "ann_ret":   round(((l_/f_)**(365.0/days)-1)*100, 1),
-        }
+        r = compute_returns(f_, l_, days)
+        if r is None: return None
+        r["start"], r["end"] = df.index[0], df.index[-1]
+        return r
 
     rows = []
     for f in stock_files:
@@ -59,29 +60,42 @@ def load_returns():
             rows.append(r)
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        return df, {}, "-", "-"
     start, end = df["start"].min(), df["end"].max()
 
-    def _bench(ticker):
-        """벤치마크의 총수익률·연환산수익률. 종목마다 데이터 시작일이 달라서(최소 8종목이
-        전체 구간보다 짧음, 2026-07-20 확인) 각 종목의 total_ret(자기 기간 기준)을 이
-        벤치마크의 total_ret(전체 구간 기준, 기간이 더 김)과 그대로 비교하면 불공정하다.
-        연환산(ann_ret)으로 비교하면 기간 길이 차이가 어느 정도 상쇄된다."""
+    def _bench_close(ticker):
+        """벤치마크 종가 시계열(슈퍼셋 구간 전체)을 한 번만 받아온다."""
         raw = yf.download(ticker, start=start, end=end, progress=False)
         close = raw["Close"].squeeze().dropna()
-        if len(close) < 2: return None
-        days = (close.index[-1] - close.index[0]).days
-        if days == 0: return None
-        f_, l_ = float(close.iloc[0]), float(close.iloc[-1])
-        return {
-            "total_ret": round((l_/f_-1)*100, 1),
-            "ann_ret":   round(((l_/f_)**(365.0/days)-1)*100, 1),
-        }
+        return close if len(close) >= 2 else None
 
-    b = {
-        "US":   _bench("SPY"),
-        "KR":   _bench("069500.KS"),
-        "Coin": _bench("BTC-USD"),
-    }
+    bench_close = {cat: _bench_close(tk) for cat, tk in _BENCH_TICKER.items()}
+
+    def _bench_full(cat):
+        """헤드라인 표시·차트 기준선용 — 벤치마크의 전체 구간(start~end) 기준 수익률."""
+        close = bench_close.get(cat)
+        if close is None: return None
+        days = (close.index[-1] - close.index[0]).days
+        return compute_returns(float(close.iloc[0]), float(close.iloc[-1]), days)
+
+    def _bench_matched(cat, row_start, row_end):
+        """종목마다 데이터 시작일이 달라서(2026-07-20 확인) 벤치마크도 각 종목의 실제
+        보유기간(row_start~row_end)에 맞춰 슬라이싱해야 공정한 비교가 된다. 이미 받아둔
+        슈퍼셋 시계열(bench_close)을 슬라이싱만 하므로 추가 API 호출은 없다 — 2026-07-21."""
+        close = bench_close.get(cat)
+        if close is None: return None
+        win = close.loc[row_start:row_end]
+        if len(win) < 2: return None
+        days = (win.index[-1] - win.index[0]).days
+        return compute_returns(float(win.iloc[0]), float(win.iloc[-1]), days)
+
+    df["bench_ann"] = [
+        (_bench_matched(row["category"], row["start"], row["end"]) or {}).get("ann_ret")
+        for _, row in df.iterrows()
+    ]
+
+    b = {cat: _bench_full(cat) for cat in _BENCH_TICKER}
     return df, b, str(start.date()), str(end.date())
 
 
@@ -153,6 +167,10 @@ st.markdown("#### 아래 데이터가 위 전략의 근거입니다")
 with st.spinner("데이터 로딩 중..."):
     df, benchmarks, period_start, period_end = load_returns()
 
+if df.empty:
+    st.warning("종목 데이터를 찾지 못했습니다 — results/ 폴더의 신호 파일을 확인해 주세요.")
+    st.stop()
+
 st.caption(f"분석 기간: {period_start} ~ {period_end} | 총 {len(df)}개 종목")
 st.divider()
 
@@ -162,8 +180,9 @@ st.divider()
 # ════════════════════════════════════════════════════════
 st.subheader("시장을 이긴 종목은 몇 개였을까?")
 st.markdown(
-    "종목마다 데이터 보유 기간이 달라서(짧게는 1년, 길게는 5년), 누적 수익률이 아니라 "
-    "**연평균(연환산) 수익률**로 비교합니다 — 그래야 최근에 추적을 시작한 종목도 공정하게 비교됩니다."
+    "종목마다 데이터 보유 기간이 달라서(짧게는 1년, 길게는 5년), 연평균(연환산) 수익률로 "
+    "비교하되 벤치마크도 각 종목과 **같은 기간만** 잘라서 계산합니다 — 그래야 최근에 "
+    "추적을 시작한 종목도, 시장 국면이 다른 기간과 섞이지 않고 공정하게 비교됩니다."
 )
 
 c1, c2, c3 = st.columns(3)
@@ -175,11 +194,14 @@ cat_info = [
 beat_results = {}
 for cat, label, bench_name, col, color in cat_info:
     sub  = df[df["category"] == cat]
+    # bench_ann이 없는(매칭 구간 슬라이싱 실패) 종목은 비교 불가 — 분모에 남긴 채
+    # ann_ret > NaN(False)로 자동 "패배" 처리되던 걸 제외 — 2026-07-21 재검증 발견.
+    sub  = sub[sub["bench_ann"].notna()]
     bd   = benchmarks.get(cat)
     if bd is None or len(sub) == 0:
         continue
-    bann = bd["ann_ret"]
-    beat = (sub["ann_ret"] > bann).sum()
+    bann = bd["ann_ret"]  # 전체기간 기준 — 카드 하단 참고치 표시용
+    beat = (sub["ann_ret"] > sub["bench_ann"]).sum()  # 종목별 매칭 기간 기준 — 실제 승패 판정
     pct  = beat / len(sub) * 100
     beat_results[cat] = {"pct": pct, "beat": int(beat), "n": len(sub), "bench_ann": bann}
     with col:
@@ -191,8 +213,8 @@ for cat, label, bench_name, col, color in cat_info:
               <div style='font-size:52px; font-weight:800; color:{"#ef4444" if pct < 50 else "#22c55e"};
                           line-height:1'>{pct:.0f}%</div>
               <div style='font-size:19px; color:#64748b; margin-top:8px'>
-                {bench_name}(연평균 {bann:+.0f}%) 초과<br>
-                <span style='font-size:18px'>{beat}/{len(sub)}개</span>
+                {bench_name} 각자 보유기간 기준 초과<br>
+                <span style='font-size:18px'>{beat}/{len(sub)}개 (참고: 전체기간 연평균 {bann:+.0f}%)</span>
               </div>
             </div>
             """,
@@ -200,10 +222,15 @@ for cat, label, bench_name, col, color in cat_info:
         )
 
 st.markdown("")
-st.markdown(
-    "> **해석**: 종목을 무작위로 골랐을 때 시장을 이길 확률이 33–41%입니다. "
-    "즉, 10번 중 6–7번은 그냥 인덱스 ETF를 샀을 때보다 못한 결과가 나옵니다."
-)
+if beat_results:
+    _pcts = [v["pct"] for v in beat_results.values()]
+    _lo, _hi = min(_pcts), max(_pcts)
+    _lose_lo = round((100 - _hi) / 10)
+    _lose_hi = round((100 - _lo) / 10)
+    st.markdown(
+        f"> **해석**: 종목을 무작위로 골랐을 때 시장을 이길 확률이 {_lo:.0f}–{_hi:.0f}%입니다. "
+        f"즉, 10번 중 {_lose_lo}–{_lose_hi}번은 그냥 인덱스 ETF를 샀을 때보다 못한 결과가 나옵니다."
+    )
 st.divider()
 
 
@@ -211,7 +238,8 @@ st.divider()
 # 섹션 2 — 미국 주식 수익률 분포 차트
 # ════════════════════════════════════════════════════════
 st.subheader("미국 주식 — 종목별 연평균 수익률 vs S&P500")
-st.caption("종목마다 데이터 기간이 달라 연환산(ann_ret) 기준으로 비교합니다.")
+st.caption("종목마다 데이터 기간이 달라 연환산(ann_ret) 기준으로 비교하며, 막대 색상은 "
+           "각 종목의 실제 보유기간에 맞춰 계산한 S&P500과 비교한 결과입니다.")
 
 us   = df[df["category"] == "US"].sort_values("ann_ret", ascending=True)
 b_us = benchmarks.get("US")
@@ -220,7 +248,10 @@ b_us_ann = b_us["ann_ret"] if b_us else None
 if b_us_ann is None or us.empty:
     st.info("S&P500 벤치마크 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
 else:
-    colors = ["#22c55e" if r > b_us_ann else "#ef4444" for r in us["ann_ret"]]
+    colors = [
+        "#22c55e" if pd.notna(bn) and r > bn else "#ef4444" if pd.notna(bn) else "#94a3b8"
+        for r, bn in zip(us["ann_ret"], us["bench_ann"])
+    ]
     fig_us = go.Figure()
     fig_us.add_trace(go.Bar(
         x=us["ticker"], y=us["ann_ret"],
@@ -231,7 +262,7 @@ else:
     ))
     fig_us.add_hline(
         y=b_us_ann, line_dash="dash", line_color="#1d4ed8", line_width=2,
-        annotation_text=f"S&P500 연평균 {b_us_ann:+.1f}%",
+        annotation_text=f"S&P500 전체기간 연평균 {b_us_ann:+.1f}% (참고선)",
         annotation_position="top right",
         annotation_font_color="#1d4ed8",
     )
@@ -262,7 +293,8 @@ st.divider()
 st.subheader("코인 — BTC를 이긴 알트코인은 몇 개?")
 st.markdown(
     "BTC는 코인 시장의 '시장 지수'입니다. 알트코인을 고르는 것은 개별 주식을 고르는 것과 같습니다. "
-    "종목마다 데이터 기간이 달라 연환산(ann_ret) 기준으로 비교합니다."
+    "종목마다 데이터 기간이 달라 연환산(ann_ret) 기준으로 비교하며, 막대 색상은 각 종목의 "
+    "실제 보유기간에 맞춰 계산한 BTC와 비교한 결과입니다."
 )
 
 coin  = df[df["category"] == "Coin"].sort_values("ann_ret", ascending=True)
@@ -272,7 +304,10 @@ b_btc_ann = b_btc["ann_ret"] if b_btc else None
 if b_btc_ann is None or coin.empty:
     st.info("BTC 벤치마크 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
 else:
-    colors_c = ["#22c55e" if r > b_btc_ann else "#ef4444" for r in coin["ann_ret"]]
+    colors_c = [
+        "#22c55e" if pd.notna(bn) and r > bn else "#ef4444" if pd.notna(bn) else "#94a3b8"
+        for r, bn in zip(coin["ann_ret"], coin["bench_ann"])
+    ]
     fig_c = go.Figure()
     fig_c.add_trace(go.Bar(
         x=coin["ticker"].str.replace("-USD",""),
@@ -284,7 +319,7 @@ else:
     ))
     fig_c.add_hline(
         y=b_btc_ann, line_dash="dash", line_color="#f59e0b", line_width=2,
-        annotation_text=f"BTC 연평균 {b_btc_ann:+.1f}%",
+        annotation_text=f"BTC 전체기간 연평균 {b_btc_ann:+.1f}% (참고선)",
         annotation_position="top right",
         annotation_font_color="#f59e0b",
     )
@@ -297,8 +332,8 @@ else:
     )
     st.plotly_chart(fig_c, use_container_width=True)
 
-    _coin_beat = int((coin["ann_ret"] > b_btc_ann).sum())
-    _coin_n = len(coin)
+    _coin_beat = beat_results["Coin"]["beat"]
+    _coin_n = beat_results["Coin"]["n"]
     median_coin = coin["ann_ret"].median()
     st.markdown(
         f"코인 {_coin_n}개 중 BTC를 이긴 건 **{_coin_beat}개({_coin_beat/_coin_n*100:.0f}%)** 뿐입니다. "
@@ -342,10 +377,10 @@ with col3:
         f"""
         <div style='background:#f0fdf4; border-left:4px solid #22c55e;
                     border-radius:6px; padding:16px'>
-          <div style='font-size:36px; font-weight:800; color:#22c55e'>Core {DEFAULT_TARGET_CORE}%</div>
+          <div style='font-size:36px; font-weight:800; color:#22c55e'>Core {_t_core}%</div>
           <div style='font-size:19px; color:#555; margin-top:8px'>
             우리 전략에서 ETF 비중<br>시장 평균 수익은 이미 확보<br>
-            <span style='font-size:17px; color:#888'>나머지 {100 - DEFAULT_TARGET_CORE}%로 알파 시도</span>
+            <span style='font-size:17px; color:#888'>나머지 {100 - _t_core}%로 알파 시도</span>
           </div>
         </div>
         """, unsafe_allow_html=True)
