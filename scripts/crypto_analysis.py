@@ -14,6 +14,17 @@
 import pandas as pd
 import ta
 
+from scripts.onchain import REGIME_LABEL_KR
+
+_REGIME_PHRASE_SUFFIX_KR = {
+    "deep_value":   "(역사적 저평가)",
+    "accumulation": "구간(저평가)",
+    "bull":         " 경계",
+    "top":          "구간(비중축소 권고)",
+    "unknown":      "",
+}
+_REGIME_PHRASE_KR = {k: f"{REGIME_LABEL_KR[k]}{v}" for k, v in _REGIME_PHRASE_SUFFIX_KR.items()}
+
 
 def compute_crypto_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -76,3 +87,68 @@ def latest_crypto_signal(df: pd.DataFrame, regime: str = "unknown") -> dict:
         "regime": regime,
         "action": action,
     }
+
+
+def coin_holdings_action_text(action: str, rsi, regime: str) -> str:
+    """"보유 현황" 표의 코인 액션 문구. rebalancing_page.py 전용으로 인라인
+    정의돼 있던 것을 여기로 옮김(2026-07-22) — coin_rebalance_insight()와
+    같은 REGIME_LABEL_KR을 쓰는데도 둘이 따로 떨어져 있으면 다음에 한쪽만
+    고치고 잊어버릴 위험이 있어서, 테스트가 두 함수를 같이 임포트해서
+    "같은 코인이면 방향이 절대 안 갈린다"를 강제할 수 있도록 한 파일에 둠."""
+    phrase = _REGIME_PHRASE_KR.get(regime, str(regime) if regime else "데이터 부족")
+    has_rsi = rsi is not None and pd.notna(rsi)
+    oversold = has_rsi and rsi <= 25
+    rsi_txt = f"RSI {rsi:.0f}" if has_rsi else "RSI 없음"
+    if str(action) == "매수":
+        if oversold:
+            return f"💎 매수 우호 ({phrase} + {rsi_txt} 과매도로 반등여지 확인, H20 검증)"
+        return f"💎 매수 우호 ({phrase})"
+    if str(action) == "매도":
+        return f"🔴 비중 축소 검토 ({phrase} — MVRV 기준 과열)"
+    return f"✅ 유지 ({phrase}, {rsi_txt})"
+
+
+def coin_rebalance_insight(raw_need: float, regime: str, rsi: float, diff_pp: float) -> str:
+    """"배분 현황" 리밸런싱 인사이트의 코인 문구. coin_holdings_action_text()와
+    짝을 이룸 — regime이 deep_value/accumulation이면 항상 매수 쪽, top이면
+    항상 매도 쪽 톤이어야 한다는 게 두 함수가 절대 어겨선 안 되는 불변조건.
+    (2026-07-22, tests/test_coin_regime_consistency.py가 이 불변조건을 검증)."""
+    regime_kr = REGIME_LABEL_KR.get(regime, "")
+    rsi_str = f"RSI {rsi:.0f}"
+    b = f"비중 {diff_pp:+.1f}%p 부족"
+    o = f"비중 {abs(diff_pp):.1f}%p 초과"
+    z = f"비중 달성(차이 {diff_pp:+.1f}%p), 추가금액 없음"
+    if raw_need < -5000:
+        if regime in ("deep_value", "accumulation"):
+            return f"🟡 {regime_kr} 구간({rsi_str}) — 저평가, {o}지만 매도 보류 권장"
+        elif regime == "top":
+            return f"🔴 {regime_kr} 구간({rsi_str}) — {o}, 익절 매도 고려"
+        elif regime == "bull":
+            return f"🟢 {regime_kr} 구간({rsi_str}) — {o}, 천천히 축소"
+        elif rsi <= 25:
+            return f"🟡 과매도({rsi_str}, 51~54%) — {o}지만 저점 매도 위험, 보류"
+        else:
+            return f"🔵 {regime_kr}({rsi_str}) — {o}, 점진 축소"
+    elif raw_need > 5000:
+        if regime in ("deep_value", "accumulation") and rsi <= 25:
+            return f"🎯 {regime_kr}+과매도({rsi_str}, 51~54%) — 최적 진입 조건. {b} → 적극 매수"
+        elif regime in ("deep_value", "accumulation"):
+            return f"🟢 {regime_kr} 구간({rsi_str}) — {b} → 분할 매수"
+        elif regime == "top":
+            return f"🔴 {regime_kr} 구간({rsi_str}) — {b}지만 고점 위험, 보류"
+        elif regime == "bull" and rsi <= 25:
+            return f"🎯 과매도({rsi_str}, 51~54%) — {b}, 반등 확률 높음 → 매수"
+        elif regime == "bull":
+            return f"⚠️ {regime_kr} 구간({rsi_str}) — {b}, 소량 분할만"
+        elif rsi <= 25:
+            return f"🎯 과매도({rsi_str}, 51~54%) — {b}, 반등 확률 높음 → 매수"
+        else:
+            return f"🔵 {regime_kr}({rsi_str}) — {b} → 매수"
+    else:
+        if regime in ("deep_value", "accumulation"):
+            return f"🟢 {regime_kr} 구간({rsi_str}) — 매수 신호 우호적이나 {z}"
+        elif regime == "top":
+            return f"🔴 {regime_kr} 구간({rsi_str}) — {z}, 매도 검토"
+        elif regime:
+            return f"🔵 {regime_kr}({rsi_str}) — {z}"
+        return ""

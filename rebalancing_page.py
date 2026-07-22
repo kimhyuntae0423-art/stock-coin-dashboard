@@ -26,6 +26,7 @@ from scripts.etf_recommend import (
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
+from scripts.crypto_analysis import coin_holdings_action_text, coin_rebalance_insight
 
 
 def _load_names() -> dict:
@@ -761,33 +762,12 @@ if not holdings.empty:
                 return "❄️ 과매도(반등여지)"   # H20 검증: 적중률 51~54%
             return "➡️ 보통"
 
-        # coin_summary.csv의 regime은 scripts/onchain.py::classify_regime()이 만드는
-        # {deep_value, accumulation, bull, top, unknown} 5단계(MVRV Z-Score 0/1.5/2.5 경계).
-        # 액션 문구는 REGIME_LABEL_KR(SSOT 단어)에 접미사만 붙여서 구성 — 회의적 검증
-        # 에이전트가 지적(2026-07-22): 여기 로컬 dict가 같은 5개 키를 REGIME_LABEL_KR과
-        # 별개로 재입력하고 있어서, 나중에 taxonomy가 바뀌면 한쪽만 갱신되고 여기는
-        # 안 바뀌는 채로 남을 위험이 있었음.
-        _REGIME_PHRASE_SUFFIX_KR = {
-            "deep_value":   "(역사적 저평가)",
-            "accumulation": "구간(저평가)",
-            "bull":         " 경계",
-            "top":          "구간(비중축소 권고)",
-            "unknown":      "",
-        }
-        _REGIME_PHRASE_KR = {k: f"{REGIME_LABEL_KR[k]}{v}" for k, v in _REGIME_PHRASE_SUFFIX_KR.items()}
-
-        def _coin_action_lbl(action, rsi, regime):
-            phrase = _REGIME_PHRASE_KR.get(regime, str(regime) if regime else "데이터 부족")
-            has_rsi = rsi is not None and pd.notna(rsi)
-            oversold = has_rsi and rsi <= 25
-            rsi_txt = f"RSI {rsi:.0f}" if has_rsi else "RSI 없음"
-            if str(action) == "매수":
-                if oversold:
-                    return f"💎 매수 우호 ({phrase} + {rsi_txt} 과매도로 반등여지 확인, H20 검증)"
-                return f"💎 매수 우호 ({phrase})"
-            if str(action) == "매도":
-                return f"🔴 비중 축소 검토 ({phrase} — MVRV 기준 과열)"
-            return f"✅ 유지 ({phrase}, {rsi_txt})"
+        # 코인 액션 문구는 scripts/crypto_analysis.py::coin_holdings_action_text()로 이동
+        # (2026-07-22) — 같은 파일의 리밸런싱 인사이트(coin_rebalance_insight())와 짝을
+        # 이뤄서 tests/test_coin_regime_consistency.py가 "같은 코인이면 두 문구의 방향이
+        # 절대 안 갈린다"를 자동 검증할 수 있도록 함. 인라인으로 각자 떨어져 있으면
+        # 한쪽만 고치고 잊어버리는 사고가 반복됨(실제로 있었음).
+        _coin_action_lbl = coin_holdings_action_text
 
         def _overheat_lbl(t, v):
             ma  = t.get("ma_score", 0) or 0
@@ -1347,12 +1327,6 @@ if new_money > 0 and alloc["Total"] > 0:
                     sum(_rets)/len(_rets) if _rets else 0.0,
                     False, "", _vix_key, "", _avg_sc)
 
-        # regime 한글 레이블 — scripts.onchain.REGIME_LABEL_KR SSOT 재사용(2026-07-22).
-        # 예전엔 여기 로컬 dict가 markup/distribution/markdown이라는 실제로 안 쓰이는
-        # 어휘를 썼고, 아래 코인 인사이트 분기(_raw</>5000)도 같은 어휘로 조건을 걸어서
-        # "accumulation" 외 regime(bull/top/deep_value)에서 인사이트가 밋밋한 기본
-        # 문구로 새던 버그가 있었음 — 분기 조건도 같이 실제 taxonomy로 수정.
-        _REGIME_KR = REGIME_LABEL_KR
         # VIX 국면 한글 레이블 (etf_recommend 검증 기준)
         _VIX_KR = {
             "fear":       "공포 극단",
@@ -1383,7 +1357,6 @@ if new_money > 0 and alloc["Total"] > 0:
             _eligible = _raw > 5000
 
             _rsi_v, _ret_v, _is_coin, _regime_v, _vix_k, _action_v, _avg_score = _get_role_signal(_uk, _acct)
-            _regime_kr = _REGIME_KR.get(_regime_v, "")
             _vix_kr    = _VIX_KR.get(_vix_k, "혼조")
             # ETF score → 액션 레이블 (백테스트 복합점수 기반)
             _score_label = ("📈 매수 강세" if _avg_score > 108 else
@@ -1403,46 +1376,11 @@ if new_money > 0 and alloc["Total"] > 0:
             _diff_pp = round(float(_rr.get("차이(%p)") or 0), 1)
 
             if _is_coin:
-                # 코인: regime(coin_backtest ✅) + RSI<=25(H20 검증, 51~54% ✅)
-                # RSI<30·"58%"는 공통(비코인) 규칙 값 — 코인엔 CLAUDE.md가 RSI<=25만 허용
-                # (run_coin_rsi_validation, 2026-07-20). _coin_overheat_lbl()과 통일 — 2026-07-21.
-                _rsi_str = f"RSI {_rsi_v:.0f}"
-                _b = f"비중 {_diff_pp:+.1f}%p 부족"
-                _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
-                _z = f"비중 달성(차이 {_diff_pp:+.1f}%p), 추가금액 없음"
-                if _raw < -5000:
-                    if _regime_v in ("deep_value", "accumulation"):
-                        _insight = f"🟡 {_regime_kr} 구간({_rsi_str}) — 저평가, {_o}지만 매도 보류 권장"
-                    elif _regime_v == "top":
-                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_o}, 익절 매도 고려"
-                    elif _regime_v == "bull":
-                        _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — {_o}, 천천히 축소"
-                    elif _rsi_v <= 25:
-                        _insight = f"🟡 과매도({_rsi_str}, 51~54%) — {_o}지만 저점 매도 위험, 보류"
-                    else:
-                        _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_o}, 점진 축소"
-                elif _raw > 5000:
-                    if _regime_v in ("deep_value", "accumulation") and _rsi_v <= 25:
-                        _insight = f"🎯 {_regime_kr}+과매도({_rsi_str}, 51~54%) — 최적 진입 조건. {_b} → 적극 매수"
-                    elif _regime_v in ("deep_value", "accumulation"):
-                        _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — {_b} → 분할 매수"
-                    elif _regime_v == "top":
-                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_b}지만 고점 위험, 보류"
-                    elif _regime_v == "bull" and _rsi_v <= 25:
-                        _insight = f"🎯 과매도({_rsi_str}, 51~54%) — {_b}, 반등 확률 높음 → 매수"
-                    elif _regime_v == "bull":
-                        _insight = f"⚠️ {_regime_kr} 구간({_rsi_str}) — {_b}, 소량 분할만"
-                    elif _rsi_v <= 25:
-                        _insight = f"🎯 과매도({_rsi_str}, 51~54%) — {_b}, 반등 확률 높음 → 매수"
-                    else:
-                        _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_b} → 매수"
-                else:
-                    if _regime_v in ("deep_value", "accumulation"):
-                        _insight = f"🟢 {_regime_kr} 구간({_rsi_str}) — 매수 신호 우호적이나 {_z}"
-                    elif _regime_v == "top":
-                        _insight = f"🔴 {_regime_kr} 구간({_rsi_str}) — {_z}, 매도 검토"
-                    elif _regime_v:
-                        _insight = f"🔵 {_regime_kr}({_rsi_str}) — {_z}"
+                # 코인: regime(coin_backtest ✅) + RSI<=25(H20 검증, 51~54% ✅). 문구 생성은
+                # scripts/crypto_analysis.py::coin_rebalance_insight()로 이동(2026-07-22) —
+                # "보유 현황" 표의 coin_holdings_action_text()와 짝을 이뤄서 같은 코인에
+                # 대해 두 화면이 반대 방향을 말하는 사고가 다시 나지 않도록 테스트로 고정.
+                _insight = coin_rebalance_insight(_raw, _regime_v, _rsi_v, _diff_pp)
             else:
                 # ETF 인사이트: 결론(액션) 먼저, 이유 뒤 — 보유현황 신호 통합
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"
