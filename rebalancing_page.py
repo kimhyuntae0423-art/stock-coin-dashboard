@@ -941,21 +941,29 @@ actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target
 if not actions_alloc:
     st.success("✅ 목표 배분에 ±5%p 이내. 리밸런싱 불필요.")
 
-core_buy = sat_buy = cash_res = 0
-if new_money > 0 and alloc["Total"] > 0:
-    total_after = alloc["Total"] + new_money
+def _bucket_deficits(budget):
+    """budget(원)을 코어/위성/현금 부족분 비례로 배분. total_after(목표% 산정 기준
+    총자산)는 항상 new_money 기준 — 판돈은 포트폴리오 안에서 자산만 바뀌는 돈이라
+    총자산 자체를 늘리지 않음. budget만 new_money+판돈으로 키우면 "이번 달 실제로
+    쓸 수 있는 돈"을 반영하게 된다 — 2026-07-21."""
+    if budget <= 0 or alloc["Total"] <= 0:
+        # 원래 로직과 동일하게 포트폴리오가 비어있으면(Total<=0) budget이 있어도
+        # 전부 0 — cash_res에 budget을 흘려보내지 않는다(재검증 발견 회귀 수정).
+        return 0, 0, 0
+    total_after   = alloc["Total"] + new_money
     core_deficit  = max(0.0, total_after * target_core      / 100 - alloc["Core_value"])
     sat_deficit   = max(0.0, total_after * target_satellite / 100 - alloc["Satellite_value"])
     cash_deficit  = max(0.0, total_after * target_cash      / 100 - cash_amount)
     total_deficit = core_deficit + sat_deficit + cash_deficit
-    if total_deficit > 0:
-        scale    = min(1.0, new_money / total_deficit)
-        core_buy = round(core_deficit * scale)
-        sat_buy  = round(sat_deficit  * scale)
-        cash_res = new_money - core_buy - sat_buy
-    else:
-        core_buy = sat_buy = 0
-        cash_res = new_money
+    if total_deficit <= 0:
+        return 0, 0, budget
+    scale    = min(1.0, budget / total_deficit)
+    core_buy = round(core_deficit * scale)
+    sat_buy  = round(sat_deficit  * scale)
+    cash_res = budget - core_buy - sat_buy
+    return core_buy, sat_buy, cash_res
+
+core_buy, sat_buy, cash_res = _bucket_deficits(new_money)
 
 st.markdown("""
 <style>
@@ -1451,28 +1459,31 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _buckets = [_row_bucket(_rot_df.iloc[i]) for i in range(len(_rot_df))]
 
-        # ── 추가금액 배분: new_money를 부족한 행에 비례 배분 ──────────────────
+        # ── 추가금액 배분: 예산(budget)을 부족한 행에 비례 배분 ──────────────
         # 매도는 인사이트 텍스트 참고 — 추가금액은 항상 0 이상
-        _bucket_budgets = {"core": core_buy, "satellite": sat_buy, "cash": cash_res}
         _bucket_def = {"core": [], "satellite": [], "cash": []}
         for i in range(len(_rot_df)):
             if _buy_eligible[i]:
                 _d = max(0, float(_rot_df.iloc[i]["_raw_need"] or 0))
                 _bucket_def[_buckets[i]].append((i, _d))
 
-        _buy_amts = [0] * len(_rot_df)
-        for _bkt, _rows in _bucket_def.items():
-            _tot = sum(d for _, d in _rows) or 1.0
-            _bud = _bucket_budgets[_bkt]
-            for _idx, _d in _rows:
-                _buy_amts[_idx] = round(_d / _tot * _bud)
+        def _distribute(bucket_budgets):
+            """bucket_budgets={"core":..,"satellite":..,"cash":..}를 _bucket_def
+            비례로 개별 종목에 배분. "2단계"에서 판돈을 포함한 예산으로 다시
+            호출하기 위해 재사용 가능하게 뽑음 — 2026-07-21."""
+            amts = [0] * len(_rot_df)
+            for _bkt, _rows in _bucket_def.items():
+                _tot = sum(d for _, d in _rows) or 1.0
+                _bud = bucket_budgets[_bkt]
+                for _idx, _d in _rows:
+                    amts[_idx] = round(_d / _tot * _bud)
+            for _ci in range(len(_rot_df)):
+                if str(_rot_df.iloc[_ci].get("US ETF", "")).upper() == "CASH":
+                    amts[_ci] = bucket_budgets["cash"]
+                    break
+            return amts
 
-        # 현금 행에 cash_res 직접 배정 → 합계가 정확히 new_money
-        for _ci in range(len(_rot_df)):
-            if str(_rot_df.iloc[_ci].get("US ETF", "")).upper() == "CASH":
-                _buy_amts[_ci] = cash_res
-                break
-
+        _buy_amts = _distribute({"core": core_buy, "satellite": sat_buy, "cash": cash_res})
         _rot_df["추가금액(원)"] = _buy_amts
 
         # 목표금액:
@@ -1617,7 +1628,12 @@ if new_money > 0 and alloc["Total"] > 0:
             else:
                 st.warning("축소 필요 역할 없음")
 
-        # ── 1단계 — 매도 (비중 초과 · 3개월 분할) ──────────────────────────
+        # ── 1단계 — 매도 (비중 초과 · 이번 달 권장분) ────────────────────────
+        # 2026-07-21: 예전엔 "2차(다음달)/3차(그다음)" 예상칸을 같이 보여줬는데,
+        # 어차피 매달 재실행하면 다음 달엔 그 시점 기준으로 차이(%p)가 통째로
+        # 다시 계산돼서 이 값들이 실제로 이어지는 계획이 아니었음(스냅샷 가정일
+        # 뿐). 근거 없는 3개월 분할 스케줄을 그대로 보여주면 오히려 혼란만 줘서
+        # "이번 달에 얼마 팔지"만 남기고 정리.
         _SELL_MONTHS = 3
         _this_month_proceeds = 0.0
 
@@ -1626,7 +1642,7 @@ if new_money > 0 and alloc["Total"] > 0:
             for _, _rr in _r_sell.iterrows():
                 _kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [_rr["US ETF"]])
                 _sell_name_list.append(_kr[0] if _kr else _rr["US ETF"])
-            st.markdown(f"**1단계 — 매도** ({', '.join(_sell_name_list)} 비중 초과 · {_SELL_MONTHS}개월 분할)")
+            st.markdown(f"**1단계 — 매도** ({', '.join(_sell_name_list)} 비중 초과 · 초과분의 1/{_SELL_MONTHS}만 우선 매도 권장)")
             _r_sell_disp = _r_sell.copy()
             _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
                 lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
@@ -1634,33 +1650,34 @@ if new_money > 0 and alloc["Total"] > 0:
             _r_sell_disp["총 초과금(원)"] = (
                 _r_sell_disp["차이(%p)"].abs() / 100 * _total_held
             ).round(0)
-            _r_sell_disp["1차(이번 달)"] = (_r_sell_disp["총 초과금(원)"] / _SELL_MONTHS).round(0)
-            _r_sell_disp["2차(다음 달)"] = _r_sell_disp["1차(이번 달)"]
-            _r_sell_disp["3차(그 다음)"] = (
-                _r_sell_disp["총 초과금(원)"] - _r_sell_disp["1차(이번 달)"] * 2
-            ).round(0)
+            _r_sell_disp["이번 달 매도 권장(원)"] = (_r_sell_disp["총 초과금(원)"] / _SELL_MONTHS).round(0)
             st.dataframe(
                 _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "인사이트",
-                               "총 초과금(원)", "1차(이번 달)", "2차(다음 달)", "3차(그 다음)"]],
+                               "총 초과금(원)", "이번 달 매도 권장(원)"]],
                 hide_index=True, use_container_width=True,
                 column_config={
-                    "차이(%p)":      st.column_config.NumberColumn(format="%+.1f", width="small"),
-                    "인사이트":      st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
-                    "총 초과금(원)": st.column_config.NumberColumn(format="%,.0f", width="small"),
-                    "1차(이번 달)":  st.column_config.NumberColumn(format="%,.0f", width="small"),
-                    "2차(다음 달)":  st.column_config.NumberColumn(format="%,.0f", width="small"),
-                    "3차(그 다음)":  st.column_config.NumberColumn(format="%,.0f", width="small"),
+                    "차이(%p)":               st.column_config.NumberColumn(format="%+.1f", width="small"),
+                    "인사이트":               st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
+                    "총 초과금(원)":          st.column_config.NumberColumn(format="%,.0f", width="small"),
+                    "이번 달 매도 권장(원)": st.column_config.NumberColumn(format="%,.0f", width="small"),
                 },
             )
-            _this_month_proceeds = float(_r_sell_disp["1차(이번 달)"].sum())
+            st.caption("나머지 초과분은 다음 달 재실행 시 그 시점 비중 기준으로 다시 계산됩니다(고정된 다음 달 계획 아님).")
+            _this_month_proceeds = float(_r_sell_disp["이번 달 매도 권장(원)"].sum())
 
-        # ── 2단계 — 매수 배분 (위 표의 추가금액(원) 직접 사용) ──────────────
-        # _rot_df 맨 끝에 위 "배분 현황" 표용 합계 행(역할="합계", US ETF="")이
-        # 이미 붙어 있다(1508행) — US ETF!="CASH" 조건만으로는 이 행이 안 걸러져서
-        # 매수 배분표에 "합계" 행이 데이터 행처럼 섞여 들어가고, 그 아래 진짜 합계가
-        # 그걸 한 번 더 더해서 이중 집계되던 버그 — 2026-07-21 발견·수정.
+        # ── 2단계 — 판돈 포함 매수 배분 ──────────────────────────────────────
+        # 2026-07-21: 예전엔 이 표가 이름은 "판돈 재배분"인데 실제로는 new_money만
+        # 쓰고 판돈(_this_month_proceeds)은 캡션에만 언급하고 계산엔 안 넣어서,
+        # 사용자가 "1차 판돈"과 이 표의 합계가 안 맞는다고 혼란스러워함(사용자 확인
+        # 후 "이번 달 매수에 바로 합침"으로 결정). new_money+판돈을 예산으로 다시
+        # _distribute()를 호출해 이름과 실제 동작을 일치시킴. 판돈이 0이면
+        # new_money와 동일한 결과라 분기 없이 항상 이 방식을 쓴다.
+        _budget2 = new_money + _this_month_proceeds
+        core_buy2, sat_buy2, cash_res2 = _bucket_deficits(_budget2)
+        _rot_df["추가금액2(원)"] = _distribute({"core": core_buy2, "satellite": sat_buy2, "cash": cash_res2})
+
         _buy_rows = _rot_df[
-            (_rot_df["추가금액(원)"].astype(float) > 0) &
+            (_rot_df["추가금액2(원)"].astype(float) > 0) &
             (_rot_df["US ETF"].str.upper() != "CASH") &
             (_rot_df["역할"] != "합계")
         ].copy()
@@ -1669,8 +1686,8 @@ if new_money > 0 and alloc["Total"] > 0:
             if _this_month_proceeds > 0:
                 _step_label = "2단계 — 판돈 재배분"
                 _fund_desc = (
-                    f"신규 투입 {new_money:,.0f}원 배분  ·  "
-                    f"1차 판돈 {_this_month_proceeds:,.0f}원은 다음 달 신규 투입에 추가 권장"
+                    f"신규 투입 {new_money:,.0f}원 + 이번 달 매도 판돈 {_this_month_proceeds:,.0f}원 "
+                    f"= 총 {_budget2:,.0f}원 배분"
                 )
             else:
                 _step_label = "이번 매수 배분"
@@ -1679,7 +1696,8 @@ if new_money > 0 and alloc["Total"] > 0:
             st.markdown(f"**{_step_label}**")
             st.caption(_fund_desc)
 
-            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액(원)", "인사이트"]].copy()
+            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액2(원)", "인사이트"]].copy()
+            _buy_disp = _buy_disp.rename(columns={"추가금액2(원)": "추가금액(원)"})
             _total_row = pd.DataFrame([{
                 "역할": "합계", "US ETF": "", "ISA(원화)": "",
                 "추가금액(원)": int(_buy_disp["추가금액(원)"].astype(float).sum()),
