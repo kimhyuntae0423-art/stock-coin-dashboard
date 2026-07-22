@@ -331,7 +331,11 @@ target_core      = int(st.session_state.get(KEY_TARGET_CORE, DEFAULT_TARGET_CORE
 target_satellite = int(st.session_state.get(KEY_TARGET_SATELLITE, DEFAULT_TARGET_SATELLITE))
 target_cash      = int(st.session_state.get(KEY_TARGET_CASH, DEFAULT_TARGET_CASH))
 # cash_amount는 위에서 holdings.csv CASH 티커로 읽음 (세션 상태 불필요)
-new_money        = float(st.session_state.get("new_money_input", 1_000_000))
+# 아래 위젯(new_money_input) 기본값(2,000,000)과 일치시킴 — 새 세션 첫 로드 시
+# 이 폴백(1,000,000)과 위젯 기본값이 달라서 "신규자금분" 등이 잠깐 어긋나던
+# 문제(재검증 발견, 2026-07-22). 위젯이 렌더되고 나면 session_state가 실제
+# 위젯값으로 채워져 이후엔 문제 없었지만, 첫 렌더 순간엔 그대로 노출됐음.
+new_money        = float(st.session_state.get("new_money_input", 2_000_000))
 
 view_alloc = holdings.copy()
 if not summary.empty:
@@ -1450,6 +1454,19 @@ if new_money > 0 and alloc["Total"] > 0:
 
         _rot_df["인사이트"] = _insights
 
+        # ── 이번 달 매도 판돈(proceeds) 미리 계산 ────────────────────────────
+        # "1단계 매도"/"2단계 판돈 재배분" 표시는 원래 위치(아래)에서 그대로 하되,
+        # 판돈 숫자는 여기서 먼저 구해서 바로 아래 "배분 현황" 표의 추가금액에도
+        # 반영한다 — 위쪽 표도 판돈을 반영해야 한다는 사용자 요청(2026-07-22).
+        _guide_df = _rot_df[_rot_df["가이드"] == True]
+        _r_buy  = _guide_df[_guide_df["차이(%p)"] >  3].sort_values("차이(%p)", ascending=False)
+        _r_sell = _guide_df[_guide_df["차이(%p)"] < -3].sort_values("차이(%p)")
+        _SELL_MONTHS = 3
+        _this_month_proceeds = 0.0
+        if not _r_sell.empty:
+            _excess_amt = _r_sell["차이(%p)"].abs() / 100 * _total_held
+            _this_month_proceeds = float((_excess_amt / _SELL_MONTHS).round(0).sum())
+
         # ── 행 버킷 분류 ──────────────────────────────────────────────────────
         def _row_bucket(row):
             _acct = str(row.get("계좌", ""))
@@ -1502,7 +1519,13 @@ if new_money > 0 and alloc["Total"] > 0:
                     break
             return amts
 
-        _buy_amts = _distribute({"core": core_buy, "satellite": sat_buy, "cash": cash_res})
+        # "배분 현황" 표의 추가금액은 신규투입 + 이번 달 매도 판돈까지 포함한
+        # 예산으로 배분한다(사용자 요청, 2026-07-22) — core_buy/sat_buy/cash_res
+        # (신규투입 단독, 969행)는 위쪽 "코어/위성 매수" 요약 메트릭과 아래
+        # "코어 ETF 매수 후보"/"위성 매수 후보" 순위표에서 그대로 쓰이므로 건드리지
+        # 않고, 별도 변수(core_buy_tot 등)로 계산한다.
+        core_buy_tot, sat_buy_tot, cash_res_tot = _bucket_deficits(new_money + _this_month_proceeds)
+        _buy_amts = _distribute({"core": core_buy_tot, "satellite": sat_buy_tot, "cash": cash_res_tot})
         _rot_df["추가금액(원)"] = _buy_amts
 
         # 목표금액:
@@ -1623,9 +1646,8 @@ if new_money > 0 and alloc["Total"] > 0:
                         f"{_row['name']}{_tag}"
                     )
 
-        _guide_df = _rot_df[_rot_df["가이드"] == True].copy()
-        _r_buy  = _guide_df[_guide_df["차이(%p)"] >  3].sort_values("차이(%p)", ascending=False)
-        _r_sell = _guide_df[_guide_df["차이(%p)"] < -3].sort_values("차이(%p)")
+        # _guide_df/_r_buy/_r_sell은 위(1457행 부근)에서 이미 계산해둠 — "배분 현황"
+        # 표의 추가금액에 판돈을 반영하려면 그보다 먼저 알아야 해서 앞으로 옮김.
         _rc1, _rc2 = st.columns(2)
         with _rc1:
             if not _r_buy.empty:
@@ -1653,9 +1675,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # 다시 계산돼서 이 값들이 실제로 이어지는 계획이 아니었음(스냅샷 가정일
         # 뿐). 근거 없는 3개월 분할 스케줄을 그대로 보여주면 오히려 혼란만 줘서
         # "이번 달에 얼마 팔지"만 남기고 정리.
-        _SELL_MONTHS = 3
-        _this_month_proceeds = 0.0
-
+        # _SELL_MONTHS/_this_month_proceeds는 위(1457행 부근)에서 이미 계산해둠.
         if not _r_sell.empty:
             _sell_name_list = []
             for _, _rr in _r_sell.iterrows():
@@ -1682,31 +1702,29 @@ if new_money > 0 and alloc["Total"] > 0:
                 },
             )
             st.caption("나머지 초과분은 다음 달 재실행 시 그 시점 비중 기준으로 다시 계산됩니다(고정된 다음 달 계획 아님).")
-            _this_month_proceeds = float(_r_sell_disp["이번 달 매도 권장(원)"].sum())
 
         # ── 2단계 — 판돈 포함 매수 배분 ──────────────────────────────────────
-        # 2026-07-21: 예전엔 이 표가 이름은 "판돈 재배분"인데 실제로는 new_money만
-        # 쓰고 판돈(_this_month_proceeds)은 캡션에만 언급하고 계산엔 안 넣어서,
-        # 사용자가 "1차 판돈"과 이 표의 합계가 안 맞는다고 혼란스러워함(사용자 확인
-        # 후 "이번 달 매수에 바로 합침"으로 결정). new_money+판돈을 예산으로 다시
-        # _distribute()를 호출해 이름과 실제 동작을 일치시킴. 판돈이 0이면
-        # new_money와 동일한 결과라 분기 없이 항상 이 방식을 쓴다.
-        _budget2 = new_money + _this_month_proceeds
-        core_buy2, sat_buy2, cash_res2 = _bucket_deficits(_budget2)
-        _rot_df["추가금액2(원)"] = _distribute({"core": core_buy2, "satellite": sat_buy2, "cash": cash_res2})
+        # "배분 현황" 표의 추가금액(원)이 이미 신규투입+판돈 합산 기준이라(위
+        # core_buy_tot 등), 여기서는 그 값을 그대로 "합계"로 쓴다. "신규자금분"은
+        # 신규투입 단독(core_buy/sat_buy/cash_res, 969행) 기준으로 다시 배분해서
+        # 얻고, "판돈분" = 합계 − 신규자금분으로 분리해서 보여준다 — "판돈 재배분"
+        # 이름대로 판돈분 열의 합계가 이번 달 매도 판돈과 정확히 일치해야 한다는
+        # 사용자 요청(2026-07-22). budget이 커질수록 각 종목 배분액은 절대 줄지
+        # 않으므로(deficit·scale이 budget에 비감소) 판돈분은 항상 0 이상이다.
+        _rot_df["신규자금분(원)"] = _distribute({"core": core_buy, "satellite": sat_buy, "cash": cash_res})
 
         _buy_rows = _rot_df[
-            (_rot_df["추가금액2(원)"].astype(float) > 0) &
+            (_rot_df["추가금액(원)"].astype(float) > 0) &
             (_rot_df["US ETF"].str.upper() != "CASH") &
             (_rot_df["역할"] != "합계")
         ].copy()
 
-        if not _buy_rows.empty or cash_res2 > 0:
+        if not _buy_rows.empty or cash_res_tot > 0:
             if _this_month_proceeds > 0:
                 _step_label = "2단계 — 판돈 재배분"
                 _fund_desc = (
                     f"신규 투입 {new_money:,.0f}원 + 이번 달 매도 판돈 {_this_month_proceeds:,.0f}원 "
-                    f"= 총 {_budget2:,.0f}원 배분"
+                    f"= 총 {(new_money + _this_month_proceeds):,.0f}원 배분"
                 )
             else:
                 _step_label = "이번 매수 배분"
@@ -1715,22 +1733,14 @@ if new_money > 0 and alloc["Total"] > 0:
             st.markdown(f"**{_step_label}**")
             st.caption(_fund_desc)
 
-            # "판돈 재배분"이라는 이름은 판돈으로 뭘 사는지가 표에 그대로 보여야
-            # 맞다 — 신규자금분과 판돈분을 합쳐서 한 열로만 보여주면 "판돈분 합계"가
-            # 실제 판돈 금액과 안 맞는 것처럼 보여 혼란을 준다(사용자 확인, 2026-07-22).
-            # 신규자금 단독 배분(_rot_df["추가금액(원)"])과 판돈 포함 배분(추가금액2)의
-            # 차이를 "판돈분"으로 분리해서 보여주면, 판돈분 열의 합계가 정확히
-            # 이번 달 매도 판돈(_this_month_proceeds)과 일치한다 — 두 계산 모두 같은
-            # 부족분 비례 로직을 쓰고 budget이 커질수록 각 종목 배분액은 절대
-            # 줄지 않으므로(deficit·scale 단조증가) 판돈분은 항상 0 이상이다.
-            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액(원)", "추가금액2(원)", "인사이트"]].copy()
-            _buy_disp["판돈분(원)"] = _buy_disp["추가금액2(원)"] - _buy_disp["추가금액(원)"]
-            _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "신규자금분(원)", "추가금액2(원)": "합계(원)"})
-            if cash_res2 > 0:
+            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "추가금액(원)", "인사이트"]].copy()
+            _buy_disp["판돈분(원)"] = _buy_disp["추가금액(원)"] - _buy_disp["신규자금분(원)"]
+            _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "합계(원)"})
+            if cash_res_tot > 0:
                 _cash_disp_row = pd.DataFrame([{
                     "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—",
-                    "신규자금분(원)": round(cash_res), "판돈분(원)": round(cash_res2 - cash_res),
-                    "합계(원)": round(cash_res2),
+                    "신규자금분(원)": round(cash_res), "판돈분(원)": round(cash_res_tot - cash_res),
+                    "합계(원)": round(cash_res_tot),
                     "인사이트": "🔵 목표 현금비중 채우기 — 다음 조정 시 사용",
                 }])
                 _buy_disp = pd.concat([_buy_disp, _cash_disp_row], ignore_index=True)
