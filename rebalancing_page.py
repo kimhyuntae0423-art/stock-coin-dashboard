@@ -1463,9 +1463,12 @@ if new_money > 0 and alloc["Total"] > 0:
         _r_sell = _guide_df[_guide_df["차이(%p)"] < -3].sort_values("차이(%p)")
         _SELL_MONTHS = 3
         _this_month_proceeds = 0.0
+        _rot_df["매도분(원)"] = 0
         if not _r_sell.empty:
             _excess_amt = _r_sell["차이(%p)"].abs() / 100 * _total_held
-            _this_month_proceeds = float((_excess_amt / _SELL_MONTHS).round(0).sum())
+            _sell_amt_per_row = (_excess_amt / _SELL_MONTHS).round(0)
+            _rot_df.loc[_sell_amt_per_row.index, "매도분(원)"] = _sell_amt_per_row.astype(int)
+            _this_month_proceeds = float(_sell_amt_per_row.sum())
 
         # ── 행 버킷 분류 ──────────────────────────────────────────────────────
         def _row_bucket(row):
@@ -1552,6 +1555,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # 합계 행
         _rot_total_sum  = int(_rot_df["현재금액(원)"].sum())
         _rot_new_sum    = int(_rot_df["신규자금분(원)"].sum())
+        _rot_sell_sum   = int(_rot_df["매도분(원)"].sum())
         _rot_proceeds_sum = int(_rot_df["판돈분(원)"].sum())
         _rot_add_sum    = int(_rot_df["추가금액(원)"].sum())
         _rot_target_sum = int(_rot_df["목표금액(원)"].sum())  # 실제 목표금액 합계
@@ -1563,6 +1567,7 @@ if new_money > 0 and alloc["Total"] > 0:
             "차이(%p)":   round(float(target_core + target_satellite + target_cash) - 100.0, 1),
             "현재금액(원)": _rot_total_sum,
             "신규자금분(원)": _rot_new_sum,
+            "매도분(원)": _rot_sell_sum,
             "판돈분(원)": _rot_proceeds_sum,
             "추가금액(원)": _rot_add_sum,
             "목표금액(원)": _rot_target_sum,
@@ -1571,13 +1576,21 @@ if new_money > 0 and alloc["Total"] > 0:
         _rot_df = pd.concat([_rot_df, _rot_sum], ignore_index=True)
 
         # 합계 행 강조 스타일
-        # 신규자금분/판돈분을 각자 열로 보여주고 "합계(원)"(=추가금액(원))도 같이
-        # 낸다 — 신규금액과 판돈을 뭉치지 말고 따로 놓아달라는 요청(2026-07-22).
+        # 신규자금/매도분/재배분을 각자 열로 보여주고 "합계(원)"(=추가금액(원))도
+        # 같이 낸다 — 신규금액과 판돈을 뭉치지 말고 따로, 매도분도 별도 열로
+        # 보여달라는 요청(2026-07-22). 매도분은 이 역할이 초과 보유라 이번 달
+        # 팔아야 할 금액(1단계와 동일 수치), 재배분은 그렇게 판 판돈 중 이 역할에
+        # 새로 배분되는 금액 — 초과 보유 행(_raw_need가 큰 음수)은 _buy_eligible
+        # 조건(_raw_need>5000)을 못 만족해 애초에 배분 대상에서 빠지므로, 같은
+        # 행에서 매도분·재배분이 동시에 0이 아닌 경우는 이 로직상 발생하지 않는다
+        # (재검증 확인, 2026-07-22).
         _disp_cols = ["역할", "US ETF", "ISA(원화)", "계좌",
                       "목표비중(%)", "현재비중(%)", "차이(%p)",
                       "목표금액(원)", "현재금액(원)",
-                      "신규자금분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]
-        _rot_disp = _rot_df[_disp_cols].rename(columns={"추가금액(원)": "합계(원)"}).copy()
+                      "신규자금분(원)", "매도분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]
+        _rot_disp = _rot_df[_disp_cols].rename(columns={
+            "신규자금분(원)": "신규자금(원)", "판돈분(원)": "재배분(원)", "추가금액(원)": "합계(원)",
+        }).copy()
         def _style_sum_row(df):
             styles = pd.DataFrame("", index=df.index, columns=df.columns)
             styles.iloc[-1] = "background-color: #1e3a5f; font-weight: bold; color: #e2e8f0"
@@ -1597,18 +1610,20 @@ if new_money > 0 and alloc["Total"] > 0:
                 "차이(%p)":    st.column_config.NumberColumn("차이(%p)",  format="%+.1f",  width="small",
                                 help="목표비중 − 현재비중. 양수=부족(매수), 음수=초과(매도)"),
                 "현재금액(원)": st.column_config.NumberColumn("현재금액", format="%,d", width="small"),
-                "신규자금분(원)": st.column_config.NumberColumn("신규자금분", format="%,d", width="small",
+                "신규자금(원)": st.column_config.NumberColumn("신규자금", format="%,d", width="small",
                                 help="오늘 신규 투입액에서 이 역할에 배분되는 금액"),
-                "판돈분(원)":   st.column_config.NumberColumn("판돈분", format="%,d", width="small",
-                                help="이번 달 매도 판돈에서 이 역할에 배분되는 금액"),
+                "매도분(원)":   st.column_config.NumberColumn("매도분", format="%,d", width="small",
+                                help="이 역할이 비중 초과라 이번 달 매도 권장되는 금액 (1단계와 동일)"),
+                "재배분(원)":   st.column_config.NumberColumn("재배분", format="%,d", width="small",
+                                help="다른 역할을 매도해 생긴 판돈 중 이 역할에 새로 배분되는 금액"),
                 "합계(원)":     st.column_config.NumberColumn("합계", format="%,d", width="small",
-                                help="신규자금분 + 판돈분 = 오늘 실행할 매수/매도 금액"),
+                                help="신규자금 + 재배분 = 오늘 실행할 매수 금액"),
                 "목표금액(원)": st.column_config.NumberColumn("목표금액", format="%,d", width="small",
                                 help="현재금액 + 합계"),
                 "인사이트":    st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
             },
         )
-        st.caption("목표금액 = 현재금액 + 합계(신규자금분+판돈분).  합계 = 인사이트 반영 후 오늘 실행할 매수/매도 금액.")
+        st.caption("목표금액 = 현재금액 + 합계(신규자금+재배분).  매도분은 별도로 이번 달 실제 매도할 금액입니다.")
 
         # ── 월별 스냅샷 저장 ──────────────────────────────────────────
         from datetime import date as _rb_date_cls
@@ -1767,9 +1782,9 @@ if new_money > 0 and alloc["Total"] > 0:
                 _buy_disp,
                 hide_index=True, use_container_width=True,
                 column_config={
-                    "신규자금분(원)": st.column_config.NumberColumn("신규자금분(원)", format="%,.0f", width="small"),
-                    "판돈분(원)":     st.column_config.NumberColumn("판돈분(원)", format="%,.0f", width="small"),
-                    "합계(원)":       st.column_config.NumberColumn("합계(원)", format="%,.0f", width="small"),
+                    "신규자금분(원)": st.column_config.NumberColumn("신규자금", format="%,.0f", width="small"),
+                    "판돈분(원)":     st.column_config.NumberColumn("재배분", format="%,.0f", width="small"),
+                    "합계(원)":       st.column_config.NumberColumn("합계", format="%,.0f", width="small"),
                     "인사이트":       st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
                 },
             )
