@@ -854,9 +854,13 @@ if not holdings.empty:
             for _, r in _tbl.iterrows()
         }
 
+        # RSI 원시값은 표에서 숨김(2026-07-22 사용자 요청) — 데이터 자체는 _tbl에 남겨두고
+        # (다른 곳에서 필요하면 재사용 가능) 화면 노출만 뺌. 주식/ETF는 RSI가 과열신호 판정에
+        # 애초에 안 쓰였고, 코인은 RSI<=25가 이미 과열신호·액션 라벨에 반영돼 있어 원시 숫자
+        # 없이도 신호 열만으로 판단 가능.
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
                            "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
-                           "추세/국면", "RSI", "모멘텀(%)",
+                           "추세/국면", "모멘텀(%)",
                            "과열신호", "거래량신호", "액션"]].copy()
         st.dataframe(
             _tbl_show, hide_index=True, use_container_width=True,
@@ -874,8 +878,6 @@ if not holdings.empty:
                 "비중(%)":    st.column_config.NumberColumn("비중(%)", format="%.1f"),
                 "추세/국면":  st.column_config.TextColumn("추세/국면",
                               help="주식/ETF: 골든·데드크로스 기반 state. 코인: MVRV regime"),
-                "RSI":        st.column_config.NumberColumn("RSI", format="%.0f",
-                              help="주식/ETF: summary_signals 기준. 코인: coin_summary 기준"),
                 "모멘텀(%)":  st.column_config.NumberColumn("모멘텀(%)", format="%+.1f",
                               help="주식/ETF: 1개월 수익률. 코인: 90일 수익률 (자산마다 기준 기간 다름)"),
                 "과열신호":   st.column_config.TextColumn("과열신호",
