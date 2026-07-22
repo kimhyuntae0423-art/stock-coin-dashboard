@@ -842,7 +842,10 @@ if not holdings.empty:
             _tk_u = str(_tk).upper()
             _trend_col.append(_trend_disp(_tk_u, _is_c))
             _rsi_col.append(_rsi_disp(_tk_u, _is_c))
-            _mom_col.append(_coin_ret90_map.get(_tk_u) if _is_c else _ret1m_map.get(_tk_u))
+            # 주식/ETF의 1개월 모멘텀은 이미 액션(⚠️분할매도 검토 등) 판정에 녹아있어 화면에서
+            # 뺌(2026-07-22 사용자 확인). 코인 90일 수익률은 액션(regime+RSI만 사용)에 안
+            # 들어가는 독립 정보라 유지.
+            _mom_col.append(_coin_ret90_map.get(_tk_u) if _is_c else None)
 
         _tbl["추세/국면"] = _trend_col
         _tbl["RSI"]      = _rsi_col
@@ -879,7 +882,8 @@ if not holdings.empty:
                 "추세/국면":  st.column_config.TextColumn("추세/국면",
                               help="주식/ETF: 골든·데드크로스 기반 state. 코인: MVRV regime"),
                 "모멘텀(%)":  st.column_config.NumberColumn("모멘텀(%)", format="%+.1f",
-                              help="주식/ETF: 1개월 수익률. 코인: 90일 수익률 (자산마다 기준 기간 다름)"),
+                              help="코인 90일 수익률만 표시(액션에 안 들어가는 독립 정보). "
+                                   "주식/ETF 1개월 모멘텀은 액션 판정에 이미 반영돼 있어 숨김"),
                 "과열신호":   st.column_config.TextColumn("과열신호",
                               help="주식/ETF: MA=3+BB>0.85 = 과열(IC 역방향 확인). "
                                    "코인: RSI<=25 과매도만 표시(H20 검증, 나머지는 신호 없음)"),
