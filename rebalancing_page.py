@@ -960,7 +960,10 @@ def _bucket_deficits(budget):
     scale    = min(1.0, budget / total_deficit)
     core_buy = round(core_deficit * scale)
     sat_buy  = round(sat_deficit  * scale)
-    cash_res = budget - core_buy - sat_buy
+    # core_buy/sat_buy 반올림 오차가 누적되면 cash_res가 미세하게 음수가 될 수
+    # 있어(재검증 발견) 0 미만으로 안 내려가게 clamp — 표 합계가 항상 budget과
+    # 정확히 일치하도록 보장.
+    cash_res = max(0, budget - core_buy - sat_buy)
     return core_buy, sat_buy, cash_res
 
 core_buy, sat_buy, cash_res = _bucket_deficits(new_money)
@@ -1682,7 +1685,7 @@ if new_money > 0 and alloc["Total"] > 0:
             (_rot_df["역할"] != "합계")
         ].copy()
 
-        if not _buy_rows.empty:
+        if not _buy_rows.empty or cash_res2 > 0:
             if _this_month_proceeds > 0:
                 _step_label = "2단계 — 판돈 재배분"
                 _fund_desc = (
@@ -1698,6 +1701,16 @@ if new_money > 0 and alloc["Total"] > 0:
 
             _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액2(원)", "인사이트"]].copy()
             _buy_disp = _buy_disp.rename(columns={"추가금액2(원)": "추가금액(원)"})
+            # ETF 매수(위 필터로 US ETF=="CASH" 제외)만 있으면 표 합계가 캡션의
+            # "총 X원 배분"보다 항상 작게 보여 또 혼란을 줌 — 현금 유보분(cash_res2)도
+            # 행으로 보여줘서 표 합계가 캡션 총액과 일치하게 함 — 2026-07-22.
+            if cash_res2 > 0:
+                _cash_disp_row = pd.DataFrame([{
+                    "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—",
+                    "추가금액(원)": round(cash_res2),
+                    "인사이트": "🔵 목표 현금비중 채우기 — 다음 조정 시 사용",
+                }])
+                _buy_disp = pd.concat([_buy_disp, _cash_disp_row], ignore_index=True)
             _total_row = pd.DataFrame([{
                 "역할": "합계", "US ETF": "", "ISA(원화)": "",
                 "추가금액(원)": int(_buy_disp["추가금액(원)"].astype(float).sum()),
