@@ -816,11 +816,21 @@ if not holdings.empty:
         # 완전히 같은 값을 다른 이름으로 중복 표시하고 있어서 2026-07-20 이 표 하나로 통합.
         # 주식/ETF: state(골든·데드크로스)·summary RSI·1개월 수익률 / 코인: MVRV regime·
         # coin RSI·90일 수익률 — 자산별로 의미가 달라 컬럼 하나에 같이 담되 헬프텍스트로 구분.
+        # 원문(bull/bear, accumulation 등)은 무슨 뜻인지 바로 안 와닿는다는 사용자
+        # 피드백(2026-07-22) — 쉬운 한글로 표시. 코인 라벨은 인사이트 문구에 이미
+        # 쓰는 _REGIME_KR(아래 1300행대)과 같은 단어를 씀(매집/상승/배분/하락 통일).
+        _STATE_KR = {"bull": "🟢 상승", "bear": "🔴 하락"}
+        _COIN_REGIME_KR = {
+            "accumulation": "🔵 매집", "markup": "🟢 상승",
+            "distribution": "🟠 배분", "markdown": "🔴 하락",
+        }
+
         def _trend_disp(tk, is_c):
             if is_c:
-                return str(_coin_sig_map.get(tk, {}).get("regime") or "—")
+                s = _coin_sig_map.get(tk, {}).get("regime")
+                return _COIN_REGIME_KR.get(s, str(s) if s else "—")
             s = _trend_map.get(tk)
-            return f"{'🟢' if s == 'bull' else '🔴'} {s}" if s else "—"
+            return _STATE_KR.get(s, str(s) if s else "—")
 
         def _rsi_disp(tk, is_c):
             v = _coin_sig_map.get(tk, {}).get("rsi") if is_c else _rsi_map.get(tk)
@@ -883,24 +893,26 @@ if not holdings.empty:
         )
 
         # 긴급 알림 (구 "보유 종목 종합 분석" 익스팬더에 있던 것 — 표 통합하며 같이 이동)
-        _bear_holds = _tbl_show[_tbl_show["추세/국면"].astype(str).str.contains("bear", na=False)]
+        # 위에서 "추세/국면"을 한글 라벨("🔴 하락" 등)로 바꿨으니 필터 조건도 그에 맞춤 —
+        # 알림 문구도 티커 대신 종목명으로 표시(사용자 피드백, 2026-07-22).
+        _bear_holds = _tbl_show[_tbl_show["추세/국면"].astype(str).str.contains("하락", na=False)]
         _hot_holds  = _tbl_show[_tbl_show["과열신호"].astype(str).str.contains("과열", na=False)]
         _deep_loss_coins = _tbl_show[(_tbl_show["카테고리"] == "코인") & (_tbl_show["수익률(%)"] < -60)]
         if not _bear_holds.empty:
-            st.error(f"🔴 하락추세: {', '.join(_bear_holds['ticker'])} — 추세 전환 확인 전 추가매수 자제 (bear추세 = 향후 수익 낮은 경향)")
+            st.error(f"🔴 하락추세: {', '.join(_bear_holds['종목명'])} — 추세 전환 확인 전 추가매수 자제 (하락추세 = 향후 수익 낮은 경향)")
         if not _hot_holds.empty:
-            st.warning(f"🌡️ 과열 신호: {', '.join(_hot_holds['ticker'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
+            st.warning(f"🌡️ 과열 신호: {', '.join(_hot_holds['종목명'])} — BB·MA 역방향 IC 검증됨, 일부 실현 고려")
         if not _deep_loss_coins.empty:
             st.error(
                 f"🔴 60% 이상 손실 코인 {len(_deep_loss_coins)}종: "
-                f"{', '.join(_deep_loss_coins['ticker'].tolist())} — "
+                f"{', '.join(_deep_loss_coins['종목명'].tolist())} — "
                 "원금 회복에 각각 150~900% 상승 필요. 포지션 재검토 권장"
             )
-        _accum_ok_coins = _tbl_show[(_tbl_show["카테고리"] == "코인") & (_tbl_show["추세/국면"] == "accumulation")
+        _accum_ok_coins = _tbl_show[(_tbl_show["카테고리"] == "코인") & (_tbl_show["추세/국면"] == "🔵 매집")
                                      & (_tbl_show["수익률(%)"] > -30)]
         if not _accum_ok_coins.empty:
             st.info(
-                f"📥 매집 국면 + 손실 소폭: {', '.join(_accum_ok_coins['ticker'].tolist())} — "
+                f"📥 매집 국면 + 손실 소폭: {', '.join(_accum_ok_coins['종목명'].tolist())} — "
                 "분할매수 검토 가능 구간 (단, 코인 변동성 유의)"
             )
 
