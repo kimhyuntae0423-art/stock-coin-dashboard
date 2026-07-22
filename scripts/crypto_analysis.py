@@ -11,10 +11,44 @@
   1) 개별 코인 RSI ≤ 25 AND 레짐이 deep_value/accumulation  →  매수
   2) 레짐 매핑 그대로
 """
+import datetime
 import pandas as pd
 import ta
 
 from scripts.onchain import REGIME_LABEL_KR
+
+# "코인 정리 로드맵" 그룹 — rebalancing_page.py의 "코인 정리 로드맵" 카드와
+# portfolio_page.py의 개별 코인 매도 신호가 같은 그룹 정의를 쓰도록 SSOT화(2026-07-22).
+COIN_EXIT_GROUPS = {
+    "G1": ["TRUMP-USD", "MASK-USD", "ZETA-USD", "SAND-USD", "ID-USD"],
+    "G2": ["GAS-USD", "DOGE-USD", "ETC-USD", "ENS-USD"],
+    "G3": ["BTC-USD", "ETH-USD", "SOL-USD"],
+}
+
+# G1(소형 알트)만 가진 개별손실 기반 청산 규칙의 실제 경계값.
+G1_LOSS_RECOVERY_PCT = -60.0
+G1_DEADLINE = datetime.date(2027, 12, 31)
+
+
+def coin_g1_exit_status(pnl_pct, today=None):
+    """G1 코인의 "-60% 이내 회복 → 전량 매도 / 2027년 말 데드라인" 규칙을 실제로
+    계산 가능하게 만든 함수(2026-07-22). 이 규칙은 원래 rebalancing_page.py의
+    "코인 정리 로드맵" 카드에 문구로만 있었고 실제 손실%·날짜와 비교해 평가된
+    적이 없었음 — 그 사이 portfolio_page.py는 이 규칙과 무관한 자체 "-40% 손실
+    → 매도검토"를 써서, 같은 코인에 대해 리밸런싱 인사이트(MVRV 매집구간 →
+    매수 우호)와 정반대 방향을 동시에 보여주는 사고로 이어졌음(사용자 실제 목격).
+
+    Returns (status, reason) — status는 "sell"|"wait"|None(G1 대상 아님/데이터없음).
+    """
+    if pnl_pct is None or pnl_pct != pnl_pct:  # None 또는 NaN
+        return None, ""
+    if today is None:
+        today = datetime.date.today()
+    if pnl_pct >= G1_LOSS_RECOVERY_PCT:
+        return "sell", f"손실이 {G1_LOSS_RECOVERY_PCT:.0f}% 이내로 회복 — 로드맵 기준 전량 매도 권장"
+    if today >= G1_DEADLINE:
+        return "sell", "2027년 말 데드라인 도달 — 조건 미충족, 로드맵 기준 전량 매도"
+    return "wait", f"손실 {pnl_pct:.1f}% — 로드맵 기준 {G1_LOSS_RECOVERY_PCT:.0f}% 회복 또는 2027년 말까지 대기"
 
 _REGIME_PHRASE_SUFFIX_KR = {
     "deep_value":   "(역사적 저평가)",

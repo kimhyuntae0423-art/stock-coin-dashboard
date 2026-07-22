@@ -26,7 +26,9 @@ from scripts.etf_recommend import (
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
-from scripts.crypto_analysis import coin_holdings_action_text, coin_rebalance_insight
+from scripts.crypto_analysis import (
+    coin_holdings_action_text, coin_rebalance_insight, COIN_EXIT_GROUPS,
+)
 
 
 def _load_names() -> dict:
@@ -2017,9 +2019,11 @@ st.markdown(
 st.markdown("---")
 
 # 그룹 정의 및 출구 규칙 (trigger_level, 조건, 액션)
-_G1 = ["TRUMP-USD", "MASK-USD", "ZETA-USD", "SAND-USD", "ID-USD"]
-_G2 = ["GAS-USD", "DOGE-USD", "ETC-USD", "ENS-USD"]
-_G3 = ["BTC-USD", "ETH-USD", "SOL-USD"]
+# 그룹 목록은 scripts.crypto_analysis.COIN_EXIT_GROUPS가 SSOT(2026-07-22) —
+# portfolio_page.py의 개별 코인 매도 신호도 같은 그룹 정의를 참조함.
+_G1 = COIN_EXIT_GROUPS["G1"]
+_G2 = COIN_EXIT_GROUPS["G2"]
+_G3 = COIN_EXIT_GROUPS["G3"]
 
 _G1_RULES = [
     (1, "MVRV Z ≥ 1.5 도달",       "50% 매도"),
