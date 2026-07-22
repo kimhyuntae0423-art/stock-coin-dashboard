@@ -808,8 +808,6 @@ if not holdings.empty:
         _tbl["과열신호"]  = _overheat_col
         _tbl["거래량신호"] = [("—" if is_c else v.get("vol_label", "—"))
                              for v, is_c in zip(_vsigs, _is_coin_tk)]
-        _tbl["OBV추세"]   = [(None if is_c else v.get("obv_slope"))
-                             for v, is_c in zip(_vsigs, _is_coin_tk)]
         _tbl["액션"]      = _action_col
 
         # 추세/국면·RSI·모멘텀(%) — "보유 종목 종합 분석" 익스팬더가 따로 있었으나 위와
@@ -859,7 +857,7 @@ if not holdings.empty:
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
                            "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
                            "추세/국면", "RSI", "모멘텀(%)",
-                           "과열신호", "거래량신호", "OBV추세", "액션"]].copy()
+                           "과열신호", "거래량신호", "액션"]].copy()
         st.dataframe(
             _tbl_show, hide_index=True, use_container_width=True,
             column_config={
@@ -885,8 +883,6 @@ if not holdings.empty:
                                    "코인: RSI<=25 과매도만 표시(H20 검증, 나머지는 신호 없음)"),
                 "거래량신호": st.column_config.TextColumn("거래량",
                               help="거래량비율(IC=+0.04). 급증=기관 개입 추정. 코인은 데이터 없어 — 표시"),
-                "OBV추세":    st.column_config.NumberColumn("OBV(%)", format="%+.1f",
-                              help="10일 OBV 변화율. 양수=매집, 음수=분배. 코인은 데이터 없어 공란"),
                 "액션":       st.column_config.TextColumn("백테스트 액션",
                               help="주식/ETF: VIX·과열·거래량 신호 기반. 코인: MVRV regime+RSI 기반(coin_summary.csv 동일 소스). 최종 결정은 직접 판단"),
             },
