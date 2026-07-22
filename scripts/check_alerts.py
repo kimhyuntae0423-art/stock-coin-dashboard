@@ -19,11 +19,15 @@ import sys
 from pathlib import Path
 import pandas as pd
 
-# kakao_notify를 어느 cwd에서든 import 가능하도록
+# kakao_notify를 어느 cwd에서든 import 가능하도록, ROOT도 추가해서
+# crypto_analysis.py 내부의 "from scripts.onchain import ..." 절대 임포트가
+# 풀리게 함(2026-07-22, coin_g1_exit_status 도입하며 추가).
 _SCRIPTS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPTS_DIR))
-
 ROOT = _SCRIPTS_DIR.parent
+sys.path.insert(0, str(_SCRIPTS_DIR))
+sys.path.insert(0, str(ROOT))
+
+from crypto_analysis import coin_g1_exit_status, COIN_EXIT_GROUPS
 HOLDINGS = ROOT / "holdings.csv"
 SUMMARY = ROOT / "results" / "summary_signals.csv"
 COIN_SUMMARY = ROOT / "results" / "coin_summary.csv"
@@ -72,15 +76,20 @@ def load_signals() -> pd.DataFrame:
 
 def severity_for_holding(
     row, sig_row, mvrv_z=None, is_etf: bool = False, is_coin: bool = False,
-    bb: dict | None = None,
+    bb: dict | None = None, usdkrw: float = 1380.0,
 ) -> tuple[int, list[str]]:
     """단일 보유종목의 위험도(0=보유 / 1=논거 재검토 / 2=비중 축소(코인)) 와 사유 리스트.
 
     자산 유형별 신호 기준 (백테스트 검증):
       ETF  → 리밸런싱으로 관리, 알림 없음
       BTC  → MVRV Z-Score 구간 기반 (0/1.5/2.5)
-      알트 → BB(%B) + 손익 복합 신호
+      알트 → BB(%B) + 손익 복합 신호(단, 개별손실 자체의 매도판정은 G1 로드맵 기준)
       개별주 → 손실(-8%/-20%) + 데드크로스 + RSI 80+ (모두 1수준, 2수준 없음)
+
+    usdkrw: 코인 손익 계산용 환율. sig_row["close"]는 coin_summary.csv 기준
+    USD, row["buy_price"]는 holdings.csv 기준 KRW라 변환 없이 나누면 항상
+    -100%에 가까운 값이 나오던 버그가 있었음(2026-07-22 발견 — 이 버그 때문에
+    카카오 알림이 보유 코인 전부에 "🔴 매도 검토"를 보내고 있었음).
     """
     # ── ETF: 리밸런싱으로 관리 — 알림 불필요 ──────────────────────
     if is_etf:
@@ -88,10 +97,12 @@ def severity_for_holding(
 
     # ── 코인: BTC는 MVRV 순수 적용, 알트는 MVRV + 개별 손실 병행 ──
     if is_coin:
-        ticker_str = str(row.get("ticker", ""))
+        ticker_str = str(row.get("ticker", "")).strip().upper()
         is_btc = ticker_str == "BTC-USD"
         buy_price = row.get("buy_price")
         close = sig_row.get("close")
+        if close is not None and pd.notna(close):
+            close = float(close) * usdkrw  # USD -> KRW
 
         if is_btc:
             if mvrv_z is not None and pd.notna(mvrv_z):
@@ -122,7 +133,12 @@ def severity_for_holding(
                 f" — 추세 반전 조기 경보 (백테스트 -18.2%, 8%)"
             ]
 
-        # 신호3. 손익 기반 — %B<0+RSI<30(반등 후보 구간)이면 등급 완화
+        # 신호3. 손익 기반 — %B<0+RSI<30(반등 후보 구간)이면 등급 완화.
+        # "-40% → 매도(severity 2)"는 백테스트 검증이 없고 코인 정리 로드맵과도
+        # 무관해서, 리밸런싱 페이지의 "매수 우호"와 정반대인 카카오 알림이
+        # 나가던 원인이었음(2026-07-22). G1(TRUMP·MASK·ZETA·SAND·ID)만 실제
+        # 로드맵(coin_g1_exit_status: -60% 회복 또는 2027년 말)이 있으므로 그걸
+        # 따르고, 로드맵 없는 코인은 severity를 1(주의)로 낮춤.
         if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
             pnl_pct = (float(close) / float(buy_price) - 1) * 100
             is_bounce = (
@@ -130,12 +146,20 @@ def severity_for_holding(
                 and pct_b < 0.0 and rsi_bb < 30
             )
             if pnl_pct <= -40:
+                if ticker_str in COIN_EXIT_GROUPS["G1"]:
+                    g1_status, g1_reason = coin_g1_exit_status(pnl_pct)
+                    if g1_status == "sell":
+                        return 2, [f"손익 {pnl_pct:+.1f}% — {g1_reason}{cycle_ctx}"]
+                    return 0, []  # "wait" — 아직 로드맵 트리거 미도달, 알림 불필요
                 if is_bounce:
                     return 1, [
                         f"손익 {pnl_pct:+.1f}% 심각 — 단, BB 하단+RSI 과매도"
                         f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간{cycle_ctx}"
                     ]
-                return 2, [f"손익 {pnl_pct:+.1f}% — 알트 개별 하락 심각{cycle_ctx}"]
+                return 1, [
+                    f"손익 {pnl_pct:+.1f}% — 개별 손실 자체는 매도 근거로 검증되지 않음, "
+                    f"MVRV 국면 기준으로 판단 권장{cycle_ctx}"
+                ]
             elif pnl_pct <= -20:
                 if is_bounce:
                     return 0, []  # 완화 — 반등 후보 구간
@@ -316,6 +340,14 @@ def check() -> list[dict]:
         except Exception:
             pass
 
+    # USD/KRW 환율 — 코인 손익(신호3) 계산에 필요(rebalancing_page.py와 동일 패턴)
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen("https://api.frankfurter.app/latest?from=USD&to=KRW", timeout=4) as _r:
+            _usdkrw = float(json.loads(_r.read())["rates"]["KRW"])
+    except Exception:
+        _usdkrw = 1380.0
+
     # ETF 티커 목록
     _etf_file = ROOT / "core_etfs.csv"
     _etf_tickers: set = (
@@ -334,7 +366,7 @@ def check() -> list[dict]:
         s = s.iloc[0]
         bb = _coin_bb(ticker) if (is_coin and not (ticker == "BTC-USD")) else None
         severity, reasons = severity_for_holding(
-            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, bb=bb
+            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, bb=bb, usdkrw=_usdkrw,
         )
         if severity > 0:
             alerts.append({
