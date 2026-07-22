@@ -757,9 +757,30 @@ if not holdings.empty:
                 return "❄️ 과매도(반등여지)"   # H20 검증: 적중률 51~54%
             return "➡️ 보통"
 
-        def _coin_action_lbl(action):
-            return {"매수": "💎 매수 우호(MVRV/RSI)", "보유": "✅ 유지",
-                    "매도": "🔴 비중 축소 검토(MVRV 과열)"}.get(str(action), "✅ 유지")
+        # coin_summary.csv의 regime은 scripts/onchain.py::classify_regime()이 만드는
+        # {deep_value, accumulation, bull, top, unknown} 5단계(MVRV Z-Score 0/1.5/2.5 경계).
+        # 예전 _COIN_REGIME_KR이 다른 어휘(markup/distribution/markdown)를 쓰고 있어
+        # "accumulation" 아닌 값은 전부 원문 영어로 새고 있었음(2026-07-22 발견, 같이 수정).
+        _REGIME_PHRASE_KR = {
+            "deep_value":   "바닥권(역사적 저평가)",
+            "accumulation": "매집구간(저평가)",
+            "bull":         "중립~과열 경계",
+            "top":          "과열구간(비중축소 권고)",
+            "unknown":      "데이터 부족",
+        }
+
+        def _coin_action_lbl(action, rsi, regime):
+            phrase = _REGIME_PHRASE_KR.get(regime, str(regime) if regime else "데이터 부족")
+            has_rsi = rsi is not None and pd.notna(rsi)
+            oversold = has_rsi and rsi <= 25
+            rsi_txt = f"RSI {rsi:.0f}" if has_rsi else "RSI 없음"
+            if str(action) == "매수":
+                if oversold:
+                    return f"💎 매수 우호 ({phrase} + {rsi_txt} 과매도로 반등여지 확인, H20 검증)"
+                return f"💎 매수 우호 ({phrase})"
+            if str(action) == "매도":
+                return f"🔴 비중 축소 검토 ({phrase} — MVRV 기준 과열)"
+            return f"✅ 유지 ({phrase}, {rsi_txt})"
 
         def _overheat_lbl(t, v):
             ma  = t.get("ma_score", 0) or 0
@@ -782,25 +803,26 @@ if not holdings.empty:
             overheat = ma == 3 and bb > 0.85
             vix_fear = _h_vix and _h_vix > 25
 
-            # 백테스트 인사이트 우선순위 적용
+            # 백테스트 인사이트 우선순위 적용 — RSI·모멘텀 원시값을 표에서 숨긴 대신(2026-07-22)
+            # 판단 근거가 된 실제 수치를 액션 문구에 그대로 풀어씀.
             if overheat and ret > 20 and ret_1m < 0:
-                return "⚠️ 분할매도 검토"   # 과열+모멘텀 꺾임
+                return f"⚠️ 분할매도 검토 (누적 +{ret:.0f}% 과열권인데 최근 1개월 {ret_1m:+.0f}%로 꺾임)"
             if overheat and ret > 30:
-                return "🌡️ 차익실현 고려"   # 과열+고수익
+                return f"🌡️ 차익실현 고려 (누적 +{ret:.0f}% 과열권 — MA정배열+BB상단)"
             if vix_fear and ret < -10:
-                return "🔥 역발상 추가매수"  # VIX 극단 + 손실 = 매수 기회 (IC=0.14)
+                return f"🔥 역발상 추가매수 (VIX 공포구간 + 손실 {ret:.0f}% — 역사적 반등 우위, IC=0.14)"
             if vol_r >= 1.4 and bb < 0.4:
-                return "📈 거래량+저점 주목" # 거래량 급증 + 하단 = 매집 신호
+                return f"📈 거래량+저점 주목 (거래량 평소 {vol_r:.1f}배 + BB하단권 — 매집 추정)"
             if ma <= 1 and ret < -15:
-                return "❄️ 추세 약세 관망"
-            return "✅ 유지"
+                return f"❄️ 추세 약세 관망 (하락추세 지속 + 손실 {ret:.0f}% — 전환 전 관망)"
+            return f"✅ 유지 (누적 {ret:+.0f}%, 특이 신호 없음)"
 
         _overheat_col, _action_col = [], []
         for (_, _row), _t, _v, _is_c in zip(_tbl.iterrows(), _tsigs, _vsigs, _is_coin_tk):
             if _is_c:
                 _csig = _coin_sig_map.get(str(_row["ticker"]).upper(), {})
                 _overheat_col.append(_coin_overheat_lbl(_csig.get("rsi")))
-                _action_col.append(_coin_action_lbl(_csig.get("action")))
+                _action_col.append(_coin_action_lbl(_csig.get("action"), _csig.get("rsi"), _csig.get("regime")))
             else:
                 _overheat_col.append(_overheat_lbl(_t, _v))
                 _action_col.append(_action(_row, _t, _v))
@@ -819,8 +841,11 @@ if not holdings.empty:
         # 쓰는 _REGIME_KR(아래 1300행대)과 같은 단어를 씀(매집/상승/배분/하락 통일).
         _STATE_KR = {"bull": "🟢 상승", "bear": "🔴 하락"}
         _COIN_REGIME_KR = {
-            "accumulation": "🔵 매집", "markup": "🟢 상승",
-            "distribution": "🟠 배분", "markdown": "🔴 하락",
+            "deep_value":   "🟢 바닥권",
+            "accumulation": "🔵 매집",
+            "bull":         "🟠 중립~과열",
+            "top":          "🔴 과열",
+            "unknown":      "⚪ 데이터부족",
         }
 
         def _trend_disp(tk, is_c):
@@ -842,10 +867,7 @@ if not holdings.empty:
             _tk_u = str(_tk).upper()
             _trend_col.append(_trend_disp(_tk_u, _is_c))
             _rsi_col.append(_rsi_disp(_tk_u, _is_c))
-            # 주식/ETF의 1개월 모멘텀은 이미 액션(⚠️분할매도 검토 등) 판정에 녹아있어 화면에서
-            # 뺌(2026-07-22 사용자 확인). 코인 90일 수익률은 액션(regime+RSI만 사용)에 안
-            # 들어가는 독립 정보라 유지.
-            _mom_col.append(_coin_ret90_map.get(_tk_u) if _is_c else None)
+            _mom_col.append(_coin_ret90_map.get(_tk_u) if _is_c else _ret1m_map.get(_tk_u))
 
         _tbl["추세/국면"] = _trend_col
         _tbl["RSI"]      = _rsi_col
@@ -857,13 +879,12 @@ if not holdings.empty:
             for _, r in _tbl.iterrows()
         }
 
-        # RSI 원시값은 표에서 숨김(2026-07-22 사용자 요청) — 데이터 자체는 _tbl에 남겨두고
-        # (다른 곳에서 필요하면 재사용 가능) 화면 노출만 뺌. 주식/ETF는 RSI가 과열신호 판정에
-        # 애초에 안 쓰였고, 코인은 RSI<=25가 이미 과열신호·액션 라벨에 반영돼 있어 원시 숫자
-        # 없이도 신호 열만으로 판단 가능.
+        # RSI·모멘텀(%) 원시값은 표에서 숨김(2026-07-22 사용자 요청) — 데이터 자체는 _tbl에
+        # 남겨두고 화면 노출만 뺌. 대신 그 수치들이 실제로 만든 판단 근거는 "액션" 문구 안에
+        # 그대로 풀어써서(_action/_coin_action_lbl) 숫자를 직접 안 봐도 이유를 알 수 있게 함.
         _tbl_show = _tbl[["카테고리", "종목명", "ticker", "수량", "매수가", "현재가",
                            "원금", "평가금액", "손익", "수익률(%)", "비중(%)",
-                           "추세/국면", "모멘텀(%)",
+                           "추세/국면",
                            "과열신호", "거래량신호", "액션"]].copy()
         st.dataframe(
             _tbl_show, hide_index=True, use_container_width=True,
@@ -881,16 +902,15 @@ if not holdings.empty:
                 "비중(%)":    st.column_config.NumberColumn("비중(%)", format="%.1f"),
                 "추세/국면":  st.column_config.TextColumn("추세/국면",
                               help="주식/ETF: 골든·데드크로스 기반 state. 코인: MVRV regime"),
-                "모멘텀(%)":  st.column_config.NumberColumn("모멘텀(%)", format="%+.1f",
-                              help="코인 90일 수익률만 표시(액션에 안 들어가는 독립 정보). "
-                                   "주식/ETF 1개월 모멘텀은 액션 판정에 이미 반영돼 있어 숨김"),
                 "과열신호":   st.column_config.TextColumn("과열신호",
                               help="주식/ETF: MA=3+BB>0.85 = 과열(IC 역방향 확인). "
                                    "코인: RSI<=25 과매도만 표시(H20 검증, 나머지는 신호 없음)"),
                 "거래량신호": st.column_config.TextColumn("거래량",
                               help="거래량비율(IC=+0.04). 급증=기관 개입 추정. 코인은 데이터 없어 — 표시"),
-                "액션":       st.column_config.TextColumn("백테스트 액션",
-                              help="주식/ETF: VIX·과열·거래량 신호 기반. 코인: MVRV regime+RSI 기반(coin_summary.csv 동일 소스). 최종 결정은 직접 판단"),
+                "액션":       st.column_config.TextColumn("백테스트 액션 (RSI·모멘텀 근거 포함)",
+                              help="RSI·모멘텀(%) 원시값은 표에서 숨기고 이 문구 안에 근거로 풀어씀. "
+                                   "주식/ETF: 수익률·1개월모멘텀·VIX·과열·거래량 신호 기반. "
+                                   "코인: MVRV regime+RSI 기반(coin_summary.csv 동일 소스). 최종 결정은 직접 판단"),
             },
         )
 
@@ -1323,12 +1343,16 @@ if new_money > 0 and alloc["Total"] > 0:
                     sum(_rets)/len(_rets) if _rets else 0.0,
                     False, "", _vix_key, "", _avg_sc)
 
-        # regime 한글 레이블 (coin_backtest 검증 기준)
+        # regime 한글 레이블 — coin_summary.csv의 regime은 scripts/onchain.py::classify_regime()의
+        # {deep_value, accumulation, bull, top, unknown} 5단계(MVRV Z-Score 기준). 예전 값
+        # (markup/distribution/markdown)은 실제로 안 쓰이는 다른 어휘였음 — "accumulation" 외
+        # regime에서 인사이트 문구에 빈 문자열이 새던 버그 발견(2026-07-22), 같이 수정.
         _REGIME_KR = {
+            "deep_value":   "바닥권",
             "accumulation": "매집",
-            "markup":       "상승",
-            "distribution": "배분",
-            "markdown":     "하락",
+            "bull":         "중립",
+            "top":          "과열",
+            "unknown":      "미확인",
         }
         # VIX 국면 한글 레이블 (etf_recommend 검증 기준)
         _VIX_KR = {
