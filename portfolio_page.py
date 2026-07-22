@@ -17,7 +17,7 @@ from scripts.config import (
 )
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
-from scripts.crypto_analysis import coin_g1_exit_status, COIN_EXIT_GROUPS
+from scripts.crypto_analysis import coin_g1_exit_status, COIN_EXIT_GROUPS, G1_LOSS_RECOVERY_PCT
 
 
 def load_names() -> dict:
@@ -715,9 +715,11 @@ _SIGNAL_DISPLAY = [
             "📈 개별주: 매수가 대비 -20% 이상 손실<br>"
             "&nbsp;&nbsp;수익률 하위 25%이면 추세도 무너진 상태<br>"
             "₿ BTC: 역사적 고점 근처 — 과열 구간 진입<br>"
-            "🪙 알트: 단기 과열로 급등 후 꺾임, 또는 -40% 손실"
+            f"🪙 알트: 단기 과열(BB 상단+RSI&gt;70)로 급등 후 꺾임, 또는 "
+            f"G1(소형알트) 로드맵상 손실이 {abs(G1_LOSS_RECOVERY_PCT):.0f}% 이내로 "
+            f"회복 시 — 개별손실 자체(예: -40%)만으로는 매도 근거 아님(2026-07-22 수정)"
         ),
-        "caption": "-20% 이상 손실 시 🔴 매도 검토",
+        "caption": "개별주 -20% 이상 손실 시 🔴 매도 검토 (코인은 MVRV·로드맵 기준, 개별손실만으로 판단 안 함)",
     },
     {
         "emoji": "💎",
