@@ -34,7 +34,8 @@
 | 로테이션 국면 (4단계: fear/recovery/expansion/overheated) | `scripts/etf_rotation.py::_REGIME_TO_PHASE` | `rebalancing_page.py::rotation_target()` | market_regime의 5단계를 4단계로 재매핑하는 유일한 지점 |
 | ETF 리스크 버킷 배율 (공격/핵심/대안/방어 × VIX국면) | `scripts/etf_recommend.py::_BUCKET_WEIGHT` | `score_etfs()`, `tactical_alloc()` | 단일 정의, 중복 없음 (참고용 좋은 예시) |
 | 허용/금지 신호 목록 (RSI 임계값, MVRV 구간, 섹터사이클 등) | `CLAUDE.md` "자산별 검증된 신호" 표 | 각 스크립트 주석에서 인용 | **문서가 SSOT** — 코드보다 여기가 먼저. 백테스트 함수는 `scripts/signal_validation.py` |
-| 코인 MVRV Z-Score 구간 (0/1.5/2.5) | `scripts/onchain.py::classify_regime()` | `coin_page.py`, `run_analysis.py` → `coin_summary.csv` | 2026-07-20 통일 (예전엔 0/2/5/7 별도값 사용) |
+| 코인 MVRV Z-Score 구간 (0/1.5/2.5, regime={deep_value,accumulation,bull,top,unknown}) | `scripts/onchain.py::classify_regime()` | `coin_page.py`, `run_analysis.py`→`coin_summary.csv`, `rebalancing_page.py`(보유현황 액션·리밸런싱 인사이트·코인 사이클 카드), `portfolio_page.py`(개별 코인 서술·사이클 온도계) | 2026-07-20 통일(0/2/5/7→0/1.5/2.5). 2026-07-22 rebalancing_page.py·portfolio_page.py가 각자 이 경계를 재구현하며 일부는 존재하지 않는 regime 값(markup/distribution/markdown)으로 갈라졌던 것 발견·통일 |
+| 코인 regime 한글 라벨 | `scripts/onchain.py::REGIME_LABEL_KR` | `rebalancing_page.py`, `portfolio_page.py` | 2026-07-22 신설 — 위 항목의 5단계 regime 문자열을 표시용 한글 단어로 바꾸는 지점을 하나로 통일 |
 | 코인 RSI 임계값 (과매도 25만 유효) | `scripts/signal_validation.py::run_coin_rsi_validation()` 결과 | `coin_page.py::recommend_score()`, `scripts/crypto_analysis.py::latest_crypto_signal()` | 2026-07-20 통일 |
 | 매크로 레이더 3개 지표 방향(구리/금비율·수익률곡선·달러강도) | `scripts/etf_recommend.py::macro_signals()` | `etf_page.py` | 2026-07-20 백테스트(H17~H19)로 방향 검증·수정 |
 | 보유종목 데이터 | `holdings.csv` | `portfolio_page.py`, `rebalancing_page.py` | person 컬럼으로 김현태/김보라 계좌 구분 |

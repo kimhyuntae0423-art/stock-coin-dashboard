@@ -25,7 +25,7 @@ from scripts.etf_recommend import (
 )
 from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
-from scripts.onchain import REGIME_LABEL_KR
+from scripts.onchain import classify_regime, REGIME_LABEL_KR
 
 
 def _load_names() -> dict:
@@ -432,8 +432,11 @@ else:
         f"현재 전략의 방향을 유지하세요.",
     ))
 
-# 3. 코인 사이클 (MVRV)
-if _i_mvrv < 0:
+# 3. 코인 사이클 (MVRV) — 경계값(0/1.5/2.5)은 scripts.onchain.classify_regime()이 SSOT.
+# 문구 자체는 이 페이지 전용 서술이라 그대로 두고, 조건만 그 함수로 통일(2026-07-22) —
+# 이 파일 안에서만 같은 0/1.5/2.5 경계가 7곳에 따로 박혀있던 걸 정리.
+_i_regime = classify_regime(_i_mvrv)["regime"]
+if _i_regime == "deep_value":
     _i_cards.append((
         "💎", "코인 사이클: 극단 바닥", "#faf5ff", "#7e22ce",
         f"시장 온도 지수 {_i_mvrv:.2f} — 코인 보유자 평균이 손실 중인 바닥 구간",
@@ -444,7 +447,7 @@ if _i_mvrv < 0:
         f"불안하더라도 이 구간은 기다리는 것이 맞습니다. "
         f"오히려 여유가 있다면 BTC 소량 적립을 고려할 만한 타이밍입니다.",
     ))
-elif _i_mvrv < 1.5:
+elif _i_regime == "accumulation":
     _i_cards.append((
         "🟢", "코인 사이클: 저평가 구간", "#f0fdf4", "#22c55e",
         f"시장 온도 지수 {_i_mvrv:.2f} — 아직 차가운 편 (1.5 넘으면 주의 / 2.5 넘으면 과열)",
@@ -458,7 +461,7 @@ elif _i_mvrv < 1.5:
         f"다음 반등 시 아래 로드맵에 따라 선별 정리하세요. "
         f"이 지수가 1.5를 넘어갈 때부터 매도 액션을 시작하면 됩니다.",
     ))
-elif _i_mvrv < 2.5:
+elif _i_regime == "bull":
     _i_cards.append((
         "🟠", "코인 사이클: 과열 경계 진입", "#fff7ed", "#f97316",
         f"시장 온도 지수 {_i_mvrv:.2f} — 따뜻해지는 중, 1단계 매도 시점",
@@ -523,9 +526,9 @@ _s_coin = (
 )
 _s_mvrv = (
     f"다만 코인 시장 온도 지수({_i_mvrv:.2f})가 아직 저온 구간이라 지금 파는 것은 저점 매도가 될 수 있습니다."
-    if _i_mvrv < 1.5 else
+    if _i_regime in ("deep_value", "accumulation") else
     f"코인 시장 온도 지수({_i_mvrv:.2f})가 과열 경계에 진입했으니 단계적 매도를 시작할 타이밍입니다."
-    if _i_mvrv < 2.5 else
+    if _i_regime == "bull" else
     f"코인 시장 온도 지수({_i_mvrv:.2f})가 과열 구간으로 적극적인 코인 축소가 필요합니다."
 )
 _s_etf = (
@@ -552,14 +555,14 @@ _i_guide = [
         f"지금 코인·개별주에 추가 투입하면 불균형이 더 깊어집니다.",
     ),
 ]
-if _i_mvrv < 1.5:
+if _i_regime in ("deep_value", "accumulation"):
     _i_guide.append((
         "②", "코인 매도 — 온도 지수 1.5까지 대기",
         f"현재 온도 지수 {_i_mvrv:.2f}는 저평가 구간입니다. "
         f"손실이 크더라도 지금 파는 건 최악의 타이밍입니다. "
         f"지수가 1.5를 넘을 때 아래 로드맵의 Group 1(소형 알트)부터 정리를 시작하세요.",
     ))
-elif _i_mvrv < 2.5:
+elif _i_regime == "bull":
     _i_guide.append((
         "②", "코인 매도 — Group 1·2 단계적 매도 시작",
         f"온도 지수 {_i_mvrv:.2f}로 1단계 트리거 활성화. "

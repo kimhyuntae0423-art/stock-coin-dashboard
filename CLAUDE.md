@@ -23,7 +23,7 @@ Streamlit 대시보드(QVGM 점수, 골든크로스, 코인 온체인 지표, �
 
 | 자산 | 허용 신호 | 근거 |
 |---|---|---|
-| **코인** | `regime` (coin_backtest.py 결과) | accumulation/markup/distribution/markdown |
+| **코인** | `regime` (scripts/onchain.py::classify_regime() 결과, coin_summary.csv에 저장) | deep_value/accumulation/bull/top/unknown (MVRV Z-score 0/1.5/2.5 경계). 이전엔 이 표가 accumulation/markup/distribution/markdown이라고 잘못 적혀 있었고 rebalancing_page.py 리밸런싱 인사이트 분기가 그 잘못된 값으로 조건을 걸고 있었음 — 2026-07-22 코드·문서 동시 수정, scripts.onchain.REGIME_LABEL_KR로 한글 라벨 SSOT 통일 |
 | **코인** | MVRV Z-score 구간 | <0: 바닥, 0~1.5: 저평가, 1.5~2.5: 경계, >2.5: 과열. scripts/onchain.py가 0/2/5/7 구간을 써서 이 표와 어긋나 있었음 — 2026-07-20 코드 수정으로 통일 |
 | **코인** | 알트 시즌 점수 | <25: BTC 시즌, >75: 알트 시즌 |
 | **코인** | RSI<=25 과매도 (H20) | 1M/3M 적중률 51~54% ⚠️ 약함. run_coin_rsi_validation 검증 — 2026-07-20 |
