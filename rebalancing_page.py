@@ -763,15 +763,18 @@ if not holdings.empty:
 
         # coin_summary.csv의 regime은 scripts/onchain.py::classify_regime()이 만드는
         # {deep_value, accumulation, bull, top, unknown} 5단계(MVRV Z-Score 0/1.5/2.5 경계).
-        # 예전 _COIN_REGIME_KR이 다른 어휘(markup/distribution/markdown)를 쓰고 있어
-        # "accumulation" 아닌 값은 전부 원문 영어로 새고 있었음(2026-07-22 발견, 같이 수정).
-        _REGIME_PHRASE_KR = {
-            "deep_value":   "바닥권(역사적 저평가)",
-            "accumulation": "매집구간(저평가)",
-            "bull":         "중립~과열 경계",
-            "top":          "과열구간(비중축소 권고)",
-            "unknown":      "데이터 부족",
+        # 액션 문구는 REGIME_LABEL_KR(SSOT 단어)에 접미사만 붙여서 구성 — 회의적 검증
+        # 에이전트가 지적(2026-07-22): 여기 로컬 dict가 같은 5개 키를 REGIME_LABEL_KR과
+        # 별개로 재입력하고 있어서, 나중에 taxonomy가 바뀌면 한쪽만 갱신되고 여기는
+        # 안 바뀌는 채로 남을 위험이 있었음.
+        _REGIME_PHRASE_SUFFIX_KR = {
+            "deep_value":   "(역사적 저평가)",
+            "accumulation": "구간(저평가)",
+            "bull":         " 경계",
+            "top":          "구간(비중축소 권고)",
+            "unknown":      "",
         }
+        _REGIME_PHRASE_KR = {k: f"{REGIME_LABEL_KR[k]}{v}" for k, v in _REGIME_PHRASE_SUFFIX_KR.items()}
 
         def _coin_action_lbl(action, rsi, regime):
             phrase = _REGIME_PHRASE_KR.get(regime, str(regime) if regime else "데이터 부족")
@@ -2031,6 +2034,13 @@ _val_total  = _val_coin + _val_stock
 _coin_ratio = _val_coin / _val_total * 100 if _val_total > 0 else 0.0
 
 # MVRV 트리거 레벨 (0=대기 / 1=1단계 / 2=2단계 / 3=과열)
+# 주의: scripts.onchain.classify_regime()(0/1.5/2.5 경계, 4단계)과 일부러 다른
+# 체계다 — 이건 그 4단계 중 "bull"(1.5~2.5) 구간을 2.0에서 한 번 더 쪼개서
+# Group1·2 물량을 "1.5에서 절반 매도 → 2.0에서 나머지 전량 매도"로 단계 집행하기
+# 위한 실행 스케줄이라 classify_regime()으로 합치면 그 중간 단계가 사라진다.
+# _mvrv2 자체는 classify_regime()이 읽는 것과 같은 cycle_metrics.csv/mvrv_z
+# 값이라 숫자 소스는 이미 통일돼 있음 — 회의적 검증 에이전트가 "SSOT 미사용"으로
+# 지적(2026-07-22)했지만 의도적 설계라 그대로 둠.
 if _mvrv2 >= 2.5:
     _trigger = 3
     _mvrv_label = "🔴🔴 과열 — Group 1·2·3 전면 정리 구간"

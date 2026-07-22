@@ -1387,14 +1387,9 @@ for _, row in view.iterrows():
             pi_sma350x2 = _cycle.get("pi_sma350x2")
 
             if pd.notna(mvrv):
-                if mvrv < 0:
-                    mvrv_tag = "🟢 역사적 바닥 근접 (BTC 100% 구간)"
-                elif mvrv < 1.5:
-                    mvrv_tag = "🟢 저평가 (BTC 75% 구간)"
-                elif mvrv < 2.5:
-                    mvrv_tag = "🟠 중립~과열 경계 (BTC 45% 구간)"
-                else:
-                    mvrv_tag = "🔴 과열 — 비중 축소 구간 (BTC 20%)"
+                # classify_regime()의 label을 그대로 씀 — 이 자리에 있던 로컬 문구는
+                # 같은 내용을 단어 순서만 바꿔 재입력한 것이었음(회의적 검증, 2026-07-22).
+                mvrv_tag = classify_regime(mvrv)["label"]
                 oc1.metric(
                     "거품 온도계 (MVRV)",
                     f"{mvrv:.2f}",
@@ -1446,13 +1441,9 @@ for _, row in view.iterrows():
         elif is_coin:
             if _mvrv_z_now is not None:
                 _z = _mvrv_z_now
-                _regime = classify_regime(_z)["regime"]
-                _mz_lbl = {
-                    "deep_value":   "🟢 역사적 바닥 근접 (BTC 100% 구간)",
-                    "accumulation": "🟢 저평가 (BTC 75% 구간)",
-                    "bull":         "🟠 과열 경계 (BTC 45% 구간)",
-                    "top":          "🔴 과열 (BTC 20% 구간)",
-                }.get(_regime, "⚪ 데이터 없음")
+                # classify_regime()의 label 재사용 — 로컬 dict가 같은 4단계를
+                # 독자적으로 재입력하고 있던 것(회의적 검증, 2026-07-22).
+                _mz_lbl = classify_regime(_z)["label"]
                 st.info(
                     f"**BTC MVRV Z-Score {_z:.2f}** → {_mz_lbl}  \n"
                     "포트폴리오 신호의 근거. 코인 탭에서 전체 온체인 지표 확인 가능."
