@@ -1473,16 +1473,32 @@ if new_money > 0 and alloc["Total"] > 0:
         def _distribute(bucket_budgets):
             """bucket_budgets={"core":..,"satellite":..,"cash":..}를 _bucket_def
             비례로 개별 종목에 배분. "2단계"에서 판돈을 포함한 예산으로 다시
-            호출하기 위해 재사용 가능하게 뽑음 — 2026-07-21."""
+            호출하기 위해 재사용 가능하게 뽑음 — 2026-07-21.
+
+            개별 종목에 round()를 독립적으로 적용하면 버킷 합계가 budget과
+            1~3원 어긋날 수 있음(재검증 발견, 2026-07-22) — "신규자금분/판돈분"
+            처럼 두 번의 _distribute() 결과를 빼서 보여줄 때 그 오차가 그대로
+            드러남. 최대잉여법(largest remainder)으로 버킷 합계가 항상 정확히
+            budget과 같도록 배분."""
             amts = [0] * len(_rot_df)
             for _bkt, _rows in _bucket_def.items():
+                if not _rows:
+                    continue
                 _tot = sum(d for _, d in _rows) or 1.0
                 _bud = bucket_budgets[_bkt]
-                for _idx, _d in _rows:
-                    amts[_idx] = round(_d / _tot * _bud)
+                _target = round(_bud)
+                _raw = [(_idx, _d / _tot * _bud) for _idx, _d in _rows]
+                _floors = [(_idx, int(_r), _r - int(_r)) for _idx, _r in _raw]
+                for _idx, _f, _ in _floors:
+                    amts[_idx] = _f
+                _remainder = _target - sum(_f for _, _f, _ in _floors)
+                _remainder = max(0, min(len(_floors), _remainder))
+                _order = sorted(range(len(_floors)), key=lambda i: -_floors[i][2])
+                for _k in range(_remainder):
+                    amts[_floors[_order[_k]][0]] += 1
             for _ci in range(len(_rot_df)):
                 if str(_rot_df.iloc[_ci].get("US ETF", "")).upper() == "CASH":
-                    amts[_ci] = bucket_budgets["cash"]
+                    amts[_ci] = round(bucket_budgets["cash"])
                     break
             return amts
 
@@ -1699,30 +1715,42 @@ if new_money > 0 and alloc["Total"] > 0:
             st.markdown(f"**{_step_label}**")
             st.caption(_fund_desc)
 
-            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액2(원)", "인사이트"]].copy()
-            _buy_disp = _buy_disp.rename(columns={"추가금액2(원)": "추가금액(원)"})
-            # ETF 매수(위 필터로 US ETF=="CASH" 제외)만 있으면 표 합계가 캡션의
-            # "총 X원 배분"보다 항상 작게 보여 또 혼란을 줌 — 현금 유보분(cash_res2)도
-            # 행으로 보여줘서 표 합계가 캡션 총액과 일치하게 함 — 2026-07-22.
+            # "판돈 재배분"이라는 이름은 판돈으로 뭘 사는지가 표에 그대로 보여야
+            # 맞다 — 신규자금분과 판돈분을 합쳐서 한 열로만 보여주면 "판돈분 합계"가
+            # 실제 판돈 금액과 안 맞는 것처럼 보여 혼란을 준다(사용자 확인, 2026-07-22).
+            # 신규자금 단독 배분(_rot_df["추가금액(원)"])과 판돈 포함 배분(추가금액2)의
+            # 차이를 "판돈분"으로 분리해서 보여주면, 판돈분 열의 합계가 정확히
+            # 이번 달 매도 판돈(_this_month_proceeds)과 일치한다 — 두 계산 모두 같은
+            # 부족분 비례 로직을 쓰고 budget이 커질수록 각 종목 배분액은 절대
+            # 줄지 않으므로(deficit·scale 단조증가) 판돈분은 항상 0 이상이다.
+            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "추가금액(원)", "추가금액2(원)", "인사이트"]].copy()
+            _buy_disp["판돈분(원)"] = _buy_disp["추가금액2(원)"] - _buy_disp["추가금액(원)"]
+            _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "신규자금분(원)", "추가금액2(원)": "합계(원)"})
             if cash_res2 > 0:
                 _cash_disp_row = pd.DataFrame([{
                     "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—",
-                    "추가금액(원)": round(cash_res2),
+                    "신규자금분(원)": round(cash_res), "판돈분(원)": round(cash_res2 - cash_res),
+                    "합계(원)": round(cash_res2),
                     "인사이트": "🔵 목표 현금비중 채우기 — 다음 조정 시 사용",
                 }])
                 _buy_disp = pd.concat([_buy_disp, _cash_disp_row], ignore_index=True)
             _total_row = pd.DataFrame([{
                 "역할": "합계", "US ETF": "", "ISA(원화)": "",
-                "추가금액(원)": int(_buy_disp["추가금액(원)"].astype(float).sum()),
+                "신규자금분(원)": int(_buy_disp["신규자금분(원)"].astype(float).sum()),
+                "판돈분(원)":     int(_buy_disp["판돈분(원)"].astype(float).sum()),
+                "합계(원)":       int(_buy_disp["합계(원)"].astype(float).sum()),
                 "인사이트": "",
             }])
             _buy_disp = pd.concat([_buy_disp, _total_row], ignore_index=True)
+            _buy_disp = _buy_disp[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "합계(원)", "인사이트"]]
             st.dataframe(
                 _buy_disp,
                 hide_index=True, use_container_width=True,
                 column_config={
-                    "추가금액(원)": st.column_config.NumberColumn("추가금액(원)", format="%,.0f", width="small"),
-                    "인사이트":     st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
+                    "신규자금분(원)": st.column_config.NumberColumn("신규자금분(원)", format="%,.0f", width="small"),
+                    "판돈분(원)":     st.column_config.NumberColumn("판돈분(원)", format="%,.0f", width="small"),
+                    "합계(원)":       st.column_config.NumberColumn("합계(원)", format="%,.0f", width="small"),
+                    "인사이트":       st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
                 },
             )
         st.caption(
