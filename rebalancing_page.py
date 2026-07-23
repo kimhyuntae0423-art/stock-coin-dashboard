@@ -2080,8 +2080,10 @@ _G3_RULES = [
 ]
 
 
-def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigger,
-                         apply_stoploss=False):
+def _coin_group_rows(tickers, h_coin, cprice):
+    """그룹 종목별 현황(이름/평가금액/손익%)만 계산 — 렌더링 없음. 요약 헤드라인과
+    상세 카드 둘 다 같은 계산을 공유하려고 분리(2026-07-23, "로드맵 너무 복잡"
+    피드백으로 요약 우선 표시 구조 도입하며 분리)."""
     group_rows, group_val = [], 0.0
     for t in tickers:
         sub = h_coin[h_coin["ticker"] == t]
@@ -2094,7 +2096,33 @@ def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigg
         pnl     = (cur / avg_buy - 1) * 100 if avg_buy > 0 else 0.0
         group_rows.append({"name": t.replace("-USD", ""), "val": val, "pnl": pnl})
         group_val += val
+    return group_rows, group_val
 
+
+def _coin_group_active_rules(group_rows, rules, trigger, apply_stoploss):
+    """이 그룹에서 지금 당장 실행해야 하는(🔔) 규칙만 뽑아서 (조건→액션) 문자열
+    리스트로 반환 — 요약 헤드라인용. _coin_roadmap_group()의 활성화 판정과
+    완전히 동일한 로직(중복이지만 계산이 가벼워 성능 문제 없음)."""
+    sl_hits = []
+    if apply_stoploss:
+        for r in group_rows:
+            status, reason = coin_alt_stoploss_status(r["pnl"])
+            if status == "sell":
+                sl_hits.append(f"{r['name']}({reason})")
+    active = []
+    for lvl, cond, action in rules:
+        if apply_stoploss and lvl == 0 and ("개별 손실" in cond or "데드라인" in cond):
+            is_active = len(sl_hits) > 0
+        else:
+            is_active = (trigger >= lvl) and (lvl > 0)
+        if is_active:
+            extra = f" — {', '.join(sl_hits)}" if sl_hits and lvl == 0 else ""
+            active.append(f"{cond} → {action}{extra}")
+    return active
+
+
+def _coin_roadmap_group(title, bg, border, group_rows, group_val, rules, trigger,
+                         apply_stoploss=False):
     if not group_rows:
         return
 
@@ -2141,20 +2169,45 @@ def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigg
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 
-_coin_roadmap_group(
-    "🔴 Group 1 — 출구 전략 (TRUMP · MASK · ZETA · SAND · ID)",
-    "#fff1f2", "#ef4444", _G1, _G1_RULES, _h_coin, _cprice2, _trigger,
-    apply_stoploss=True,
+_g1_rows, _g1_val = _coin_group_rows(_G1, _h_coin, _cprice2)
+_g2_rows, _g2_val = _coin_group_rows(_G2, _h_coin, _cprice2)
+_g3_rows, _g3_val = _coin_group_rows(_G3, _h_coin, _cprice2)
+
+_g1_active = _coin_group_active_rules(_g1_rows, _G1_RULES, _trigger, apply_stoploss=True)
+_g2_active = _coin_group_active_rules(_g2_rows, _G2_RULES, _trigger, apply_stoploss=True)
+_g3_active = _coin_group_active_rules(_g3_rows, _G3_RULES, _trigger, apply_stoploss=False)
+_all_active = (
+    [("Group 1", a) for a in _g1_active]
+    + [("Group 2", a) for a in _g2_active]
+    + [("Group 3", a) for a in _g3_active]
 )
-_coin_roadmap_group(
-    "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS)",
-    "#fff7ed", "#f97316", _G2, _G2_RULES, _h_coin, _cprice2, _trigger,
-    apply_stoploss=True,
-)
-_coin_roadmap_group(
-    "🟢 Group 3 — 코어 코인 유지 (BTC · ETH · SOL)",
-    "#f0fdf4", "#22c55e", _G3, _G3_RULES, _h_coin, _cprice2, _trigger,
-)
+
+# 요약 헤드라인 — "지금 뭘 해야 하나"만 먼저 보여줌. 그룹별 규칙 3개(각 2~5줄)를
+# 전부 펼쳐놓으면 지금 실행할 게 있는지 알아내려고 매번 다 읽어야 해서 "너무
+# 복잡하다"는 피드백(2026-07-23) — 활성화된 규칙만 상단에 모으고, 전체 규칙
+# 표는 펼쳐보기로 내림.
+if _all_active:
+    st.error(f"🔔 지금 실행할 매도 {len(_all_active)}건")
+    for _grp, _txt in _all_active:
+        st.markdown(f"- **[{_grp}]** {_txt}")
+else:
+    st.success("✅ 지금 당장 실행할 매도 없음 — 전부 대기 중")
+
+with st.expander("📋 그룹별 상세 규칙 보기 (Group 1·2·3 전체 조건표)"):
+    _coin_roadmap_group(
+        "🔴 Group 1 — 출구 전략 (TRUMP · MASK · ZETA · SAND · ID)",
+        "#fff1f2", "#ef4444", _g1_rows, _g1_val, _G1_RULES, _trigger,
+        apply_stoploss=True,
+    )
+    _coin_roadmap_group(
+        "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS)",
+        "#fff7ed", "#f97316", _g2_rows, _g2_val, _G2_RULES, _trigger,
+        apply_stoploss=True,
+    )
+    _coin_roadmap_group(
+        "🟢 Group 3 — 코어 코인 유지 (BTC · ETH · SOL)",
+        "#f0fdf4", "#22c55e", _g3_rows, _g3_val, _G3_RULES, _trigger,
+    )
 
 # 비중 축소 시뮬레이션
 st.markdown("---")
