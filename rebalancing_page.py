@@ -1646,6 +1646,13 @@ if new_money > 0 and alloc["Total"] > 0:
         from datetime import date as _rb_date_cls
         with st.container(border=True):
             st.markdown("#### 📸 이번 달 비중 스냅샷")
+            st.markdown("""
+            <style>
+            div[data-testid="stHorizontalBlock"]:has(input[aria-label="기준 월 선택"]) {
+                align-items: flex-end;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             _sc_col1, _sc_col2 = st.columns([2, 2])
             with _sc_col1:
                 _snap_month_sel = st.date_input(
