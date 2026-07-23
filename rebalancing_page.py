@@ -1644,38 +1644,40 @@ if new_money > 0 and alloc["Total"] > 0:
 
         # ── 월별 스냅샷 저장 ──────────────────────────────────────────
         from datetime import date as _rb_date_cls
-        _sc_col1, _sc_col2 = st.columns([2, 2])
-        with _sc_col1:
-            _snap_month_sel = st.date_input(
-                "기준 월 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
-                key="snap_month_picker",
-                help="선택한 달의 기준으로 현재 비중을 스냅샷으로 저장합니다",
-            ).strftime("%Y-%m")
-        with _sc_col2:
-            st.write("")  # 세로 정렬용 공백
-            if st.button("📸 이번 달 비중 저장", use_container_width=True, key="snap_save_btn"):
-                _snap_alloc: dict = {}
-                _coin_pct2 = 0.0
-                for _, _sr2 in _rot_df.iterrows():
-                    _us2  = str(_sr2.get("US ETF", "")).upper()
-                    _ac2  = str(_sr2.get("계좌", ""))
-                    _pct2 = float(_sr2.get("현재비중(%)") or 0)
-                    if _us2 == "CASH" or _ac2 == "현금":
-                        _snap_alloc["cash"] = _pct2
-                    elif _ac2 == "코인" or "-USD" in _us2:
-                        _coin_pct2 += _pct2
-                    elif _us2 in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
-                        _snap_alloc[_us2] = _pct2
-                _snap_alloc["coin"] = round(_coin_pct2, 1)
-                _snap_entry = {"month": _snap_month_sel, "total": _rot_total,
-                               "alloc": _snap_alloc}
-                _cur_snaps = _snap_load()
-                _cur_snaps = _snap_upsert(_cur_snaps, _snap_entry)
-                _saved_ok  = _snap_save(_cur_snaps)
-                if _saved_ok:
-                    st.success(f"✅ {_snap_month_sel} 스냅샷 저장 완료")
-                else:
-                    st.warning(f"로컬 저장만 완료 (GitHub 동기화 실패 — GH_PAT 확인)")
+        with st.container(border=True):
+            st.markdown("📸 **이번 달 비중 스냅샷**")
+            _sc_col1, _sc_col2 = st.columns([2, 2])
+            with _sc_col1:
+                _snap_month_sel = st.date_input(
+                    "기준 월 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
+                    key="snap_month_picker",
+                    help="선택한 달의 기준으로 현재 비중을 스냅샷으로 저장합니다",
+                ).strftime("%Y-%m")
+            with _sc_col2:
+                st.write("")  # 세로 정렬용 공백
+                if st.button("📸 이번 달 비중 저장", use_container_width=True, type="primary", key="snap_save_btn"):
+                    _snap_alloc: dict = {}
+                    _coin_pct2 = 0.0
+                    for _, _sr2 in _rot_df.iterrows():
+                        _us2  = str(_sr2.get("US ETF", "")).upper()
+                        _ac2  = str(_sr2.get("계좌", ""))
+                        _pct2 = float(_sr2.get("현재비중(%)") or 0)
+                        if _us2 == "CASH" or _ac2 == "현금":
+                            _snap_alloc["cash"] = _pct2
+                        elif _ac2 == "코인" or "-USD" in _us2:
+                            _coin_pct2 += _pct2
+                        elif _us2 in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
+                            _snap_alloc[_us2] = _pct2
+                    _snap_alloc["coin"] = round(_coin_pct2, 1)
+                    _snap_entry = {"month": _snap_month_sel, "total": _rot_total,
+                                   "alloc": _snap_alloc}
+                    _cur_snaps = _snap_load()
+                    _cur_snaps = _snap_upsert(_cur_snaps, _snap_entry)
+                    _saved_ok  = _snap_save(_cur_snaps)
+                    if _saved_ok:
+                        st.success(f"✅ {_snap_month_sel} 스냅샷 저장 완료")
+                    else:
+                        st.warning(f"로컬 저장만 완료 (GitHub 동기화 실패 — GH_PAT 확인)")
 
         # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
