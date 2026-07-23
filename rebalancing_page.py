@@ -1017,6 +1017,9 @@ div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) button {
     display: none !important;
 }
+div[data-testid="stHorizontalBlock"]:has(input[aria-label="추가 투자할 금액 (원)"]) {
+    align-items: flex-end;
+}
 </style>
 """, unsafe_allow_html=True)
 with st.container(border=True):
