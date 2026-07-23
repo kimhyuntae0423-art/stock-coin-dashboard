@@ -103,3 +103,37 @@
 (2026-07-21 이전 라운드에서 6개 페이지 병렬 점검으로 11개 버그 이미 수정 — `ARCHITECTURE.md`
 연계 맵 및 각 파일 커밋 이력 참고. 이번 라운드는 그 이후 남은 부분·새 회귀를 순차적으로
 더 깊게 재점검한다.)
+
+## 2026-07-22 라운드 — 7개 페이지 병렬 감사 (맥락 없는 독립 에이전트, 실제 데이터 재현)
+
+사용자가 "못믿겠어, 페이지 별로 디버그해줘"라고 요청 — 같은 날 있었던 코인 regime
+SSOT 통일 작업(rebalancing_page.py/portfolio_page.py) 이후 회귀가 없는지, 그리고
+평소 디버그 사이클에서 놓친 게 없는지 7개 페이지 전체를 맥락 없는 병렬 에이전트로
+재검증. 발견·수정된 실제 버그:
+
+- **why_market_page.py**: 벤치마크 티커(SPY/069500.KS/BTC-USD)가 종목 목록에 안 걸러져
+  자기 자신과 비교되던 통계 왜곡, `yf.download` 미가드 크래시, `beat_results["Coin"]`
+  KeyError 위험 — 3건 수정
+- **rebalancing_page.py**: "코인 정리 로드맵" 카드의 개별손실/데드라인 규칙(lvl=0)이
+  렌더링 로직상 구조적으로 절대 🔔가 안 켜지던 버그(`coin_alt_stoploss_status()`가
+  이 파일에서 한 번도 호출 안 되고 있었음, ARCHITECTURE.md는 연결됐다고 잘못 기록) — 수정
+- **portfolio_page.py + scripts/crypto_analysis.py**: `coin_alt_stoploss_status()`에
+  하한이 없어서 G1·G2 코인이 -1% 같은 사소한 손실에도 "매도 권장"이 뜨는 **critical**
+  버그(오늘 보유 코인이 전부 -40%보다 깊이 물려 있어 우연히 안 드러남) — 하한
+  -20%(백테스트 검증 구간의 얕은 경계) 추가. 문구 중복, 신규 🟡 신호 범례 누락도 수정
+- **backtest_page.py**: H15 전략 카드 `.iloc[0]`가 `.empty` 체크보다 먼저 실행되던
+  IndexError, `load_vs_market()`의 `df["start"]` KeyError(빈 rows) — 2건 수정
+- **etf_page.py**: `_regime.get("vix", 0.0)`가 값이 None일 때 기본값이 안 먹혀
+  `TypeError`로 페이지 전체가 죽던 버그, `score_etfs()` 매칭 실패 시 `enrich_with_volume()`
+  KeyError, 검증 실패 신호 OBV(%)가 다른 신호의 IC(+0.04)를 잘못 빌려 쓰며 남아있던 것
+  (rebalancing_page.py는 이미 제거) — 3건 수정
+- **stocks_page.py + portfolio_page.py**: 12-1M 모멘텀 Q1 백테스트 수치가 4곳에
+  "+45.9%"로 하드코딩돼 있었는데 매일 자동 갱신되는 실제 값(당시 +40.2%)과 어긋남 —
+  `scripts/stock_score.py::load_mom_q1_ann_pct()` 신설로 통일
+- **coin_page.py**: RSI≥80 "상승지속" 문구가 BTC/알트 구분 없이 전부에 뜨던 것
+  (CLAUDE.md는 BTC 한정, portfolio_page.py는 이미 알트를 다르게 처리 중) — 게이팅 추가.
+  `scripts/onchain.py` 문서의 존재하지 않는 `_mvrv_zone` 참조 정리. `recommend_score()`
+  매수 순위가 실제 보유 중인 G1·G2 손절 로드맵 상태를 몰라서 "대기" 코인을 Top5에
+  올릴 수 있던 잠재 모순 — 점수는 안 건드리고 로드맵 상태를 병기하는 방식으로 완화
+
+전부 실제 데이터/재현 스크립트로 검증 후 수정, pytest 87건 전부 통과.
