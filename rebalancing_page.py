@@ -954,17 +954,14 @@ with aa1:
     st.metric("💼 총 자산", f"{alloc['Total']:,.0f}원")
     st.caption(f"보유 현금 {cash_amount:,.0f}원 포함 · CASH 행 관리")
 with aa2:
-    st.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
+    st.metric("🏛️ 코어", f"{alloc['Core_value']:,.0f}원 ({alloc['Core_pct']:.1f}%)",
               delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-    st.caption(f"{alloc['Core_value']:,.0f}원")
 with aa3:
-    st.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
+    st.metric("🎯 위성", f"{alloc['Satellite_value']:,.0f}원 ({alloc['Satellite_pct']:.1f}%)",
               delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-    st.caption(f"{alloc['Satellite_value']:,.0f}원")
 with aa4:
-    st.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
+    st.metric("💵 현금", f"{cash_amount:,.0f}원 ({alloc['Cash_pct']:.1f}%)",
               delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-    st.caption(f"{cash_amount:,.0f}원")
 
 if _h_vix:
     if _h_vix > 25:
@@ -1011,7 +1008,7 @@ div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (
     border: none !important; background: transparent !important; box-shadow: none !important;
 }
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) input {
-    font-size: 1.875rem !important; font-weight: 700 !important; font-family: inherit !important;
+    font-size: 2.25rem !important; font-weight: 600 !important; font-family: inherit !important;
     padding: 0 !important; line-height: 1.2 !important; color: rgb(49,51,63) !important;
 }
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) button {
