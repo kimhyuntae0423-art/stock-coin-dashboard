@@ -17,7 +17,9 @@ from scripts.config import (
 )
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
-from scripts.crypto_analysis import coin_g1_exit_status, COIN_EXIT_GROUPS, G1_LOSS_RECOVERY_PCT
+from scripts.crypto_analysis import (
+    coin_alt_stoploss_status, COIN_EXIT_GROUPS, ALT_STOPLOSS_RECOVERY_PCT,
+)
 
 
 def load_names() -> dict:
@@ -457,23 +459,23 @@ def holding_signal(row):
                 pct_b is not None and rsi_bb is not None
                 and pct_b < 0.0 and rsi_bb < 30
             )
+            # G1·G2(출구 전략 대상 알트)는 개별손실 -40%(백테스트 근거) 회복 또는
+            # 2027년말 데드라인 로드맵으로 판단 — 손실 자체(예: -40%)만으로 즉시
+            # "매도"를 내던 옛 규칙은 백테스트 검증도 없었고, 같은 코인에 대해
+            # 리밸런싱 인사이트(MVRV 기준)와 반대 방향을 말하는 사고로 이어졌었음
+            # (2026-07-22, 사용자 실제 목격). G3(BTC·ETH·SOL)는 핵심 장기보유
+            # 자산이라 이 로드맵 대상에서 제외 — MVRV 트리거로만 관리.
+            if pd.notna(pnl_pct) and pnl_pct < 0 and (
+                ticker in COIN_EXIT_GROUPS["G1"] or ticker in COIN_EXIT_GROUPS["G2"]
+            ):
+                alt_status, alt_reason = coin_alt_stoploss_status(pnl_pct)
+                if alt_status == "sell":
+                    return "🔴 전량 매도 권장 (로드맵)", f"{pnl_pct:.1f}% 손실 — {alt_reason}. {cycle_ctx}"
+                if alt_status == "wait":
+                    return "🟡 대기 (로드맵 기준)", f"{pnl_pct:.1f}% 손실 — {alt_reason}. {cycle_ctx}"
+
             if pd.notna(pnl_pct):
                 if pnl_pct <= -40:
-                    # -40% 자체 매도 규칙은 백테스트 검증이 없고, 같은 코인에 대해
-                    # 리밸런싱 인사이트(MVRV 기준)와 반대 방향을 말하는 사고로
-                    # 이어졌었음(2026-07-22, 사용자 실제 목격) — G1(소형 알트, TRUMP·
-                    # MASK·ZETA·SAND·ID)만 실제 청산 로드맵이 있으므로 그 기준
-                    # (coin_g1_exit_status: -60% 회복 또는 2027년 말)을 그대로 따르고,
-                    # 로드맵이 없는 코인은 "매도" 대신 "주의"로 낮춰서 MVRV 신호와
-                    # 정면충돌하지 않게 함.
-                    g1_status, g1_reason = (
-                        coin_g1_exit_status(pnl_pct) if ticker in COIN_EXIT_GROUPS["G1"]
-                        else (None, "")
-                    )
-                    if g1_status == "sell":
-                        return "🔴 전량 매도 권장 (로드맵)", f"{pnl_pct:.1f}% 손실 — {g1_reason}. {cycle_ctx}"
-                    if g1_status == "wait":
-                        return "🟡 대기 (로드맵 기준)", f"{pnl_pct:.1f}% 손실 — {g1_reason}. {cycle_ctx}"
                     if is_bounce:
                         return (
                             "🟠 주의 (반등 후보)",
@@ -716,10 +718,14 @@ _SIGNAL_DISPLAY = [
             "&nbsp;&nbsp;수익률 하위 25%이면 추세도 무너진 상태<br>"
             "₿ BTC: 역사적 고점 근처 — 과열 구간 진입<br>"
             f"🪙 알트: 단기 과열(BB 상단+RSI&gt;70)로 급등 후 꺾임, 또는 "
-            f"G1(소형알트) 로드맵상 손실이 {abs(G1_LOSS_RECOVERY_PCT):.0f}% 이내로 "
-            f"회복 시 — 개별손실 자체(예: -40%)만으로는 매도 근거 아님(2026-07-22 수정)"
+            f"G1·G2(소형·중형알트) 개별손실이 손절선({ALT_STOPLOSS_RECOVERY_PCT:.0f}%,"
+            f" 19종목 백테스트 근거) 이내이거나 2027년 말 데드라인 도달 시"
+            f"(G3인 BTC·ETH·SOL은 이 로드맵 대상 아님, MVRV로만 관리)"
         ),
-        "caption": "개별주 -20% 이상 손실 시 🔴 매도 검토 (코인은 MVRV·로드맵 기준, 개별손실만으로 판단 안 함)",
+        "caption": (
+            f"개별주 -20% 이상 손실 시 🔴 매도 검토 · 코인 G1·G2는 손절선"
+            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%) 회복/데드라인 로드맵, G3은 MVRV 기준"
+        ),
     },
     {
         "emoji": "💎",

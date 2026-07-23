@@ -25,30 +25,45 @@ COIN_EXIT_GROUPS = {
     "G3": ["BTC-USD", "ETH-USD", "SOL-USD"],
 }
 
-# G1(소형 알트)만 가진 개별손실 기반 청산 규칙의 실제 경계값.
-G1_LOSS_RECOVERY_PCT = -60.0
-G1_DEADLINE = datetime.date(2027, 12, 31)
+# G1(소형알트)·G2(중형알트) 개별손실 기반 청산 규칙의 경계값. G3(BTC·ETH·SOL)는
+# 핵심 장기보유 자산이라 이 규칙 대상에서 제외(2026-07-22 사용자 확인) — MVRV
+# 트리거로만 관리.
+#
+# -40%는 scripts/backtest.py::backtest_loss_cut()과 같은 방법론(골든크로스 진입
+# → 손절선 히트 시 그 이후 가격 변화 관측)을 19개 코인 종목·10,940개 진입
+# 케이스에 적용해서 나온 값(2026-07-22 백테스트): -20%~-40%는 손절이 실제로
+# 유리했던 비율(better_to_cut)이 70~74%로 탄탄했지만, -60%를 넘어가면 42.9%로
+# 동전던지기보다 나빠짐 — 이미 그만큼 빠진 뒤에는 손절이 통계적으로 안 도움된다는
+# 뜻. 그래서 "조기 손절선"은 -40%로 두고, 그보다 훨씬 깊이 물린 기존 보유분은
+# 즉시 매도 강제 대신 "손절선까지 회복하면 매도(그 전엔 대기)"로 처리.
+ALT_STOPLOSS_RECOVERY_PCT = -40.0
+ALT_STOPLOSS_DEADLINE = datetime.date(2027, 12, 31)
 
 
-def coin_g1_exit_status(pnl_pct, today=None):
-    """G1 코인의 "-60% 이내 회복 → 전량 매도 / 2027년 말 데드라인" 규칙을 실제로
-    계산 가능하게 만든 함수(2026-07-22). 이 규칙은 원래 rebalancing_page.py의
+def coin_alt_stoploss_status(pnl_pct, today=None):
+    """G1·G2 코인의 "-40% 이내 회복 → 전량 매도 / 2027년 말 데드라인" 규칙을
+    실제로 계산 가능하게 만든 함수(2026-07-22, 기존 coin_g1_exit_status에서
+    G2까지 확장 + 백테스트 기반 -40%로 조정). 이 규칙은 원래 rebalancing_page.py의
     "코인 정리 로드맵" 카드에 문구로만 있었고 실제 손실%·날짜와 비교해 평가된
     적이 없었음 — 그 사이 portfolio_page.py는 이 규칙과 무관한 자체 "-40% 손실
     → 매도검토"를 써서, 같은 코인에 대해 리밸런싱 인사이트(MVRV 매집구간 →
     매수 우호)와 정반대 방향을 동시에 보여주는 사고로 이어졌음(사용자 실제 목격).
 
-    Returns (status, reason) — status는 "sell"|"wait"|None(G1 대상 아님/데이터없음).
+    Returns (status, reason) — status는 "sell"|"wait"|None(대상 아님/데이터없음).
     """
     if pnl_pct is None or pnl_pct != pnl_pct:  # None 또는 NaN
         return None, ""
     if today is None:
         today = datetime.date.today()
-    if pnl_pct >= G1_LOSS_RECOVERY_PCT:
-        return "sell", f"손실이 {G1_LOSS_RECOVERY_PCT:.0f}% 이내로 회복 — 로드맵 기준 전량 매도 권장"
-    if today >= G1_DEADLINE:
+    if pnl_pct >= ALT_STOPLOSS_RECOVERY_PCT:
+        return "sell", f"손실 {pnl_pct:.1f}%로 손절선({ALT_STOPLOSS_RECOVERY_PCT:.0f}%) 이내 — 로드맵 기준 매도 권장 시점"
+    if today >= ALT_STOPLOSS_DEADLINE:
         return "sell", "2027년 말 데드라인 도달 — 조건 미충족, 로드맵 기준 전량 매도"
-    return "wait", f"손실 {pnl_pct:.1f}% — 로드맵 기준 {G1_LOSS_RECOVERY_PCT:.0f}% 회복 또는 2027년 말까지 대기"
+    return "wait", (
+        f"손실 {pnl_pct:.1f}% — 손절선({ALT_STOPLOSS_RECOVERY_PCT:.0f}%)을 이미 넘어선 상태. "
+        f"지금 추가로 매도해도 백테스트상 이점 없음(-60%대 손절 유리율 42.9%) — "
+        f"{ALT_STOPLOSS_RECOVERY_PCT:.0f}% 회복 또는 2027년 말까지 대기"
+    )
 
 _REGIME_PHRASE_SUFFIX_KR = {
     "deep_value":   "(역사적 저평가)",

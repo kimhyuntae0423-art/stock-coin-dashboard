@@ -20,7 +20,10 @@ USDKRW = 1380.0
 
 
 def _row(buy_price):
-    return {"buy_price": buy_price, "ticker": "ETC-USD"}
+    # G1/G2/G3 어디에도 안 속한 코인 — 이 테스트는 환율 변환 자체만 검증하는
+    # 것이라, 손절 로드맵(G1·G2)의 "깊이 물리면 severity 0(대기)" 분기에
+    # 걸리지 않는 티커를 씀.
+    return {"buy_price": buy_price, "ticker": "ADA-USD"}
 
 
 def test_currency_conversion_not_flat_minus_100():
@@ -37,8 +40,8 @@ def test_currency_conversion_not_flat_minus_100():
 
 
 def test_g1_ticker_deep_loss_not_flagged_sell_when_roadmap_says_wait():
-    """G1(TRUMP 등) 코인은 -40% 넘어도 로드맵(-60% 회복/2027년말) 미도달이면
-    severity 0(알림 없음) — 검증 안 된 -40% 규칙으로 '매도 검토' 내면 안 됨."""
+    """G1(TRUMP 등) 코인은 손절선(-40%)보다 훨씬 깊이 물려 있으면
+    severity 0(알림 없음) — 검증 안 된 규칙으로 '매도 검토' 내면 안 됨."""
     row = {"buy_price": 12_629.0, "ticker": "TRUMP-USD"}
     sig_row = {"close": 1.6}  # 실제 데이터 기준 손실 -80%대
     severity, reasons = severity_for_holding(
@@ -49,10 +52,10 @@ def test_g1_ticker_deep_loss_not_flagged_sell_when_roadmap_says_wait():
 
 
 def test_g1_ticker_sells_when_recovered_to_threshold():
-    """G1 코인이 실제로 -60% 이내로 회복하면 severity 2로 매도 신호를 내야 한다."""
+    """G1 코인이 손절선(-40%) 이내로 회복하면 severity 2로 매도 신호를 내야 한다."""
     row = {"buy_price": 100_000.0, "ticker": "TRUMP-USD"}
-    # 손익 -50% (환율 반영 후) 나오도록 close 역산
-    close_usd = (100_000.0 * 0.50) / USDKRW
+    # 손익 -35% (환율 반영 후, 손절선 -40%보다 나은 상태) 나오도록 close 역산
+    close_usd = (100_000.0 * 0.65) / USDKRW
     sig_row = {"close": close_usd}
     severity, reasons = severity_for_holding(
         row, sig_row, mvrv_z=0.42, is_coin=True, bb=None, usdkrw=USDKRW,
@@ -61,12 +64,23 @@ def test_g1_ticker_sells_when_recovered_to_threshold():
     assert "회복" in reasons[0] or "매도" in reasons[0]
 
 
-def test_non_g1_alt_deep_loss_downgraded_to_caution_not_sell():
-    """G1 로드맵이 없는 알트(ETC 등)는 -40% 손실이어도 severity 1(주의)이지
-    severity 2(매도 검토)를 내면 안 된다 — MVRV가 매수 우호일 때 정반대
-    신호가 동시에 뜨는 사고를 막기 위함."""
+def test_g2_ticker_also_uses_roadmap_not_flagged_sell_when_deep():
+    """G2(ETC 등)도 이제 같은 손절선 로드맵을 쓴다 — 깊이 물려 있으면 severity 0."""
     row = {"buy_price": 25_631.0, "ticker": "ETC-USD"}
-    sig_row = {"close": 7.0}
+    sig_row = {"close": 7.0}  # 실제 데이터 기준 손실 -60%대
+    severity, reasons = severity_for_holding(
+        row, sig_row, mvrv_z=0.42, is_coin=True, bb=None, usdkrw=USDKRW,
+    )
+    assert severity == 0
+    assert reasons == []
+
+
+def test_g3_alt_deep_loss_downgraded_to_caution_not_sell():
+    """G3(BTC·ETH·SOL, 핵심 장기보유)는 손절선 로드맵 대상이 아니라서, 개별
+    손실이 커도 severity 1(주의)이지 severity 2(매도 검토)를 내면 안 된다
+    — MVRV가 매수 우호일 때 정반대 신호가 동시에 뜨는 사고를 막기 위함."""
+    row = {"buy_price": 4_111_452.0, "ticker": "ETH-USD"}
+    sig_row = {"close": 1_920.0}  # 실제 데이터 기준 손실 -35%대
     severity, reasons = severity_for_holding(
         row, sig_row, mvrv_z=0.42, is_coin=True, bb=None, usdkrw=USDKRW,
     )

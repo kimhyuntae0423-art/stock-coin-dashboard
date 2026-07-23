@@ -28,6 +28,7 @@ from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
 from scripts.crypto_analysis import (
     coin_holdings_action_text, coin_rebalance_insight, COIN_EXIT_GROUPS,
+    ALT_STOPLOSS_RECOVERY_PCT,
 )
 
 
@@ -2025,16 +2026,21 @@ _G1 = COIN_EXIT_GROUPS["G1"]
 _G2 = COIN_EXIT_GROUPS["G2"]
 _G3 = COIN_EXIT_GROUPS["G3"]
 
+# 개별손실 손절선(-40%)은 scripts.crypto_analysis.ALT_STOPLOSS_RECOVERY_PCT가
+# SSOT — 19종목·10,940건 백테스트 근거(better_to_cut 70.2%). G1·G2 둘 다 적용,
+# G3(BTC·ETH·SOL)는 핵심 장기보유라 제외(2026-07-22 사용자 확인).
 _G1_RULES = [
     (1, "MVRV Z ≥ 1.5 도달",       "50% 매도"),
     (2, "MVRV Z ≥ 2.0 도달",       "나머지 전량 매도"),
-    (0, "개별 손실 -60% 이내 회복", "전량 매도 (조건 먼저 도달 시)"),
+    (0, f"개별 손실 {ALT_STOPLOSS_RECOVERY_PCT:.0f}% 이내 회복", "전량 매도 (조건 먼저 도달 시)"),
     (0, "2027년 말 데드라인",       "조건 미충족 시 전량 매도"),
 ]
 _G2_RULES = [
     (1, "MVRV Z ≥ 1.5 도달", "GAS·ETC·DOGE 30% 매도 시작"),
     (2, "MVRV Z ≥ 2.0 도달", "GAS·ETC·DOGE 나머지 50% 매도"),
     (2, "MVRV Z ≥ 2.0 도달", "ENS 정리 시작 (ETH 타이밍에 맞춤)"),
+    (0, f"개별 손실 {ALT_STOPLOSS_RECOVERY_PCT:.0f}% 이내 회복", "전량 매도 (조건 먼저 도달 시)"),
+    (0, "2027년 말 데드라인",       "조건 미충족 시 전량 매도"),
 ]
 _G3_RULES = [
     (3, "MVRV Z ≥ 2.5 도달",   "BTC 일부 차익 실현 고려"),

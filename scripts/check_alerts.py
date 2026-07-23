@@ -21,13 +21,13 @@ import pandas as pd
 
 # kakao_notify를 어느 cwd에서든 import 가능하도록, ROOT도 추가해서
 # crypto_analysis.py 내부의 "from scripts.onchain import ..." 절대 임포트가
-# 풀리게 함(2026-07-22, coin_g1_exit_status 도입하며 추가).
+# 풀리게 함(2026-07-22, coin_alt_stoploss_status 도입하며 추가).
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 ROOT = _SCRIPTS_DIR.parent
 sys.path.insert(0, str(_SCRIPTS_DIR))
 sys.path.insert(0, str(ROOT))
 
-from crypto_analysis import coin_g1_exit_status, COIN_EXIT_GROUPS
+from crypto_analysis import coin_alt_stoploss_status, COIN_EXIT_GROUPS
 HOLDINGS = ROOT / "holdings.csv"
 SUMMARY = ROOT / "results" / "summary_signals.csv"
 COIN_SUMMARY = ROOT / "results" / "coin_summary.csv"
@@ -136,21 +136,24 @@ def severity_for_holding(
         # 신호3. 손익 기반 — %B<0+RSI<30(반등 후보 구간)이면 등급 완화.
         # "-40% → 매도(severity 2)"는 백테스트 검증이 없고 코인 정리 로드맵과도
         # 무관해서, 리밸런싱 페이지의 "매수 우호"와 정반대인 카카오 알림이
-        # 나가던 원인이었음(2026-07-22). G1(TRUMP·MASK·ZETA·SAND·ID)만 실제
-        # 로드맵(coin_g1_exit_status: -60% 회복 또는 2027년 말)이 있으므로 그걸
-        # 따르고, 로드맵 없는 코인은 severity를 1(주의)로 낮춤.
+        # 나가던 원인이었음(2026-07-22). G1·G2(출구 전략 대상 알트)는 실제
+        # 로드맵(coin_alt_stoploss_status: 손절선 -40%, 19종목 백테스트 근거 —
+        # 회복 또는 2027년 말)이 있으므로 그걸 따르고, G3(BTC·ETH·SOL, 핵심
+        # 장기보유)와 로드맵 없는 코인은 severity를 1(주의)로 낮춤.
         if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
             pnl_pct = (float(close) / float(buy_price) - 1) * 100
             is_bounce = (
                 pct_b is not None and rsi_bb is not None
                 and pct_b < 0.0 and rsi_bb < 30
             )
+            if pnl_pct < 0 and (
+                ticker_str in COIN_EXIT_GROUPS["G1"] or ticker_str in COIN_EXIT_GROUPS["G2"]
+            ):
+                alt_status, alt_reason = coin_alt_stoploss_status(pnl_pct)
+                if alt_status == "sell":
+                    return 2, [f"손익 {pnl_pct:+.1f}% — {alt_reason}{cycle_ctx}"]
+                return 0, []  # "wait" — 아직 로드맵 트리거 미도달, 알림 불필요
             if pnl_pct <= -40:
-                if ticker_str in COIN_EXIT_GROUPS["G1"]:
-                    g1_status, g1_reason = coin_g1_exit_status(pnl_pct)
-                    if g1_status == "sell":
-                        return 2, [f"손익 {pnl_pct:+.1f}% — {g1_reason}{cycle_ctx}"]
-                    return 0, []  # "wait" — 아직 로드맵 트리거 미도달, 알림 불필요
                 if is_bounce:
                     return 1, [
                         f"손익 {pnl_pct:+.1f}% 심각 — 단, BB 하단+RSI 과매도"
