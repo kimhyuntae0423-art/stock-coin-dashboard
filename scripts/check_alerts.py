@@ -150,9 +150,11 @@ def severity_for_holding(
                 ticker_str in COIN_EXIT_GROUPS["G1"] or ticker_str in COIN_EXIT_GROUPS["G2"]
             ):
                 alt_status, alt_reason = coin_alt_stoploss_status(pnl_pct)
+                # alt_reason이 이미 "손실 X%로/X% —"로 시작해서 앞에 pnl_pct를 또
+                # 붙이면 중복 표시되던 것 수정(2026-07-22 감사에서 발견).
                 if alt_status == "sell":
-                    return 2, [f"손익 {pnl_pct:+.1f}% — {alt_reason}{cycle_ctx}"]
-                return 0, []  # "wait" — 아직 로드맵 트리거 미도달, 알림 불필요
+                    return 2, [f"{alt_reason}{cycle_ctx}"]
+                return 0, []  # "wait"/None(아직 손절 검증 구간 진입 전) — 알림 불필요
             if pnl_pct <= -40:
                 if is_bounce:
                     return 1, [

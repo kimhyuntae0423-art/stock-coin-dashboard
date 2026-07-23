@@ -7,6 +7,11 @@
 -40%는 scripts/backtest.py::backtest_loss_cut()과 같은 방법론을 19개 코인
 종목·10,940개 진입 케이스에 적용한 백테스트 근거(better_to_cut 70.2%)로
 정함(기존 -60%는 임의값이었음, G1만 적용하던 것도 G2까지 확장).
+
+-20% 하한(ALT_STOPLOSS_VALIDATED_FLOOR_PCT)은 독립 감사 에이전트가 발견한
+버그(2026-07-22) 수정: 하한이 없어서 G1·G2 코인이 -1% 같은 사소한 손실만
+나도 "손절선 이내 — 매도 권장"이 뜨고 있었음. 백테스트가 실제로 검증한
+구간은 -20%~-40%뿐이라, 그보다 얕은 손실에는 이 규칙 자체가 적용 안 되게 함.
 """
 import sys
 import datetime
@@ -15,6 +20,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from scripts.crypto_analysis import (
     coin_alt_stoploss_status, ALT_STOPLOSS_RECOVERY_PCT, ALT_STOPLOSS_DEADLINE,
+    ALT_STOPLOSS_VALIDATED_FLOOR_PCT,
 )
 
 
@@ -58,3 +64,30 @@ def test_deep_loss_day_before_deadline_still_waits():
     day_before = ALT_STOPLOSS_DEADLINE - datetime.timedelta(days=1)
     status, _ = coin_alt_stoploss_status(-80.0, today=day_before)
     assert status == "wait"
+
+
+def test_trivial_loss_below_floor_not_applicable():
+    # -1% 같은 사소한 손실은 백테스트 검증 구간(-20%~-40%) 밖 — 규칙 자체가
+    # 적용되면 안 됨(회귀 테스트: 2026-07-22 감사에서 발견된 실제 버그).
+    status, reason = coin_alt_stoploss_status(-1.0, today=datetime.date(2026, 7, 22))
+    assert status is None
+    assert reason == ""
+
+
+def test_small_gain_not_applicable():
+    status, _ = coin_alt_stoploss_status(15.0, today=datetime.date(2026, 7, 22))
+    assert status is None
+
+
+def test_exactly_at_floor_is_in_validated_zone_sells():
+    status, _ = coin_alt_stoploss_status(
+        ALT_STOPLOSS_VALIDATED_FLOOR_PCT, today=datetime.date(2026, 7, 22)
+    )
+    assert status == "sell"
+
+
+def test_just_below_floor_not_applicable():
+    status, _ = coin_alt_stoploss_status(
+        ALT_STOPLOSS_VALIDATED_FLOOR_PCT + 0.1, today=datetime.date(2026, 7, 22)
+    )
+    assert status is None

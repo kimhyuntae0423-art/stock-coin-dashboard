@@ -36,7 +36,11 @@ _valid   = _scored.dropna(subset=["close", "score"]).sort_values("score", ascend
 _all     = _scored.sort_values("return_12m_pct", ascending=False, na_position="last")
 
 # ── 오늘의 핵심 인사이트 ─────────────────────────────────────────────────────
-_ins_vix  = _regime.get("vix", 0.0)
+# _regime["vix"] 키는 항상 있지만 그날 ^VIX 데이터가 없으면 값이 None일 수
+# 있음 — dict.get(key, default)는 키가 "없을 때"만 기본값을 쓰고 값이 None인
+# 경우는 그대로 None을 반환해서, 아래 `_ins_vix > 25` 비교에서 TypeError로
+# 페이지 전체가 죽던 버그(2026-07-22 감사에서 발견).
+_ins_vix  = _regime.get("vix") or 0.0
 _ins_lbl  = _regime.get("label", "—")
 _ins_1m   = _regime.get("spy_1m", 0.0)
 _ins_12m  = _regime.get("spy_12m", 0.0)
@@ -278,7 +282,12 @@ if not _valid.empty:
     _full = _valid.copy()
     _full["사이클상태"] = _full["섹터사이클"].fillna("—") if "섹터사이클" in _full.columns else "—"
 
-    _extra_cols = ["냉각순위", "거래량신호", "과열신호", "MA정렬", "BB위치", "OBV추세"]
+    # OBV추세(H3)는 백테스트 검증 실패(IC=-0.014~-0.022, 적중률 49.4% — 사실상
+    # 역방향·무예측력, CLAUDE.md "검증 실패" 표 참고) 신호라 표에서 제외
+    # (rebalancing_page.py "보유 현황" 표는 2026-07-22 이미 제거했는데 이
+    # 페이지엔 남아있었고, 게다가 IC=+0.04라는 다른 신호(거래량비율)의 수치를
+    # 잘못 빌려 쓰고 있었음 — 같은 날 감사에서 발견해 같이 수정).
+    _extra_cols = ["냉각순위", "거래량신호", "과열신호", "MA정렬", "BB위치"]
     _base_cols  = ["ticker", "name", "버킷", "사이클상태",
                    "return_1m_pct", "return_12m_pct", "rsi14"]
     _opt_cols   = [c for c in _extra_cols if c in _full.columns]
@@ -299,7 +308,6 @@ if not _valid.empty:
             "return_12m_pct": "12개월(%)", "rsi14": "RSI",
             "냉각순위": "상대적 저점", "거래량신호": "거래량", "과열신호": "과열신호",
             "MA정렬": "MA(0-3)", "BB위치": "BB위치",
-            "OBV추세": "OBV(%)",
             "사이클배율": "사이클배율", "score": "배분점수", "state": "추세",
         }),
         hide_index=True, use_container_width=True,
@@ -322,8 +330,6 @@ if not _valid.empty:
                          help="3=완전정렬 → 과열 경보(IC=-0.065 역방향). 상대적 저점 구성 요소"),
             "BB위치":   st.column_config.NumberColumn(format="%.2f",
                          help="0.85↑ = 과열. 0↓ = 밴드 이탈(극단 조정). 상대적 저점 구성 요소"),
-            "OBV(%)":   st.column_config.NumberColumn(format="%+.1f",
-                         help="IC=+0.04 (약한 양방향). 매집 신호 참고용"),
             "사이클배율": st.column_config.TextColumn("사이클배율",
                          help="IC=-0.023, p=0.34 → ±5% 참고만"),
             "배분점수": st.column_config.ProgressColumn("배분점수",

@@ -533,6 +533,11 @@ def score_etfs(etf_df: pd.DataFrame, summary_df: pd.DataFrame, regime_key: str) 
 
     valid = merged.dropna(subset=["close"]).copy()
     if valid.empty:
+        # core_etfs.csv의 티커가 그날 summary_signals.csv에 하나도 없으면(포맷
+        # 변경·ETF 구간만 수집 실패 등) "score" 컬럼 자체가 없는 채로 반환돼서
+        # enrich_with_volume()이 out["score"]에서 KeyError로 죽던 버그 —
+        # 2026-07-22 감사에서 발견. 빈 score 컬럼을 채워서 반환.
+        merged["score"] = pd.NA
         return merged
 
     # 섹터 사이클 매핑 빌드

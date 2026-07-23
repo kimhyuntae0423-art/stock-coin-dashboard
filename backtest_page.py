@@ -62,6 +62,11 @@ def load_vs_market():
             rows.append(r)
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        # 신호 CSV가 전부 로드 실패하면 rows가 비어서 df["start"]가 KeyError —
+        # why_market_page.py::load_returns()와 동일한 패턴으로 가드
+        # (2026-07-22 감사에서 발견).
+        return df, {}, "-", "-"
     start, end = df["start"].min(), df["end"].max()
 
     def _bench(ticker):
@@ -457,9 +462,14 @@ with tab_strat:
             _eq_df = pd.read_csv(_strat_eq_file)
             _mt_df = pd.read_csv(_strat_mt_file) if _strat_mt_file.exists() else pd.DataFrame()
             _updated = pd.Timestamp(_strat_eq_file.stat().st_mtime, unit="s").strftime("%Y-%m-%d %H:%M")
-            st.caption(f"갱신: {_updated}  |  {_eq_df['ym'].iloc[0]} ~ {_eq_df['ym'].iloc[-1]} ({len(_eq_df)}개월)")
 
-            if not _eq_df.empty:
+            if _eq_df.empty:
+                # 파일은 있지만 헤더만 있고 행이 없는 경우(자동 갱신 파이프라인 부분
+                # 실패) — .iloc[0] 접근 전에 가드해서 IndexError 크래시 방지
+                # (2026-07-22 감사에서 발견).
+                st.info("결과 파일이 비어 있습니다 — 다음 새벽 7시 자동 갱신 후 표시됩니다.")
+            else:
+                st.caption(f"갱신: {_updated}  |  {_eq_df['ym'].iloc[0]} ~ {_eq_df['ym'].iloc[-1]} ({len(_eq_df)}개월)")
                 import plotly.graph_objects as _pgo
                 _fig_eq = _pgo.Figure()
                 _fig_eq.add_trace(_pgo.Scatter(x=_eq_df["ym"], y=_eq_df["strategy_cum"],
@@ -664,45 +674,50 @@ with tab_sig:
         mkt_df, benchmarks, period_start, period_end = load_vs_market()
     st.markdown(f"**분석 기간**: {period_start} ~ {period_end}")
 
-    for cat, cat_label in [("US", "미국 주식"), ("KR", "한국 주식"), ("Coin", "코인")]:
-        sub  = mkt_df[mkt_df["category"] == cat].sort_values("total_ret", ascending=False).reset_index(drop=True)
-        b    = benchmarks.get(cat, {})
-        btot = b.get("total")
-        bann = b.get("ann")
-        bname= b.get("name", "")
-        if len(sub) == 0 or btot is None:
-            continue
+    if mkt_df.empty:
+        # rows가 비어서 만들어진 컬럼 없는 빈 df — mkt_df["category"] 접근 전에
+        # 가드(2026-07-22 감사에서 발견, load_vs_market()의 KeyError 수정과 짝).
+        st.info("종목 신호 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
+    else:
+        for cat, cat_label in [("US", "미국 주식"), ("KR", "한국 주식"), ("Coin", "코인")]:
+            sub  = mkt_df[mkt_df["category"] == cat].sort_values("total_ret", ascending=False).reset_index(drop=True)
+            b    = benchmarks.get(cat, {})
+            btot = b.get("total")
+            bann = b.get("ann")
+            bname= b.get("name", "")
+            if len(sub) == 0 or btot is None:
+                continue
 
-        beat_n   = (sub["total_ret"] > btot).sum()
-        beat_pct = beat_n / len(sub) * 100
-        median   = sub["total_ret"].median()
-        mean     = sub["total_ret"].mean()
+            beat_n   = (sub["total_ret"] > btot).sum()
+            beat_pct = beat_n / len(sub) * 100
+            median   = sub["total_ret"].median()
+            mean     = sub["total_ret"].mean()
 
-        st.markdown(f"#### {cat_label} ({len(sub)}개)")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"벤치마크 ({bname})", f"{btot:+.1f}%", f"연 {bann:+.1f}%")
-        c2.metric("시장 이긴 종목", f"{beat_pct:.0f}%", f"{beat_n}/{len(sub)}개")
-        c3.metric("전체 평균 수익", f"{mean:+.1f}%", f"벤치마크 대비 {mean-btot:+.1f}%p",
-                  delta_color="normal" if mean >= btot else "inverse")
-        c4.metric("중앙값 수익", f"{median:+.1f}%", f"벤치마크 대비 {median-btot:+.1f}%p",
-                  delta_color="normal" if median >= btot else "inverse")
+            st.markdown(f"#### {cat_label} ({len(sub)}개)")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric(f"벤치마크 ({bname})", f"{btot:+.1f}%", f"연 {bann:+.1f}%")
+            c2.metric("시장 이긴 종목", f"{beat_pct:.0f}%", f"{beat_n}/{len(sub)}개")
+            c3.metric("전체 평균 수익", f"{mean:+.1f}%", f"벤치마크 대비 {mean-btot:+.1f}%p",
+                      delta_color="normal" if mean >= btot else "inverse")
+            c4.metric("중앙값 수익", f"{median:+.1f}%", f"벤치마크 대비 {median-btot:+.1f}%p",
+                      delta_color="normal" if median >= btot else "inverse")
 
-        with st.expander(f"{cat_label} 전체 수익률 테이블"):
-            display = sub[["ticker", "total_ret", "ann_ret"]].copy()
-            display.columns = ["종목", "총 수익률(%)", "연환산(%)"]
-            display["벤치마크 대비"] = (display["총 수익률(%)"] - btot).round(1)
-            display["결과"] = display["총 수익률(%)"].apply(lambda x: "✅ 초과" if x > btot else "❌ 미달")
-            st.dataframe(display, use_container_width=True, hide_index=True,
-                column_config={
-                    "총 수익률(%)":  st.column_config.NumberColumn(format="%.1f%%"),
-                    "연환산(%)":     st.column_config.NumberColumn(format="%.1f%%"),
-                    "벤치마크 대비": st.column_config.NumberColumn(format="%+.1f%%"),
-                })
+            with st.expander(f"{cat_label} 전체 수익률 테이블"):
+                display = sub[["ticker", "total_ret", "ann_ret"]].copy()
+                display.columns = ["종목", "총 수익률(%)", "연환산(%)"]
+                display["벤치마크 대비"] = (display["총 수익률(%)"] - btot).round(1)
+                display["결과"] = display["총 수익률(%)"].apply(lambda x: "✅ 초과" if x > btot else "❌ 미달")
+                st.dataframe(display, use_container_width=True, hide_index=True,
+                    column_config={
+                        "총 수익률(%)":  st.column_config.NumberColumn(format="%.1f%%"),
+                        "연환산(%)":     st.column_config.NumberColumn(format="%.1f%%"),
+                        "벤치마크 대비": st.column_config.NumberColumn(format="%+.1f%%"),
+                    })
 
-        if abs(mean - median) > 30:
-            top1 = sub.iloc[0]
-            st.warning(f"**슈퍼스타 효과**: {top1['ticker']} 1개가 {top1['total_ret']:+.1f}%로 평균 왜곡. "
-                       f"제외 시 평균 {sub.iloc[1:]['total_ret'].mean():+.1f}%. 중앙값({median:+.1f}%)이 실제 '보통 성과'에 가깝습니다.")
+            if abs(mean - median) > 30:
+                top1 = sub.iloc[0]
+                st.warning(f"**슈퍼스타 효과**: {top1['ticker']} 1개가 {top1['total_ret']:+.1f}%로 평균 왜곡. "
+                           f"제외 시 평균 {sub.iloc[1:]['total_ret'].mean():+.1f}%. 중앙값({median:+.1f}%)이 실제 '보통 성과'에 가깝습니다.")
 
     st.info("중앙값이 벤치마크보다 낮다면, 종목을 무작위로 골랐을 때 시장 지수를 이길 확률이 50% 미만. "
             "전문 펀드매니저도 장기적으로 92%가 S&P500을 못 이깁니다 (SPIVA 15년). "

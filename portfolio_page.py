@@ -19,6 +19,7 @@ from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
 from scripts.crypto_analysis import (
     coin_alt_stoploss_status, COIN_EXIT_GROUPS, ALT_STOPLOSS_RECOVERY_PCT,
+    ALT_STOPLOSS_VALIDATED_FLOOR_PCT,
 )
 
 
@@ -469,10 +470,12 @@ def holding_signal(row):
                 ticker in COIN_EXIT_GROUPS["G1"] or ticker in COIN_EXIT_GROUPS["G2"]
             ):
                 alt_status, alt_reason = coin_alt_stoploss_status(pnl_pct)
+                # alt_reason 자체가 이미 "손실 X%로/X% —"로 시작해서 앞에 pnl_pct를
+                # 또 붙이면 중복 표시되던 것 수정(2026-07-22 감사에서 발견).
                 if alt_status == "sell":
-                    return "🔴 전량 매도 권장 (로드맵)", f"{pnl_pct:.1f}% 손실 — {alt_reason}. {cycle_ctx}"
+                    return "🔴 전량 매도 권장 (로드맵)", f"{alt_reason}. {cycle_ctx}"
                 if alt_status == "wait":
-                    return "🟡 대기 (로드맵 기준)", f"{pnl_pct:.1f}% 손실 — {alt_reason}. {cycle_ctx}"
+                    return "🟡 대기 (로드맵 기준)", f"{alt_reason}. {cycle_ctx}"
 
             if pd.notna(pnl_pct):
                 if pnl_pct <= -40:
@@ -718,14 +721,30 @@ _SIGNAL_DISPLAY = [
             "&nbsp;&nbsp;수익률 하위 25%이면 추세도 무너진 상태<br>"
             "₿ BTC: 역사적 고점 근처 — 과열 구간 진입<br>"
             f"🪙 알트: 단기 과열(BB 상단+RSI&gt;70)로 급등 후 꺾임, 또는 "
-            f"G1·G2(소형·중형알트) 개별손실이 손절선({ALT_STOPLOSS_RECOVERY_PCT:.0f}%,"
-            f" 19종목 백테스트 근거) 이내이거나 2027년 말 데드라인 도달 시"
+            f"G1·G2(소형·중형알트) 개별손실이 백테스트 검증 손절 구간"
+            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%,"
+            f" 19종목 백테스트 근거) 안에 있거나 2027년 말 데드라인 도달 시"
             f"(G3인 BTC·ETH·SOL은 이 로드맵 대상 아님, MVRV로만 관리)"
         ),
         "caption": (
-            f"개별주 -20% 이상 손실 시 🔴 매도 검토 · 코인 G1·G2는 손절선"
-            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%) 회복/데드라인 로드맵, G3은 MVRV 기준"
+            f"개별주 -20% 이상 손실 시 🔴 매도 검토 · 코인 G1·G2는 손절 검증 구간"
+            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%) 진입 시,"
+            f" G3은 MVRV 기준"
         ),
+    },
+    {
+        "emoji": "🟡",
+        "label": "대기 (로드맵 기준)",
+        "card_bg": "#fefce8", "card_border": "#eab308", "card_color": "#a16207",
+        "live_bg": "#fefce8", "live_bd": "#eab308",
+        "items_html": (
+            "코인 G1·G2(소형·중형알트) 전용 — ETF·개별주·G3 해당 없음<br>"
+            f"개별손실이 손절 검증 구간({ALT_STOPLOSS_RECOVERY_PCT:.0f}%)보다 깊이 물려서 "
+            "지금 매도해도 백테스트상 이점이 없는 상태(-60%대 손절 유리율 42.9%)<br>"
+            f"손실이 {ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%로 "
+            "회복하거나 2027년 말 데드라인 도달 시 🔴 매도 검토로 전환"
+        ),
+        "caption": "패닉셀 방지용 — 이미 깊이 물린 포지션을 지금 강제 매도하지 않음",
     },
     {
         "emoji": "💎",
