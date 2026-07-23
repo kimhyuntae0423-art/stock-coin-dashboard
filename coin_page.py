@@ -12,7 +12,8 @@ from scripts.onchain import (
     score_pi_cycle, score_fng, composite_score,
 )
 from scripts.ui import render_fng_gauge
-from scripts.config import RESULTS_DIR as RESULTS, COIN_NAMES_FILE as NAMES_FILE
+from scripts.config import RESULTS_DIR as RESULTS, COIN_NAMES_FILE as NAMES_FILE, HOLDINGS_FILE
+from scripts.crypto_analysis import coin_alt_stoploss_status, COIN_EXIT_GROUPS
 
 
 def load_names() -> dict:
@@ -275,6 +276,40 @@ rec_df["코인명"] = rec_df["ticker"].map(NAMES).fillna("-")
 rec_df = rec_df.sort_values("추천 점수", ascending=False).reset_index(drop=True)
 rec_df["순위"] = rec_df.index + 1
 
+# recommend_score()는 순수 시장 신호(RSI·알트시즌)만 보고 전체 코인 유니버스를
+# 채점 — 사용자가 실제 보유 중인 G1·G2(출구 전략 대상 알트) 코인이 개별손실
+# 손절 로드맵상 "대기"(아직 매도 시점 아님) 상태여도 이 점수는 모르고 "매수
+# 우선순위" 상위에 올릴 수 있음. 같은 코인에 대해 "사라"와 "이미 있는 물량은
+# 정리 계획 중"이 동시에 뜨는 걸 막기 위해, 실제 보유분이 있으면 로드맵
+# 상태를 같이 표시(순위·점수 자체는 안 바꿈 — 시장 신호와 보유 손절 로드맵은
+# 서로 다른 질문이라 점수를 왜곡하지 않고 옆에 사실만 병기, 2026-07-22 감사).
+_exit_status_map: dict = {}
+if HOLDINGS_FILE.exists():
+    _hold = pd.read_csv(HOLDINGS_FILE)
+    _hold = _hold[_hold["ticker"].astype(str).str.contains("-USD", na=False)]
+    _usd_krw_early = get_usd_krw_rate()
+    for _tk in set(_hold["ticker"]).intersection(
+        COIN_EXIT_GROUPS["G1"] + COIN_EXIT_GROUPS["G2"]
+    ):
+        _sub = _hold[_hold["ticker"] == _tk]
+        _qty = _sub["qty"].astype(float).sum()
+        if _qty <= 0:
+            continue
+        _avg_buy = (_sub["qty"].astype(float) * _sub["buy_price"].astype(float)).sum() / _qty
+        _row_m = summary[summary["ticker"] == _tk]
+        if _row_m.empty or _avg_buy <= 0:
+            continue
+        _cur_krw = float(_row_m.iloc[0]["close"]) * _usd_krw_early
+        _pnl = (_cur_krw / _avg_buy - 1) * 100
+        _status, _reason = coin_alt_stoploss_status(_pnl)
+        if _status:
+            _exit_status_map[_tk] = (_status, _pnl, _reason)
+
+rec_df["보유_로드맵"] = rec_df["ticker"].map(
+    lambda t: ("🔴 매도 검토" if _exit_status_map.get(t, (None,))[0] == "sell"
+               else "🟡 대기(손절 로드맵)" if t in _exit_status_map else "")
+)
+
 # 상위 5개 강조
 top5 = rec_df.head(5)
 if comp["avg"] >= 0.5:
@@ -288,6 +323,8 @@ if comp["avg"] >= 0.5:
             st.markdown(f"점수: **{r['추천 점수']:+.2f}**")
             st.markdown(f"RSI: {fmt(r.get('rsi14'), '{:.1f}')}")
             st.markdown(f"90일: {fmt(r.get('return_90d_pct'), '{:+.1f}', '%')}")
+            if r["보유_로드맵"]:
+                st.caption(f"⚠️ 보유 중 — {r['보유_로드맵']} (개별 손절 로드맵 별도 적용, 코인 탭 참고)")
 elif comp["avg"] >= -0.5:
     st.info(f"🔵 종합 신호 중립 ({comp['avg']:+.2f}). 새로 매수보다 보유/관망 권장.")
 else:
@@ -304,15 +341,21 @@ display = display.rename(columns={
     "close": "종가(USD)",
     "rsi14": "RSI",
     "return_90d_pct": "90일 수익률(%)",
+    "보유_로드맵": "보유 중 손절 로드맵",
 })
 st.dataframe(
-    display[["순위", "티커", "코인명", "추천 점수", "종가(USD)", "종가(KRW)", "RSI", "90일 수익률(%)"]],
+    display[["순위", "티커", "코인명", "추천 점수", "종가(USD)", "종가(KRW)", "RSI",
+              "90일 수익률(%)", "보유 중 손절 로드맵"]],
     use_container_width=True,
     hide_index=True,
     column_config={
         "종가(USD)": st.column_config.NumberColumn(format="$%.4f"),
         "종가(KRW)": st.column_config.NumberColumn(format="₩%,.0f",
                                                    help=f"USD × {usd_krw:,.2f} KRW 환산"),
+        "보유 중 손절 로드맵": st.column_config.TextColumn(
+            help="이 코인을 실제 보유 중이고 G1·G2(출구 전략 대상)면 개별손실 손절"
+                 "선(-40%~-20%) 로드맵 상태를 표시. 이 매수 추천 점수와 무관한 별도"
+                 "기준 — 순위/점수는 보유 여부와 상관없이 시장 신호만 반영."),
         "RSI": st.column_config.NumberColumn(format="%.1f"),
         "90일 수익률(%)": st.column_config.NumberColumn(format="%+.1f"),
         "추천 점수": st.column_config.NumberColumn(format="%+.2f"),
