@@ -20,7 +20,7 @@ from scripts.onchain import REGIME_LABEL_KR
 # portfolio_page.py의 개별 코인 매도 신호가 같은 그룹 정의를 쓰도록 SSOT화(2026-07-22).
 COIN_EXIT_GROUPS = {
     "G1": ["TRUMP-USD", "MASK-USD", "ZETA-USD", "SAND-USD", "ID-USD"],
-    "G2": ["GAS-USD", "DOGE-USD", "ETC-USD", "ENS-USD"],
+    "G2": ["GAS-USD", "DOGE-USD", "ETC-USD", "ENS-USD", "XRP-USD"],
     "G3": ["BTC-USD", "ETH-USD", "SOL-USD"],
 }
 

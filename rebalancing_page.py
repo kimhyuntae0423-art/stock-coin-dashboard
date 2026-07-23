@@ -2085,8 +2085,8 @@ _G1_RULES = [
     (0, "2027년 말 데드라인",       "조건 미충족 시 전량 매도"),
 ]
 _G2_RULES = [
-    (1, "MVRV Z ≥ 1.5 도달", "GAS·ETC·DOGE 30% 매도 시작"),
-    (2, "MVRV Z ≥ 2.0 도달", "GAS·ETC·DOGE 나머지 50% 매도"),
+    (1, "MVRV Z ≥ 1.5 도달", "GAS·ETC·DOGE·XRP 30% 매도 시작"),
+    (2, "MVRV Z ≥ 2.0 도달", "GAS·ETC·DOGE·XRP 나머지 50% 매도"),
     (2, "MVRV Z ≥ 2.0 도달", "ENS 정리 시작 (ETH 타이밍에 맞춤)"),
     (0, f"개별 손실 {ALT_STOPLOSS_RECOVERY_PCT:.0f}% 이내 회복", "전량 매도 (조건 먼저 도달 시)"),
     (0, "2027년 말 데드라인",       "조건 미충족 시 전량 매도"),
@@ -2229,7 +2229,7 @@ with st.expander("📋 그룹별 상세 규칙 보기 (Group 1·2·3 전체 조�
         apply_stoploss=True,
     )
     _coin_roadmap_group(
-        "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS)",
+        "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS · XRP)",
         "#fff7ed", "#f97316", _g2_rows, _g2_val, _G2_RULES, _trigger,
         apply_stoploss=True,
     )
