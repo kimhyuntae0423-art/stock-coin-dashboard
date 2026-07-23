@@ -427,6 +427,22 @@ def holding_signal(row):
                     btc_pb is not None and btc_rsi is not None
                     and btc_pb > 1.0 and btc_rsi > 70
                 )
+                # BTC 반등 후보 — 알트에만 있던 "🔵 반등 후보"가 BTC엔 실질적으로
+                # 도달 불가능한 경로("온체인 데이터 없음"뿐)였던 것을 사용자가 지적
+                # (2026-07-22) — scripts/backtest_bb.py로 BTC 전용 검증 실행해서
+                # 실제 근거 확인(2021-2026, %B<0+RSI<30, n=29): 평균 +10.2%,
+                # 승률 69% — 알트(ETC +21.4%/57%)보다 승률은 오히려 높음. 알트의
+                # is_bounce와 동일한 조건을 BTC에도 우선 적용.
+                btc_bounce = (
+                    btc_pb is not None and btc_rsi is not None
+                    and btc_pb < 0.0 and btc_rsi < 30
+                )
+                if btc_bounce:
+                    return (
+                        "🔵 반등 후보",
+                        f"BB 하단 이탈(%B {btc_pb:.2f}) + RSI {btc_rsi:.0f} 과매도"
+                        f" — 평균회귀 반등 후보 (백테스트 +10.2%, 승률 69%, 2021-2026)",
+                    )
                 _regime = classify_regime(z)["regime"]
                 if _regime == "deep_value":
                     return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접 (BTC 100% 구간, 백테스트 검증)"
@@ -696,10 +712,10 @@ _SIGNAL_DISPLAY = [
         "items_html": (
             "📦 ETF: 정기 리밸런싱 일정대로 관리<br>"
             "📈 개별주: 특별한 경보 없음 — 현재 포지션 유지<br>"
-            "🪙 알트: 극단적 저점 + RSI도 바닥 — 단기 반등 후보 (과거 57%)<br>"
-            "₿🪙 BTC·알트: 온체인 데이터 없어 판단 보류"
+            "₿ BTC: 극단적 저점 + RSI도 바닥 — 반등 후보 (과거 승률 69%)<br>"
+            "🪙 알트: 극단적 저점 + RSI도 바닥 — 단기 반등 후보 (과거 57%)"
         ),
-        "caption": None,
+        "caption": "₿🪙 온체인 데이터 완전 유실 시에도 이 카드로 표시(극히 드묾)",
     },
     {
         "emoji": "🟠",
