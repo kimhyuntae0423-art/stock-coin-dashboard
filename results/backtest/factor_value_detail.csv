@@ -5,7 +5,7 @@ AMZN,5.958436,Consumer Cyclical,83.2,Q2
 GOOGL,8.657437,Communication Services,160.0,Q3
 META,6.532136,Communication Services,98.6,Q3
 NVDA,26.277573,Technology,354.7,Q4
-TSLA,17.080423,Consumer Cyclical,39.9,Q4
+TSLA,16.69613,Consumer Cyclical,39.9,Q4
 JPM,2.6179824,Financial Services,135.5,Q2
 V,18.958267,Financial Services,52.1,Q4
 JNJ,7.57759,Healthcare,66.6,Q3
@@ -31,30 +31,30 @@ AMAT,18.394102,Technology,274.5,Q4
 KLAC,48.12598,Technology,328.5,Q4
 LRCX,37.7233,Technology,356.5,Q4
 QCOM,6.8184643,Technology,41.8,Q3
-ASML,1621.7527,Technology,158.1,Q4
+ASML,1622.0227,Technology,158.1,Q4
 TER,18.396654,Technology,230.9,Q4
 FORM,8.34855,Technology,205.1,Q3
 AMKR,3.6609635,Technology,141.6,Q2
 ASX,8.18608,Technology,443.0,Q3
 SNDK,17.180195,Technology,3313.6,Q4
 ARM,36.39399,Technology,429.5,Q4
-005930.KS,3.73,Technology,311.6,Q2
-000660.KS,8.23,Technology,1497.5,Q3
-035420.KS,1.07,Communication Services,-6.2,Q1
-005380.KS,0.94,Consumer Cyclical,150.0,Q1
-000270.KS,0.93,Consumer Cyclical,107.8,Q1
-005490.KS,0.41,Basic Materials,-48.1,Q1
-051910.KS,0.58,Basic Materials,-59.4,Q1
-006400.KS,1.52,Industrials,-33.7,Q1
+005930.KS,3.77,Technology,309.3,Q2
+000660.KS,8.29,Technology,1490.9,Q3
+035420.KS,1.07,Communication Services,-5.3,Q1
+005380.KS,0.94,Consumer Cyclical,153.5,Q1
+000270.KS,0.93,Consumer Cyclical,108.7,Q1
+005490.KS,0.41,Basic Materials,-47.7,Q1
+051910.KS,0.59,Basic Materials,-59.2,Q1
+006400.KS,1.52,Industrials,-33.8,Q1
 035720.KS,1.38,Communication Services,-29.3,Q1
-207940.KS,8.18,Healthcare,18.5,Q3
-068270.KS,2.24,Healthcare,35.6,Q2
-105560.KS,1.06,Financial Services,289.9,Q1
-055550.KS,0.83,Financial Services,233.7,Q1
-015760.KS,0.44,Utilities,89.9,Q1
-066570.KS,1.28,Technology,74.4,Q1
+207940.KS,8.23,Healthcare,18.6,Q3
+068270.KS,2.25,Healthcare,35.6,Q2
+105560.KS,1.06,Financial Services,289.5,Q1
+055550.KS,0.83,Financial Services,231.2,Q1
+015760.KS,0.44,Utilities,87.4,Q1
+066570.KS,1.29,Technology,75.1,Q1
 003670.KS,3.11,Industrials,-72.5,Q2
-247540.KQ,6.12,Industrials,-73.5,Q2
+247540.KQ,6.12,Industrials,-73.3,Q2
 VOO,1.7577664,,69.9,Q2
 VTI,2.6441157,,68.0,Q2
 QQQ,1.971496,,87.0,Q2
