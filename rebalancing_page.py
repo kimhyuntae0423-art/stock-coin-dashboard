@@ -1645,7 +1645,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # ── 월별 스냅샷 저장 ──────────────────────────────────────────
         from datetime import date as _rb_date_cls
         with st.container(border=True):
-            st.markdown("📸 **이번 달 비중 스냅샷**")
+            st.markdown("#### 📸 이번 달 비중 스냅샷")
             _sc_col1, _sc_col2 = st.columns([2, 2])
             with _sc_col1:
                 _snap_month_sel = st.date_input(
