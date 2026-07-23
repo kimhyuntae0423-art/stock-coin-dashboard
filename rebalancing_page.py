@@ -311,8 +311,6 @@ with aa4:
     st.metric("💵 현금", f"{cash_amount:,.0f}원 ({alloc['Cash_pct']:.1f}%)",
               delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
 
-st.divider()
-
 # ── 보유 내역 편집 ────────────────────────────────────────────────
 _he_all_names      = [""] + sorted(set(NAMES.values()))
 _he_name_to_ticker = {v: k for k, v in NAMES.items()}
@@ -390,6 +388,8 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         else:
             st.session_state["_he_save_msg"] = ("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.", False)
         st.rerun()
+
+st.divider()
 
 _i_val = {"ETF": 0.0, "주식": 0.0, "코인": 0.0}
 for _, _hr in holdings.iterrows():
