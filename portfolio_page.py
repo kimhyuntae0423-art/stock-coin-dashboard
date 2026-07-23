@@ -696,9 +696,8 @@ _SIGNAL_DISPLAY = [
         "items_html": (
             "📦 ETF: 정기 리밸런싱 일정대로 관리<br>"
             "📈 개별주: 특별한 경보 없음 — 현재 포지션 유지<br>"
-            "🪙 알트: 가격이 극단적 저점에서 RSI도 바닥 —<br>"
-            "&nbsp;&nbsp;단기 반등 후보 (과거 57% 확률)<br>"
-            "🪙 알트: 온체인 데이터 없어 판단 보류"
+            "🪙 알트: 극단적 저점 + RSI도 바닥 — 단기 반등 후보 (과거 57%)<br>"
+            "₿🪙 BTC·알트: 온체인 데이터 없어 판단 보류"
         ),
         "caption": None,
     },
@@ -723,20 +722,14 @@ _SIGNAL_DISPLAY = [
         "live_bg": "#ffebee", "live_bd": "#e53935",
         "items_html": (
             "📦 ETF: 해당 없음 (리밸런싱으로만 관리)<br>"
-            "📈 개별주: 매수가 대비 -20% 이상 손실<br>"
-            "&nbsp;&nbsp;수익률 하위 25%이면 추세도 무너진 상태<br>"
-            "&nbsp;&nbsp;(단, 모멘텀 상위 25%(Q1)면 🟠 신호 충돌로 별도 처리 — 즉시 매도 아님)<br>"
+            "📈 개별주: -20% 이상 손실 (모멘텀 Q1이면 🟠 신호 충돌로 예외)<br>"
             "₿ BTC: 역사적 고점 근처 — 과열 구간 진입<br>"
-            f"🪙 알트: 단기 과열(BB 상단+RSI&gt;70)로 급등 후 꺾임, 또는 "
-            f"G1·G2(소형·중형알트) 개별손실이 백테스트 검증 손절 구간"
-            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%,"
-            f" 19종목 백테스트 근거) 안에 있거나 2027년 말 데드라인 도달 시"
-            f"(G3인 BTC·ETH·SOL은 이 로드맵 대상 아님, MVRV로만 관리)"
+            f"🪙 알트: 단기 과열(BB+RSI&gt;70), 또는 G1·G2 손절구간"
+            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%) 진입·데드라인 도달"
         ),
         "caption": (
-            f"개별주 -20% 이상 손실 시 🔴 매도 검토 · 코인 G1·G2는 손절 검증 구간"
-            f"({ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%) 진입 시,"
-            f" G3은 MVRV 기준"
+            f"코인 G1·G2 손절구간 진입 기준(19종목 백테스트 근거) — "
+            f"G3(BTC·ETH·SOL)은 이 로드맵 대상 아님, MVRV로만 관리"
         ),
     },
     {
@@ -745,13 +738,12 @@ _SIGNAL_DISPLAY = [
         "card_bg": "#fefce8", "card_border": "#eab308", "card_color": "#a16207",
         "live_bg": "#fefce8", "live_bd": "#eab308",
         "items_html": (
-            "코인 G1·G2(소형·중형알트) 전용 — ETF·개별주·G3 해당 없음<br>"
-            f"개별손실이 손절 검증 구간({ALT_STOPLOSS_RECOVERY_PCT:.0f}%)보다 깊이 물려서 "
-            "지금 매도해도 백테스트상 이점이 없는 상태(-60%대 손절 유리율 42.9%)<br>"
-            f"손실이 {ALT_STOPLOSS_RECOVERY_PCT:.0f}%~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%로 "
-            "회복하거나 2027년 말 데드라인 도달 시 🔴 매도 검토로 전환"
+            "코인 G1·G2 전용 — ETF·개별주·G3(BTC·ETH·SOL) 해당 없음<br>"
+            f"손절선({ALT_STOPLOSS_RECOVERY_PCT:.0f}%)보다 깊이 물려 지금 매도해도 이점 없는 상태<br>"
+            f"{ALT_STOPLOSS_RECOVERY_PCT:.0f}~{ALT_STOPLOSS_VALIDATED_FLOOR_PCT:.0f}%로 회복하거나 "
+            "데드라인(2027년말) 도달 시 🔴 매도 검토로 전환"
         ),
-        "caption": "패닉셀 방지용 — 이미 깊이 물린 포지션을 지금 강제 매도하지 않음",
+        "caption": "패닉셀 방지용 — 이미 깊이 물린 포지션을 지금 강제 매도하지 않음 (-60%대 손절 유리율 42.9%)",
     },
     {
         "emoji": "💎",
