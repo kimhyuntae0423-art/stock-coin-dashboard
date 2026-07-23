@@ -142,9 +142,14 @@ def severity_for_holding(
         # 장기보유)와 로드맵 없는 코인은 severity를 1(주의)로 낮춤.
         if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
             pnl_pct = (float(close) / float(buy_price) - 1) * 100
+            # G1(TRUMP·MASK·ZETA·SAND·ID)은 반등후보 조건(%B<0+RSI<30) 백테스트
+            # 평균 승률 25.75%(TRUMP는 0%)로 뚜렷이 실패 — 이미 손절 로드맵
+            # 대상인 코인에 "반등 후보"까지 붙이면 모순이라 제외(2026-07-22,
+            # portfolio_page.py와 동일 기준).
             is_bounce = (
                 pct_b is not None and rsi_bb is not None
                 and pct_b < 0.0 and rsi_bb < 30
+                and ticker_str not in COIN_EXIT_GROUPS["G1"]
             )
             if pnl_pct < 0 and (
                 ticker_str in COIN_EXIT_GROUPS["G1"] or ticker_str in COIN_EXIT_GROUPS["G2"]

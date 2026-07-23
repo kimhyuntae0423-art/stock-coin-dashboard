@@ -477,10 +477,18 @@ def holding_signal(row):
                     f" — 추세 전환 조기 경보 (백테스트 -18.2%, 8%). {cycle_ctx}",
                 )
 
-            # 신호3. 손익 기반 — %B<0+RSI<30이면 등급 완화
+            # 신호3. 손익 기반 — %B<0+RSI<30이면 등급 완화.
+            # "반등 후보 (57% 승률)" 인용은 사실 ETC-USD 하나의 결과였음 — 21개
+            # 알트 전체에 같은 조건(%B<0+RSI<30 -> 90일 수익률)을 돌려보니
+            # 통합(pooled) 승률은 50%(동전던지기), n=575로 알트 전체에 대한
+            # 근거는 약함. 특히 G1(TRUMP·MASK·ZETA·SAND·ID) 평균 승률
+            # 25.75%(TRUMP는 0%)로 뚜렷하게 실패 — 이미 손절 로드맵으로
+            # "정리 대상"인 코인에 동시에 "반등 후보, 사라" 신호를 내는 모순이라
+            # G1은 이 신호 대상에서 제외(2026-07-22, 사용자 요청으로 재검증 후 발견).
             is_bounce = (
                 pct_b is not None and rsi_bb is not None
                 and pct_b < 0.0 and rsi_bb < 30
+                and ticker not in COIN_EXIT_GROUPS["G1"]
             )
             # G1·G2(출구 전략 대상 알트)는 개별손실 -40%(백테스트 근거) 회복 또는
             # 2027년말 데드라인 로드맵으로 판단 — 손실 자체(예: -40%)만으로 즉시
@@ -517,7 +525,8 @@ def holding_signal(row):
                         return (
                             "🔵 반등 후보",
                             f"{pnl_pct:.1f}% 손실 — BB 하단+RSI 과매도"
-                            f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간 (57% 승률). {cycle_ctx}",
+                            f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간"
+                            f" (종목별 편차 큼, G1 소형알트는 근거 약해 제외). {cycle_ctx}",
                         )
                     return "🟠 주의", f"{pnl_pct:.1f}% 손실 — 알트 하락 주의. {cycle_ctx}"
 
@@ -526,7 +535,8 @@ def holding_signal(row):
                 return (
                     "🔵 반등 후보",
                     f"BB 하단 이탈+RSI 과매도(%B {pct_b:.2f}, RSI {rsi_bb:.0f})"
-                    f" — 평균회귀 반등 후보 (백테스트 +21.4%, 57%). {cycle_ctx}",
+                    f" — 평균회귀 반등 후보 (종목별 편차 큼 — ETH·SOL·TRX 등은 승률 65%+,"
+                    f" G1 소형알트는 근거 약해 제외). {cycle_ctx}",
                 )
             _regime = classify_regime(z)["regime"]
             if _regime == "deep_value":
@@ -713,7 +723,8 @@ _SIGNAL_DISPLAY = [
             "📦 ETF: 정기 리밸런싱 일정대로 관리<br>"
             "📈 개별주: 특별한 경보 없음 — 현재 포지션 유지<br>"
             "₿ BTC: 극단적 저점 + RSI도 바닥 — 반등 후보 (과거 승률 69%)<br>"
-            "🪙 알트: 극단적 저점 + RSI도 바닥 — 단기 반등 후보 (과거 57%)"
+            "🪙 알트(G2·G3만): 극단적 저점 + RSI도 바닥 — 종목별 승률 편차 큼(43~79%)<br>"
+            "&nbsp;&nbsp;G1 소형알트는 이 조건 승률 26%로 근거 약해 제외"
         ),
         "caption": "₿🪙 온체인 데이터 완전 유실 시에도 이 카드로 표시(극히 드묾)",
     },
