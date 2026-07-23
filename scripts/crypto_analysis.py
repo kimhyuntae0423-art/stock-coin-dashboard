@@ -13,7 +13,6 @@
 """
 import datetime
 import pandas as pd
-import ta
 
 from scripts.onchain import REGIME_LABEL_KR
 
@@ -92,6 +91,14 @@ _REGIME_PHRASE_KR = {k: f"{REGIME_LABEL_KR[k]}{v}" for k, v in _REGIME_PHRASE_SU
 
 
 def compute_crypto_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    # 이 함수(run_analysis.py 오프라인 파이프라인 전용)만 ta 패키지가 필요함 —
+    # 모듈 최상단에서 import ta를 하면 이 파일의 다른 함수(coin_alt_stoploss_status
+    # 등, 라이브 Streamlit 페이지가 쓰는 것들)를 쓰려고 import만 해도 ta가 로드되고,
+    # ta가 배포 환경에서 깨지면 라이브 앱 전체가 죽음 — 실제로 오늘 이 리팩터로
+    # rebalancing_page.py가 처음으로 scripts.crypto_analysis를 import하게 되면서
+    # ta가 라이브 앱 경로에 처음 걸렸고 배포 환경에서 ImportError가 났음
+    # (2026-07-23). 이 함수 안으로 지연 import해서 라이브 앱은 ta 없이도 동작하게 함.
+    import ta
     df = df.copy()
     df.rename(columns=lambda c: c.capitalize(), inplace=True)
     if "Close" not in df.columns:
