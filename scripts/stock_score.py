@@ -19,6 +19,23 @@ import pandas as pd
 import numpy as np
 
 
+def load_mom_q1_ann_pct(results_dir) -> float | None:
+    """12-1M 모멘텀 Q1 분위 연환산수익(%) — results/backtest/factor_momentum_stats.csv를
+    GitHub Actions가 매일 자동 갱신하는데, stocks_page.py·portfolio_page.py 여러 곳에
+    이 값이 "+45.9%"로 하드코딩돼 있어서 실제 값(2026-07-22 기준 +40.2%)과 어긋나던
+    것을 감사에서 발견 — 하드코딩 대신 이 함수로 매번 실제 CSV를 읽게 통일."""
+    from pathlib import Path
+    f = Path(results_dir) / "backtest" / "factor_momentum_stats.csv"
+    if not f.exists():
+        return None
+    try:
+        df = pd.read_csv(f)
+        row = df[df["분위"] == "Q1"]
+        return float(row["연환산수익(%)"].iloc[0]) if not row.empty else None
+    except Exception:
+        return None
+
+
 # ============================================================
 # v2 (Legacy) — 절대 임계값 등급 점수 (대시보드 호환 목적)
 # ============================================================

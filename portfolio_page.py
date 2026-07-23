@@ -10,7 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
-from scripts.stock_score import rank_stocks
+from scripts.stock_score import rank_stocks, load_mom_q1_ann_pct
 from scripts.factor_calc import enrich_price_factors
 from scripts.config import (
     RESULTS_DIR as RESULTS, HOLDINGS_FILE, NAMES_FILE, COIN_NAMES_FILE, CORE_ETF_FILE,
@@ -33,6 +33,12 @@ def load_names() -> dict:
 
 
 NAMES = load_names()
+
+# 12-1M 모멘텀 Q1 연환산수익 — holding_signal()에 "+45.9%"가 하드코딩 돼 있어서
+# 매일 자동 갱신되는 실제 값과 어긋나던 것 발견(2026-07-22 감사) —
+# scripts.stock_score.load_mom_q1_ann_pct()로 통일(stocks_page.py와 동일 SSOT).
+_MOM_Q1_ANN = load_mom_q1_ann_pct(RESULTS)
+_MOM_Q1_TXT = f"{_MOM_Q1_ANN:+.1f}%" if _MOM_Q1_ANN is not None else "확인 필요"
 
 # 종목명 → 티커 역방향 매핑 (테이블 첫 열 자동완성용)
 _NAME_TO_TICKER: dict[str, str] = {}
@@ -563,7 +569,7 @@ def holding_signal(row):
         return "🟠 주의", " · ".join(reasons)
 
     if mom_rank_h == "Q1":
-        return "🟢 추가 매수 가능", "12-1M 모멘텀 상위 25%(Q1) — 백테스트 연 +45.9%, 분할 매수 적기"
+        return "🟢 추가 매수 가능", f"12-1M 모멘텀 상위 25%(Q1) — 백테스트 연 {_MOM_Q1_TXT}, 분할 매수 적기"
     if mom_rank_h == "Q2":
         return "🟢 보유 양호", "12-1M 모멘텀 중상위(Q2) — 추세 유지 중"
     return "🔵 보유", "특이사항 없음"

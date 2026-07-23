@@ -138,7 +138,7 @@ def compute_altcoin_season(coin_returns: dict, btc_return: float) -> dict:
 
 # ============= 점수화 & 종합 신호 =============
 def score_mvrv(z: float) -> int:
-    """백테스트 검증 구간(results/backtest/coin_mvrv_zones.csv, coin_page.py _mvrv_zone과 동일).
+    """백테스트 검증 구간(results/backtest/coin_mvrv_zones.csv, classify_regime()과 동일 경계).
     <0: BTC 100% / 0~1.5: BTC 75% / 1.5~2.5: BTC 45% / >2.5: BTC 20%(과열, 비중 축소)."""
     if z is None or pd.isna(z): return 0
     if z < 0: return 2
@@ -186,8 +186,9 @@ def score_fng(score: float) -> int:
 
 def classify_regime(z_score: float) -> dict:
     """MVRV Z-Score 구간 분류 — 백테스트 검증 구간(coin_mvrv_zones.csv)과 통일.
-    coin_page.py의 _mvrv_zone(1차 신호 박스)과 동일한 0/1.5/2.5 경계를 쓴다.
-    이 결과는 run_analysis.py를 거쳐 crypto_analysis.latest_crypto_signal()의
+    coin_page.py도 이 함수를 직접 import해서 쓴다(자체 재구현 없음, 2026-07-22
+    확인 — 예전엔 coin_page.py에 별도 _mvrv_zone 함수가 있다는 문서였으나 실제로는
+    없었음). 이 결과는 run_analysis.py를 거쳐 crypto_analysis.latest_crypto_signal()의
     base_action(매수/보유/매도)에 직접 반영되므로 경계가 어긋나면 안 된다."""
     if z_score is None or pd.isna(z_score):
         return {"regime": "unknown", "label": "데이터 없음", "color": "#888"}

@@ -389,9 +389,18 @@ c5.metric("90일 수익률", fmt(row.get("return_90d_pct"), "{:+.1f}", "%"))
 
 rsi = row.get("rsi14")
 if pd.notna(rsi):
+    # CLAUDE.md "코인(BTC 한정)" 항목 — H20은 코인 전체(BTC+알트) 풀링 결과라
+    # BTC 단독 재검증은 아니지만, portfolio_page.py가 이미 BTC만 "상승 지속"
+    # 프레이밍으로 예외 취급하고 알트는 "참고만"으로 낮춰서 표시 중(2026-07-21).
+    # coin_page.py는 sel(BTC/알트 구분) 없이 모든 코인에 상승지속 문구를 써서
+    # portfolio_page.py와 어긋나던 것 발견(2026-07-22 감사) — 같은 기준으로 통일.
     if rsi >= 80:
-        st.info(f"RSI {rsi:.1f} — 강한 상승 모멘텀. 코인은 과매수가 매도 신호로 작동하지 않음 "
-                f"(H20 백테스트: RSI≥80 적중률 34%, 오히려 상승 지속 경향)")
+        if sel == "BTC-USD":
+            st.info(f"RSI {rsi:.1f} — 강한 상승 모멘텀. BTC는 과매수가 매도 신호로 작동하지 않음 "
+                    f"(H20 백테스트: RSI≥80 적중률 34%, 오히려 상승 지속 경향)")
+        else:
+            st.warning(f"🔥 RSI {rsi:.1f} — 과열 구간. 알트코인 RSI 70+는 적중률 45%(동전던지기 이하) — "
+                       f"단독 매도 신호로 보지 말 것 (H20 백테스트, 참고만)")
     elif rsi <= 25:
         st.success(f"RSI {rsi:.1f} — 과매도 (약한 반등 신호, H20 적중률 51~54%)")
 

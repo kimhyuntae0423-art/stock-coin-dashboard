@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import sys
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from scripts.stock_score import rank_stocks
+from scripts.stock_score import rank_stocks, load_mom_q1_ann_pct
 from scripts.factor_calc import enrich_price_factors
 from scripts.etf_recommend import market_regime
 from scripts.config import RESULTS_DIR as RESULTS, NAMES_FILE
@@ -19,6 +19,12 @@ def load_names() -> dict:
 
 
 NAMES = load_names()
+
+# 12-1M 모멘텀 Q1 연환산수익 — 이 페이지 3곳에 "+45.9%"가 하드코딩 돼 있어서
+# 매일 자동 갱신되는 실제 값(오늘 기준 +40.2%)과 어긋나던 것 발견(2026-07-22
+# 감사) — scripts.stock_score.load_mom_q1_ann_pct()로 통일.
+_MOM_Q1_ANN = load_mom_q1_ann_pct(RESULTS)
+_MOM_Q1_TXT = f"{_MOM_Q1_ANN:+.1f}%" if _MOM_Q1_ANN is not None else "확인 필요"
 
 
 def label(t: str) -> str:
@@ -229,7 +235,7 @@ with tab_summary:
     )
 
     with st.expander("📖 용어 사전 — 어렵게 느낀 표현 풀이"):
-        st.markdown("""
+        st.markdown(f"""
 **🧩 5개 평가 항목 (-2 = 매우 나쁨, 0 = 평균, +2 = 매우 좋음)**
 - **저평가**: PER·PBR이 낮을수록 좋음. "지금 사면 싸다"
 - **품질**: ROE·영업이익률. "회사가 효율적으로 돈을 버는가"
@@ -251,7 +257,7 @@ with tab_summary:
 - ≤ -1.5: 매수 자제
 
 **🎯 통합 추천 (펀더 + 12-1M 모멘텀 결합 / 백테스트 검증)**
-- 💎 **지금이 기회**: 퀄리티 좋고 + 모멘텀 상위 25% (Q1, 연 +45.9% 백테스트)
+- 💎 **지금이 기회**: 퀄리티 좋고 + 모멘텀 상위 25% (Q1, 연 {_MOM_Q1_TXT} 백테스트)
 - ✅ **계속 모아도 좋음**: 퀄리티 좋고 + 모멘텀 중상위 (Q2)
 - ⏳ **모멘텀 개선 대기**: 퀄리티 좋지만 모멘텀 중하위 (Q3) — 회복 확인 후 진입
 - 🟠 **신중 매수**: 퀄리티 좋으나 모멘텀 하위 25% (Q4) — 분할매수
@@ -327,7 +333,7 @@ with tab_summary:
             "성장": st.column_config.NumberColumn(
                 "성장", help="매출·이익 YoY 성장률. 빠르게 크는 회사일수록 높음.", format="%+d"),
             "12-1M 모멘텀": st.column_config.NumberColumn(
-                "12-1M 모멘텀", help="12-1M 모멘텀 z-score 등급 (-2~+2). Jegadeesh-Titman 1993 팩터. 백테스트 Q1 연 +45.9% 검증.", format="%+d"),
+                "12-1M 모멘텀", help=f"12-1M 모멘텀 z-score 등급 (-2~+2). Jegadeesh-Titman 1993 팩터. 백테스트 Q1 연 {_MOM_Q1_TXT} 검증.", format="%+d"),
             "52주 근접도": st.column_config.NumberColumn(
                 "52주 근접도", help="현재가 / 52주 최고가 비율 기반 z-score 등급 (-2~+2). George-Hwang 2004. 신고가 근접일수록 강세 지속 확률↑. RSI와 무관.",
                 format="%+d"),
@@ -346,9 +352,9 @@ with tab_summary:
 
     with st.expander("📘 통합 추천 로직 + 점수 산정 기준"):
         st.markdown(
-            """
+            f"""
 **우선순위 점수** = QVM 종합 점수 + 12-1M 모멘텀 보정 (Q1 +0.5 · Q2 +0.1 · Q3 -0.1 · Q4 -0.3)
-> 골든크로스 적중률 50.8%(동전던지기) → **12-1M 모멘텀 Q1 연 +45.9%(백테스트 검증)**으로 교체
+> 골든크로스 적중률 50.8%(동전던지기) → **12-1M 모멘텀 Q1 연 {_MOM_Q1_TXT}(백테스트 검증)**으로 교체
 
 **통합 추천 매트릭스**
 
