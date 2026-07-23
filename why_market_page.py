@@ -43,9 +43,17 @@ def load_returns():
         r["start"], r["end"] = df.index[0], df.index[-1]
         return r
 
+    # 벤치마크 티커(SPY/069500.KS/BTC-USD)도 results/에 자기 자신의
+    # *_signals.csv를 갖고 있어서, 제외하지 않으면 "SPY가 SPY를 이겼나"처럼
+    # 벤치마크를 자기 자신과 비교하는 행이 섞여 종목 수·승률 통계를 왜곡함
+    # (2026-07-22 발견).
+    _bench_tickers = set(_BENCH_TICKER.values())
+
     rows = []
     for f in stock_files:
         t = f.stem.replace("_signals","")
+        if t in _bench_tickers:
+            continue
         r = _ret(f)
         if r:
             r["ticker"] = t
@@ -53,6 +61,8 @@ def load_returns():
             rows.append(r)
     for f in coin_files:
         t = f.stem.replace("coin_","").replace("_signals","")
+        if t in _bench_tickers:
+            continue
         r = _ret(f)
         if r:
             r["ticker"] = t
@@ -66,7 +76,12 @@ def load_returns():
 
     def _bench_close(ticker):
         """벤치마크 종가 시계열(슈퍼셋 구간 전체)을 한 번만 받아온다."""
-        raw = yf.download(ticker, start=start, end=end, progress=False)
+        try:
+            raw = yf.download(ticker, start=start, end=end, progress=False)
+        except Exception:
+            return None
+        if raw.empty:
+            return None
         close = raw["Close"].squeeze().dropna()
         return close if len(close) >= 2 else None
 
@@ -301,7 +316,10 @@ coin  = df[df["category"] == "Coin"].sort_values("ann_ret", ascending=True)
 b_btc = benchmarks.get("Coin")
 b_btc_ann = b_btc["ann_ret"] if b_btc else None
 
-if b_btc_ann is None or coin.empty:
+if b_btc_ann is None or coin.empty or "Coin" not in beat_results:
+    # "Coin" not in beat_results: coin은 비어있지 않아도(bench_ann 매칭 실패로)
+    # beat_results["Coin"]가 아예 안 만들어질 수 있음 — 2026-07-22 발견, 아래
+    # beat_results["Coin"] 접근에서 KeyError로 페이지가 죽던 경로를 가드.
     st.info("BTC 벤치마크 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.")
 else:
     colors_c = [

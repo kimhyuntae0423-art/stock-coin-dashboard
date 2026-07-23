@@ -28,7 +28,7 @@ from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
 from scripts.crypto_analysis import (
     coin_holdings_action_text, coin_rebalance_insight, COIN_EXIT_GROUPS,
-    ALT_STOPLOSS_RECOVERY_PCT,
+    ALT_STOPLOSS_RECOVERY_PCT, coin_alt_stoploss_status,
 )
 
 
@@ -2048,7 +2048,8 @@ _G3_RULES = [
 ]
 
 
-def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigger):
+def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigger,
+                         apply_stoploss=False):
     group_rows, group_val = [], 0.0
     for t in tickers:
         sub = h_coin[h_coin["ticker"] == t]
@@ -2078,15 +2079,31 @@ def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigg
         gcols[i].metric(row["name"], f"{row['val']:,.0f}원",
                         delta=f"{row['pnl']:+.1f}%", delta_color="normal")
 
+    # "개별 손실 X% 이내 회복"/"데드라인" 규칙(lvl=0)은 MVRV 트리거로는 절대 안
+    # 켜지므로(active = trigger>=lvl AND lvl>0), coin_alt_stoploss_status()로
+    # 실제 종목별 손익%를 넣어 따로 평가한다 — 이전엔 이 두 줄이 문구만 있고
+    # 실제로 계산된 적이 없어서 코인이 손절선까지 회복해도 카드가 항상 ⏳로만
+    # 뜨던 버그였음(2026-07-22 발견).
+    _sl_hits = []
+    if apply_stoploss:
+        for r in group_rows:
+            status, reason = coin_alt_stoploss_status(r["pnl"])
+            if status == "sell":
+                _sl_hits.append(f"{r['name']}({reason})")
+
     for lvl, cond, action in rules:
-        active = (trigger >= lvl) and (lvl > 0)
+        if apply_stoploss and lvl == 0 and ("개별 손실" in cond or "데드라인" in cond):
+            active = len(_sl_hits) > 0
+        else:
+            active = (trigger >= lvl) and (lvl > 0)
         icon   = "🔔" if active else "⏳"
         bg2    = "#fef2f2" if active else "#f9fafb"
         tc     = "#b91c1c" if active else "#374151"
+        extra  = f" — {', '.join(_sl_hits)}" if active and _sl_hits and lvl == 0 else ""
         st.markdown(
             f"<div style='background:{bg2};border-radius:4px;padding:5px 12px;"
             f"margin:3px 0;font-size:13px'>"
-            f"{icon} <span style='color:{tc}'><b>{cond}</b> → {action}</span></div>",
+            f"{icon} <span style='color:{tc}'><b>{cond}</b> → {action}{extra}</span></div>",
             unsafe_allow_html=True,
         )
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -2095,10 +2112,12 @@ def _coin_roadmap_group(title, bg, border, tickers, rules, h_coin, cprice, trigg
 _coin_roadmap_group(
     "🔴 Group 1 — 출구 전략 (TRUMP · MASK · ZETA · SAND · ID)",
     "#fff1f2", "#ef4444", _G1, _G1_RULES, _h_coin, _cprice2, _trigger,
+    apply_stoploss=True,
 )
 _coin_roadmap_group(
     "🟠 Group 2 — 조건부 축소 (GAS · DOGE · ETC · ENS)",
     "#fff7ed", "#f97316", _G2, _G2_RULES, _h_coin, _cprice2, _trigger,
+    apply_stoploss=True,
 )
 _coin_roadmap_group(
     "🟢 Group 3 — 코어 코인 유지 (BTC · ETH · SOL)",
