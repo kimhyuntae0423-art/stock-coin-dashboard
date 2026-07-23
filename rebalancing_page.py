@@ -953,14 +953,18 @@ aa1, aa2, aa3, aa4 = st.columns(4)
 with aa1:
     st.metric("💼 총 자산", f"{alloc['Total']:,.0f}원")
     st.caption(f"보유 현금 {cash_amount:,.0f}원 포함 · CASH 행 관리")
-aa2.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
-           delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-aa3.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
-           delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
+with aa2:
+    st.metric("🏛️ 코어", f"{alloc['Core_pct']:.1f}%",
+              delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
+    st.caption(f"{alloc['Core_value']:,.0f}원")
+with aa3:
+    st.metric("🎯 위성", f"{alloc['Satellite_pct']:.1f}%",
+              delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
+    st.caption(f"{alloc['Satellite_value']:,.0f}원")
 with aa4:
     st.metric("💵 현금", f"{alloc['Cash_pct']:.1f}%",
               delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-    st.caption(f"보유 현금: {cash_amount:,.0f}원")
+    st.caption(f"{cash_amount:,.0f}원")
 
 if _h_vix:
     if _h_vix > 25:
@@ -1015,13 +1019,14 @@ div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (
 }
 </style>
 """, unsafe_allow_html=True)
-mc1, mc2, mc3, mc4 = st.columns(4)
-with mc1:
-    new_money = st.number_input("추가 투자할 금액 (원)", min_value=0, value=2_000_000,
-                                step=100_000, key="new_money_input")
-mc2.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
-mc3.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
-mc4.metric("💵 현금 유보", f"{cash_res:,.0f}원")
+with st.container(border=True):
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    with mc1:
+        new_money = st.number_input("추가 투자할 금액 (원)", min_value=0, value=2_000_000,
+                                    step=100_000, key="new_money_input")
+    mc2.metric("🏛️ 코어 매수", f"{core_buy:,.0f}원")
+    mc3.metric("🎯 위성 매수", f"{sat_buy:,.0f}원")
+    mc4.metric("💵 현금 유보", f"{cash_res:,.0f}원")
 
 if new_money > 0 and alloc["Total"] > 0:
     total_after = alloc["Total"] + new_money
