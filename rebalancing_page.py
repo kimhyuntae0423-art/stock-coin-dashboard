@@ -2182,6 +2182,18 @@ _all_active = (
     + [("Group 3", a) for a in _g3_active]
 )
 
+# 코인 유니버스가 늘어날 때(예: XRP-USD 신규 편입) COIN_EXIT_GROUPS 어디에도
+# 속하지 않으면 이 로드맵의 매도 규칙이 영구히 적용 안 된 채 조용히 빠짐 —
+# 2026-07-23 감사에서 발견(크래시는 아니지만 무기한 미관리 상태로 남는 gap).
+_grouped_tickers = set(_G1) | set(_G2) | set(_G3)
+_ungrouped_held = sorted(set(_h_coin["ticker"]) - _grouped_tickers)
+if _ungrouped_held:
+    st.info(
+        f"ℹ️ {', '.join(t.replace('-USD', '') for t in _ungrouped_held)}는 "
+        "출구 그룹(G1/G2/G3) 미지정 — 이 로드맵의 매도 규칙이 적용되지 않습니다. "
+        "직접 판단으로 관리하세요."
+    )
+
 # 요약 헤드라인 — "지금 뭘 해야 하나"만 먼저 보여줌. 그룹별 규칙 3개(각 2~5줄)를
 # 전부 펼쳐놓으면 지금 실행할 게 있는지 알아내려고 매번 다 읽어야 해서 "너무
 # 복잡하다"는 피드백(2026-07-23) — 활성화된 규칙만 상단에 모으고, 전체 규칙
