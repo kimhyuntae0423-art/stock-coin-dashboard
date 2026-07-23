@@ -3,13 +3,12 @@ AAPL,44.88843,Technology,68.2,Q4
 MSFT,6.9982247,Technology,18.9,Q3
 AMZN,5.958436,Consumer Cyclical,83.2,Q2
 GOOGL,8.657437,Communication Services,160.0,Q3
-META,6.532136,Communication Services,98.6,Q3
+META,6.532136,Communication Services,98.6,Q2
 NVDA,26.277573,Technology,354.7,Q4
 TSLA,16.69613,Consumer Cyclical,39.9,Q4
 JPM,2.6179824,Financial Services,135.5,Q2
 JNJ,7.57759,Healthcare,66.6,Q3
 WMT,9.227718,Consumer Defensive,112.0,Q3
-MA,70.21911,Financial Services,37.4,Q4
 UNH,3.7389147,Healthcare,-9.5,Q2
 HD,23.817907,Consumer Cyclical,7.1,Q4
 DIS,1.5389184,Communication Services,11.2,Q1
@@ -55,9 +54,7 @@ ARM,36.39399,Technology,429.5,Q4
 QQQ,1.971496,,87.0,Q2
 SPY,1.7413214,,69.5,Q2
 VTV,2.8944695,,59.8,Q2
-VEU,1.3370862,,60.4,Q1
 TLT,0.56050783,,-5.5,Q1
 GLD,2.2298946,,107.9,Q2
 SOXX,1.3099045,,217.6,Q1
 XLU,0.7177684,,49.9,Q1
-VPU,1.913363,,49.4,Q2
