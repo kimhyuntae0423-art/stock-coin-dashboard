@@ -300,6 +300,13 @@ funda_file = RESULTS / "fundamentals.csv"
 summary = pd.read_csv(summary_file) if summary_file.exists() else pd.DataFrame()
 funda = pd.read_csv(funda_file) if funda_file.exists() else pd.DataFrame(columns=["ticker"])
 
+# "배분 현황 & 리밸런싱" 상단 요약(목표/총자산)이 페이지 맨 위로 옮겨오면서
+# 여기서 먼저 계산 — "보유 현황" 섹션도 같은 변수를 재사용(2026-07-23,
+# 이전엔 "보유 현황"에서만 계산해서 중복 호출이었음).
+_h_regime = market_regime(summary)
+_h_vix    = _h_regime.get("vix")
+_h_vsig   = _h_regime.get("vix_signal", "")
+
 if not summary.empty and not funda.empty:
     FUNDA_COLS = ["ticker", "per", "forward_per", "pbr", "roe_pct", "profit_margin_pct",
                   "revenue_growth_yoy_pct", "earnings_growth_yoy_pct", "eps_growth_q_pct"]
@@ -332,10 +339,6 @@ _i_cp = {str(r["ticker"]): float(r["close"]) * _i_fx for _, r in _i_csum.iterrow
 _i_sp = dict(zip(summary["ticker"].astype(str), summary["close"])) \
         if not summary.empty else {}
 
-# alloc 사전 계산 — Core-Satellite 슬라이더 세션 상태로 읽기 (첫 렌더 시 기본값 사용)
-target_core      = int(st.session_state.get(KEY_TARGET_CORE, DEFAULT_TARGET_CORE))
-target_satellite = int(st.session_state.get(KEY_TARGET_SATELLITE, DEFAULT_TARGET_SATELLITE))
-target_cash      = int(st.session_state.get(KEY_TARGET_CASH, DEFAULT_TARGET_CASH))
 # cash_amount는 위에서 holdings.csv CASH 티커로 읽음 (세션 상태 불필요)
 # 아래 위젯(new_money_input) 기본값(2,000,000)과 일치시킴 — 새 세션 첫 로드 시
 # 이 폴백(1,000,000)과 위젯 기본값이 달라서 "신규자금분" 등이 잠깐 어긋나던
@@ -356,6 +359,45 @@ for _ct, _cp_val in _i_cp.items():
     price_map_alloc[str(_ct).upper()] = _cp_val
 classified = classify_holdings(view_alloc, core_etf_tickers=core_set)
 alloc = allocation_summary(classified, price_map_alloc, cash_amount=cash_amount)
+
+st.subheader("📊 배분 현황 & 리밸런싱")
+
+ic1, ic2, ic3 = st.columns(3)
+with ic1:
+    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100,
+                                   value=DEFAULT_TARGET_CORE, step=5, key=KEY_TARGET_CORE)
+with ic2:
+    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100,
+                                        value=DEFAULT_TARGET_SATELLITE, step=5, key=KEY_TARGET_SATELLITE)
+with ic3:
+    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100,
+                                   value=DEFAULT_TARGET_CASH, step=5, key=KEY_TARGET_CASH)
+if target_core + target_satellite + target_cash != 100:
+    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
+
+aa1, aa2, aa3, aa4 = st.columns(4)
+with aa1:
+    st.metric("💼 총 자산", f"{alloc['Total']:,.0f}원")
+    st.caption(f"보유 현금 {cash_amount:,.0f}원 포함 · CASH 행 관리")
+with aa2:
+    st.metric("🏛️ 코어", f"{alloc['Core_value']:,.0f}원 ({alloc['Core_pct']:.1f}%)",
+              delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
+with aa3:
+    st.metric("🎯 위성", f"{alloc['Satellite_value']:,.0f}원 ({alloc['Satellite_pct']:.1f}%)",
+              delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
+with aa4:
+    st.metric("💵 현금", f"{cash_amount:,.0f}원 ({alloc['Cash_pct']:.1f}%)",
+              delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
+
+if _h_vix:
+    if _h_vix > 25:
+        st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
+    elif _h_vix < 13:
+        st.warning(f"🌡️ VIX {_h_vix:.0f} — {_h_vsig}  ·  과열 경계, 신규 매수 신중")
+    else:
+        st.info(f"VIX {_h_vix:.0f} — {_h_vsig}")
+
+st.divider()
 
 _i_val = {"ETF": 0.0, "주식": 0.0, "코인": 0.0}
 for _, _hr in holdings.iterrows():
@@ -645,9 +687,7 @@ for _emoji, _title, _bg, _bd, _badge, _detail in _i_cards:
 
 st.divider()
 st.subheader("💼 보유 현황")
-_h_regime = market_regime(summary)
-_h_vix    = _h_regime.get("vix")
-_h_vsig   = _h_regime.get("vix_signal", "")
+# _h_regime/_h_vix/_h_vsig는 페이지 상단(summary 로드 직후)에서 이미 계산됨
 if not holdings.empty:
     # portfolio_page.py와 동일한 방식으로 가격 합산 (주식 + 코인 KRW 변환)
     _ph_parts = []
@@ -934,42 +974,7 @@ if not holdings.empty:
             )
 
 st.divider()
-st.subheader("📊 배분 현황 & 리밸런싱")
-
-ic1, ic2, ic3 = st.columns(3)
-with ic1:
-    target_core = st.number_input("🏛️ 코어 목표 (%)", min_value=0, max_value=100,
-                                   value=DEFAULT_TARGET_CORE, step=5, key=KEY_TARGET_CORE)
-with ic2:
-    target_satellite = st.number_input("🎯 위성 목표 (%)", min_value=0, max_value=100,
-                                        value=DEFAULT_TARGET_SATELLITE, step=5, key=KEY_TARGET_SATELLITE)
-with ic3:
-    target_cash = st.number_input("💵 현금 목표 (%)", min_value=0, max_value=100,
-                                   value=DEFAULT_TARGET_CASH, step=5, key=KEY_TARGET_CASH)
-if target_core + target_satellite + target_cash != 100:
-    st.warning(f"⚠️ 목표 비중 합계 {target_core + target_satellite + target_cash}% — 100%가 되도록 조정해주세요.")
-
-aa1, aa2, aa3, aa4 = st.columns(4)
-with aa1:
-    st.metric("💼 총 자산", f"{alloc['Total']:,.0f}원")
-    st.caption(f"보유 현금 {cash_amount:,.0f}원 포함 · CASH 행 관리")
-with aa2:
-    st.metric("🏛️ 코어", f"{alloc['Core_value']:,.0f}원 ({alloc['Core_pct']:.1f}%)",
-              delta=f"{alloc['Core_pct'] - target_core:+.1f}pp (목표 {target_core}%)", delta_color="off")
-with aa3:
-    st.metric("🎯 위성", f"{alloc['Satellite_value']:,.0f}원 ({alloc['Satellite_pct']:.1f}%)",
-              delta=f"{alloc['Satellite_pct'] - target_satellite:+.1f}pp (목표 {target_satellite}%)", delta_color="off")
-with aa4:
-    st.metric("💵 현금", f"{cash_amount:,.0f}원 ({alloc['Cash_pct']:.1f}%)",
-              delta=f"{alloc['Cash_pct'] - target_cash:+.1f}pp (목표 {target_cash}%)", delta_color="off")
-
-if _h_vix:
-    if _h_vix > 25:
-        st.success(f"🔥 VIX {_h_vix:.0f} — {_h_vsig}  ·  백테스트 검증: 지금이 역발상 매수 타이밍 (IC=0.14)")
-    elif _h_vix < 13:
-        st.warning(f"🌡️ VIX {_h_vix:.0f} — {_h_vsig}  ·  과열 경계, 신규 매수 신중")
-    else:
-        st.info(f"VIX {_h_vix:.0f} — {_h_vsig}")
+st.subheader("🎯 리밸런싱 실행")
 
 actions_alloc = rebalancing_actions(alloc, target_core, target_satellite, target_cash, threshold_pp=5.0)
 if not actions_alloc:
@@ -1004,12 +1009,18 @@ core_buy, sat_buy, cash_res = _bucket_deficits(new_money)
 
 st.markdown("""
 <style>
+div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) label p {
+    font-size: 14px !important; font-weight: 400 !important;
+    color: rgb(49,51,63) !important; opacity: 0.6 !important; margin-bottom: 0 !important;
+}
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) [data-baseweb="input"] {
     border: none !important; background: transparent !important; box-shadow: none !important;
+    min-height: auto !important;
 }
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) input {
     font-size: 2.25rem !important; font-weight: 600 !important; font-family: inherit !important;
-    padding: 0 !important; line-height: 1.2 !important; color: rgb(49,51,63) !important;
+    padding: 0 !important; height: auto !important; line-height: 1.2 !important;
+    color: rgb(49,51,63) !important;
 }
 div[data-testid="stNumberInput"]:has(input[aria-label="추가 투자할 금액 (원)"]) button {
     display: none !important;
