@@ -29,6 +29,7 @@ from scripts.onchain import classify_regime, REGIME_LABEL_KR
 from scripts.crypto_analysis import (
     coin_holdings_action_text, coin_rebalance_insight, COIN_EXIT_GROUPS,
     ALT_STOPLOSS_RECOVERY_PCT, coin_alt_stoploss_status,
+    coin_holdings_action_with_stoploss, coin_rebalance_insight_with_stoploss,
 )
 
 
@@ -812,7 +813,14 @@ if not holdings.empty:
             if _is_c:
                 _csig = _coin_sig_map.get(str(_row["ticker"]).upper(), {})
                 _overheat_col.append(_coin_overheat_lbl(_csig.get("rsi")))
-                _action_col.append(_coin_action_lbl(_csig.get("action"), _csig.get("rsi"), _csig.get("regime")))
+                # G1·G2 개별손실 손절 로드맵이 MVRV보다 우선(사용자 확인) —
+                # coin_holdings_action_with_stoploss()가 이 우선순위를 강제
+                # 적용(별도 inline 체크로 두면 깜빡하는 사고가 반복돼서 함수로
+                # 합침, 2026-07-22).
+                _action_col.append(coin_holdings_action_with_stoploss(
+                    _csig.get("action"), _csig.get("rsi"), _csig.get("regime"),
+                    float(_row.get("수익률(%)") or 0), str(_row["ticker"]).upper(),
+                ))
             else:
                 _overheat_col.append(_overheat_lbl(_t, _v))
                 _action_col.append(_action(_row, _t, _v))
@@ -1339,6 +1347,26 @@ if new_money > 0 and alloc["Total"] > 0:
             "complacent": "과열 경계",
         }
 
+        # G1·G2(출구 전략 대상 알트) 개별 보유분 손익% — 손절 로드맵 판정용.
+        # 이 인사이트 루프가 coin_rebalance_insight()(MVRV+RSI 기준)만 보고
+        # G1·G2 개별손실 손절 로드맵을 몰라서, 이미 손절선 훨씬 아래로 물려
+        # "대기" 상태인 코인에도 "매수 우호"가 뜨던 것을 회의적 재검증에서 발견
+        # (portfolio_page.py는 이미 이 로드맵을 반영 중이라 같은 코인에 대해
+        # 두 페이지가 반대로 말하고 있었음, 2026-07-22).
+        _g1g2_pnl: dict = {}
+        for _t in COIN_EXIT_GROUPS["G1"] + COIN_EXIT_GROUPS["G2"]:
+            _hsub = holdings[holdings["ticker"] == _t]
+            if _hsub.empty:
+                continue
+            _qty = _hsub["qty"].astype(float).sum()
+            if _qty <= 0:
+                continue
+            _avg_buy = (_hsub["qty"].astype(float) * _hsub["buy_price"].astype(float)).sum() / _qty
+            _cur = _i_cp.get(_t)
+            if _cur is None or _avg_buy <= 0:
+                continue
+            _g1g2_pnl[_t] = (_cur / _avg_buy - 1) * 100
+
         # ── 패스 1: 인사이트 텍스트 생성 ──────────────────────────────────────
         # 추가금액은 무조건 new_money 배분 — 인사이트는 참고 텍스트만
         _buy_eligible: list = []  # 부족한 행(차이(%p)>0) 여부 — 추가금액 배분 대상
@@ -1383,7 +1411,11 @@ if new_money > 0 and alloc["Total"] > 0:
                 # scripts/crypto_analysis.py::coin_rebalance_insight()로 이동(2026-07-22) —
                 # "보유 현황" 표의 coin_holdings_action_text()와 짝을 이뤄서 같은 코인에
                 # 대해 두 화면이 반대 방향을 말하는 사고가 다시 나지 않도록 테스트로 고정.
-                _insight = coin_rebalance_insight(_raw, _regime_v, _rsi_v, _diff_pp)
+                # G1·G2 실보유분은 개별손실 손절 로드맵이 MVRV보다 우선(사용자 확인) —
+                # coin_rebalance_insight_with_stoploss()가 이 우선순위를 강제 적용.
+                _insight = coin_rebalance_insight_with_stoploss(
+                    _raw, _regime_v, _rsi_v, _diff_pp, _g1g2_pnl.get(_uk), _uk,
+                )
             else:
                 # ETF 인사이트: 결론(액션) 먼저, 이유 뒤 — 보유현황 신호 통합
                 _o = f"비중 {abs(_diff_pp):.1f}%p 초과"

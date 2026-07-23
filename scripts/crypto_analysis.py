@@ -217,3 +217,42 @@ def coin_rebalance_insight(raw_need: float, regime: str, rsi: float, diff_pp: fl
         elif regime:
             return f"🔵 {regime_kr}({rsi_str}) — {z}"
         return ""
+
+
+def _g1g2_stoploss_override(ticker: str, pnl_pct) -> str | None:
+    """G1·G2(출구 전략 대상 알트) 개별손실 손절 로드맵이 MVRV보다 우선(사용자
+    확인)이라는 규칙을 호출부마다 따로 넣다가 두 곳(rebalancing_page.py의
+    "보유 현황" 표와 "배분 현황" 인사이트)에서 깜빡해서, 이미 손절선 훨씬
+    아래로 물려 로드맵상 "대기"인 코인에도 여전히 "매수 우호"가 뜨던 사고가
+    반복됨(2026-07-22, 회의적 재검증에서 발견 — portfolio_page.py는 이미
+    반영 중이라 같은 코인에 대해 페이지마다 반대로 말하고 있었음). 아래 두
+    래퍼 함수(coin_holdings_action_with_stoploss/coin_rebalance_insight_
+    with_stoploss)로 이 체크를 강제해서 새 호출부가 또 잊는 걸 원천 차단.
+
+    Returns 로드맵 문구(str) 또는 None(로드맵 대상 아님 — 호출부가 원래
+    함수로 폴백해야 함)."""
+    if pnl_pct is None or pnl_pct != pnl_pct or pnl_pct >= 0:
+        return None
+    if ticker not in COIN_EXIT_GROUPS["G1"] and ticker not in COIN_EXIT_GROUPS["G2"]:
+        return None
+    status, reason = coin_alt_stoploss_status(pnl_pct)
+    if status == "sell":
+        return f"🔴 전량 매도 권장 (로드맵) — {reason}"
+    if status == "wait":
+        return f"🟡 대기 (로드맵 기준) — {reason}"
+    return None
+
+
+def coin_holdings_action_with_stoploss(action: str, rsi, regime: str, pnl_pct, ticker: str) -> str:
+    """coin_holdings_action_text()에 G1·G2 손절 로드맵 우선순위를 강제 적용한 버전.
+    "보유 현황" 표 등 개별 보유분의 pnl_pct·ticker를 알 수 있는 곳에서는 이걸 쓸 것."""
+    return _g1g2_stoploss_override(ticker, pnl_pct) or coin_holdings_action_text(action, rsi, regime)
+
+
+def coin_rebalance_insight_with_stoploss(
+    raw_need: float, regime: str, rsi: float, diff_pp: float, pnl_pct, ticker: str
+) -> str:
+    """coin_rebalance_insight()에 G1·G2 손절 로드맵 우선순위를 강제 적용한 버전.
+    "배분 현황" 인사이트 등 개별 보유분의 pnl_pct·ticker를 알 수 있는 곳에서는 이걸 쓸 것."""
+    return (_g1g2_stoploss_override(ticker, pnl_pct)
+            or coin_rebalance_insight(raw_need, regime, rsi, diff_pp))

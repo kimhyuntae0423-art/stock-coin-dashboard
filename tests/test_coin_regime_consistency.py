@@ -18,6 +18,8 @@ import pytest
 
 from scripts.crypto_analysis import (
     latest_crypto_signal, coin_holdings_action_text, coin_rebalance_insight,
+    coin_holdings_action_with_stoploss, coin_rebalance_insight_with_stoploss,
+    COIN_EXIT_GROUPS,
 )
 
 REGIMES = ["deep_value", "accumulation", "bull", "top", "unknown"]
@@ -67,3 +69,50 @@ def test_top_regime_always_sell_leaning_in_holdings():
         sig_df = pd.DataFrame({"rsi14": [rsi], "Close": [100.0]},
                                index=[pd.Timestamp("2026-07-22")])
         assert latest_crypto_signal(sig_df, regime="top")["action"] == "매도"
+
+
+# ── G1·G2 손절 로드맵이 MVRV 신호를 실제로 오버라이드하는지 ─────────────────
+# 2026-07-22: rebalancing_page.py의 "보유 현황" 표와 "배분 현황" 인사이트가
+# 각자 따로 G1·G2 로드맵 체크를 inline으로 넣다가 두 곳 다 깜빡해서, 이미
+# 손절선 훨씬 아래로 물린 코인(예: MVRV 매집구간 + RSI 낮음)에도 여전히
+# "매수 우호"가 뜨던 사고가 있었음(portfolio_page.py는 이미 반영 중이라 같은
+# 코인에 대해 페이지마다 반대로 말하고 있었음). coin_holdings_action_with_
+# stoploss()/coin_rebalance_insight_with_stoploss()로 이 체크를 함수 안에
+# 강제해서, 새 호출부가 또 잊어도 자동으로 로드맵이 적용되게 함 — 이 테스트는
+# 그 강제 적용이 실제로 동작하는지, 그리고 두 래퍼 함수가 서로 반대 방향을
+# 말하지 않는지 고정한다.
+G1G2_TICKERS = COIN_EXIT_GROUPS["G1"] + COIN_EXIT_GROUPS["G2"]
+
+
+@pytest.mark.parametrize("ticker", G1G2_TICKERS)
+def test_g1g2_deep_loss_overrides_bullish_regime_to_wait(ticker):
+    # MVRV 매집구간(강한 매수 신호)이어도, 개별손실이 손절선(-40%)보다 훨씬
+    # 깊으면 두 화면 다 "대기"로 눌러야 한다 — "매수 우호"가 남아있으면 실패.
+    holdings_text  = coin_holdings_action_with_stoploss("매수", 20.0, "accumulation", -80.0, ticker)
+    rebalance_text = coin_rebalance_insight_with_stoploss(10000, "accumulation", 20.0, -5.0, -80.0, ticker)
+    assert "대기" in holdings_text and "매수" not in holdings_text.split("(")[0]
+    assert "대기" in rebalance_text and "매수" not in rebalance_text.split("(")[0]
+
+
+@pytest.mark.parametrize("ticker", G1G2_TICKERS)
+def test_g1g2_recovered_into_validated_zone_sells_on_both(ticker):
+    # 손절 검증 구간(-40%~-20%) 안으로 회복하면 두 화면 다 "매도 권장"으로
+    # 일치해야 한다.
+    holdings_text  = coin_holdings_action_with_stoploss("매수", 50.0, "accumulation", -30.0, ticker)
+    rebalance_text = coin_rebalance_insight_with_stoploss(10000, "accumulation", 50.0, -5.0, -30.0, ticker)
+    assert "매도" in holdings_text
+    assert "매도" in rebalance_text
+
+
+def test_g3_ticker_not_covered_by_stoploss_falls_back_to_regime():
+    # G3(BTC 등)는 손절 로드맵 대상이 아니므로, 개별손실이 깊어도 원래 함수
+    # (MVRV 기준)로 그대로 폴백해야 한다 — 사용자가 명시적으로 G3 제외를 확인.
+    holdings_text = coin_holdings_action_with_stoploss("매수", 60.0, "accumulation", -80.0, "BTC-USD")
+    assert holdings_text == coin_holdings_action_text("매수", 60.0, "accumulation")
+    assert "대기" not in holdings_text
+
+
+def test_mild_gain_not_covered_by_stoploss_falls_back_to_regime():
+    # 이익 상태(pnl>=0)면 손절 로드맵 자체가 해당 없음 — 원래 함수로 폴백.
+    holdings_text = coin_holdings_action_with_stoploss("매수", 40.0, "accumulation", 10.0, "TRUMP-USD")
+    assert holdings_text == coin_holdings_action_text("매수", 40.0, "accumulation")
