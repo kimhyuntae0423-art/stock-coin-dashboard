@@ -169,28 +169,38 @@ def _snap_load() -> list:
     return []
 
 
+def _snap_key(entry: dict) -> tuple:
+    # 예전엔 "month"(YYYY-MM) 단위로만 저장했는데(2026-07-23 신설), 리밸런싱을
+    # 직접 날짜로 기록하는 사용자 습관에 맞춰 "date"(YYYY-MM-DD 또는 그 이하
+    # 정밀도) + "person"으로 키를 세분화(2026-07-24) — 옛 항목은 "date" 필드가
+    # 없으므로 "month"로 폴백해서 그대로 읽힘(마이그레이션 불필요).
+    return (entry.get("date") or entry.get("month") or ""), entry.get("person", "전체")
+
+
 def _snap_upsert(snaps: list, entry: dict) -> list:
-    """같은 month가 있으면 교체, 없으면 추가. 최신순 정렬."""
-    snaps = [s for s in snaps if s.get("month") != entry["month"]]
+    """같은 (date, person)이 있으면 교체, 없으면 추가. 최신순 정렬."""
+    key = _snap_key(entry)
+    snaps = [s for s in snaps if _snap_key(s) != key]
     snaps.append(entry)
-    return sorted(snaps, key=lambda x: x.get("month", ""), reverse=True)
+    return sorted(snaps, key=lambda x: _snap_key(x)[0], reverse=True)
 
 
 def _snap_save(snaps: list) -> bool:
     json_str = _rb_json.dumps(snaps, ensure_ascii=False, indent=2)
-    ok, _ = _rb_gh_put(_SNAP_FILE, json_str, "data: 월별 비중 스냅샷 갱신")
+    ok, _ = _rb_gh_put(_SNAP_FILE, json_str, "data: 비중 스냅샷 갱신")
     if not ok:
         (ROOT / _SNAP_FILE).write_text(json_str, encoding="utf-8")
     return ok
 
 
 def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coin_price_map_krw):
-    """"이번 달 비중 저장" 버튼과 같은 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금 %,
+    """"지금 비중 저장" 버튼과 같은 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금,
     개별주는 alloc 집계 제외)를 _rot_df(리밸런싱 추천표, 페이지 하단에서 계산) 없이
     holdings_df만으로 독립 계산 — "보유 내역 관리" 저장 시 자동 스냅샷용(2026-07-24
     신설). _rot_df는 "🎯 리밸런싱 실행" 섹션(new_money>0 게이트 안)에서만 계산돼서
     편집기 저장 시점엔 아직 없고, new_money=0이면 아예 안 만들어짐 — 그 무거운
-    표 전체를 여기서 또 계산하는 대신 필요한 role% 계산만 가볍게 재구현."""
+    표 전체를 여기서 또 계산하는 대신 필요한 role 계산만 가볍게 재구현.
+    반환: (비중% dict, 금액(원) dict, 총자산)."""
     role_map = dict(zip(core_etfs_df["ticker"].astype(str).str.upper(), core_etfs_df["rotation_role"].astype(str)))
     role_val: dict = {}
     coin_val = 0.0
@@ -220,11 +230,12 @@ def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coi
                 role_val[role] = role_val.get(role, 0.0) + val
         total += val
     if total <= 0:
-        return {}, 0.0
-    result = {role: round(v / total * 100, 1) for role, v in role_val.items()}
-    result["coin"] = round(coin_val / total * 100, 1)
-    result["cash"] = round(cash_val / total * 100, 1)
-    return result, total
+        return {}, {}, 0.0
+    amounts = dict(role_val)
+    amounts["coin"] = coin_val
+    amounts["cash"] = cash_val
+    pcts = {role: round(v / total * 100, 1) for role, v in amounts.items()}
+    return pcts, amounts, total
 
 # =====================================================================
 # 공통 데이터 로드
@@ -432,25 +443,29 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
 
         (ROOT / "holdings.csv").write_text(_he_save.to_csv(index=False), encoding="utf-8")
 
-        # 보유 내역 저장과 동시에 이번 달 스냅샷도 자동 갱신 — 예전엔 "이번 달 비중
-        # 저장" 버튼을 따로 눌러야만 "월별 비중 변화 이력"에 반영돼서, 방금 여기서
+        # 보유 내역 저장과 동시에 오늘 날짜 스냅샷도 자동 갱신 — 예전엔 "지금 비중
+        # 저장" 버튼을 따로 눌러야만 "비중 변화 이력"에 반영돼서, 방금 여기서
         # 리밸런싱하고 저장해도 이력 표엔 안 뜨는 게 당연한 동작인데 사용자 입장에선
-        # "왜 안 떠?"로 보였음(2026-07-24 피드백). 이제 저장할 때마다 당월 스냅샷을
-        # 최신 상태로 덮어씀(_snap_upsert가 월 단위 upsert라 여러 번 저장해도 안전 —
-        # 같은 달에 두 번 리밸런싱해도 마지막 상태로만 남음).
+        # "왜 안 떠?"로 보였음(2026-07-24 피드백). 이제 저장할 때마다 오늘 날짜
+        # 스냅샷을 최신 상태로 덮어씀(_snap_upsert가 (date,person) 단위 upsert라
+        # 같은 날 여러 번 저장해도 안전 — 마지막 상태로만 남음). _he_save는 person
+        # 필터와 무관하게 항상 가구 전체 데이터라 person="전체"로 고정.
         from datetime import date as _he_date_cls
         _stock_price_map = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
         _coin_price_map  = {str(k).upper(): v for k, v in _i_cp.items()}
-        _snap_alloc_auto, _snap_total_auto = _compute_role_alloc_snapshot(
+        _snap_pct_auto, _snap_amt_auto, _snap_total_auto = _compute_role_alloc_snapshot(
             _he_save, core_etfs, _stock_price_map, _coin_price_map
         )
         _snap_msg_suffix = ""
         if _snap_total_auto > 0:
-            _snap_month_now = _he_date_cls.today().strftime("%Y-%m")
+            _snap_date_now = _he_date_cls.today().strftime("%Y-%m-%d")
             _snap_save(_snap_upsert(_snap_load(), {
-                "month": _snap_month_now, "total": int(round(_snap_total_auto)), "alloc": _snap_alloc_auto,
+                "date": _snap_date_now, "person": "전체",
+                "total": int(round(_snap_total_auto)),
+                "alloc": _snap_pct_auto,
+                "alloc_amount": {k: int(round(v)) for k, v in _snap_amt_auto.items()},
             }))
-            _snap_msg_suffix = f" · {_snap_month_now} 스냅샷도 갱신됨"
+            _snap_msg_suffix = f" · {_snap_date_now} 스냅샷도 갱신됨"
 
         if _rb_gh_token():
             _he_ok, _he_err = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
@@ -1718,47 +1733,58 @@ if new_money > 0 and alloc["Total"] > 0:
         )
         st.caption("목표금액 = 현재금액 + 합계(신규자금+재배분).  매도분은 별도로 이번 달 실제 매도할 금액입니다.")
 
-        # ── 월별 스냅샷 저장 ──────────────────────────────────────────
+        # ── 비중 스냅샷 저장 ──────────────────────────────────────────
         from datetime import date as _rb_date_cls
         with st.container(border=True):
-            st.markdown("#### 📸 이번 달 비중 스냅샷")
+            st.markdown("#### 📸 지금 비중 스냅샷")
             st.markdown("""
             <style>
-            div[data-testid="stHorizontalBlock"]:has(input[aria-label="기준 월 선택"]) {
+            div[data-testid="stHorizontalBlock"]:has(input[aria-label="기준일 선택"]) {
                 align-items: flex-end;
             }
             </style>
             """, unsafe_allow_html=True)
             _sc_col1, _sc_col2 = st.columns([2, 2])
             with _sc_col1:
-                _snap_month_sel = st.date_input(
-                    "기준 월 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
+                _snap_date_sel = st.date_input(
+                    "기준일 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
                     key="snap_month_picker",
-                    help="선택한 달의 기준으로 현재 비중을 스냅샷으로 저장합니다",
-                ).strftime("%Y-%m")
+                    help="선택한 날짜 기준으로 현재 비중을 스냅샷으로 저장합니다",
+                ).strftime("%Y-%m-%d")
             with _sc_col2:
                 st.write("")  # 세로 정렬용 공백
-                if st.button("📸 이번 달 비중 저장", use_container_width=True, type="primary", key="snap_save_btn"):
+                if st.button("📸 지금 비중 저장", use_container_width=True, type="primary", key="snap_save_btn"):
                     _snap_alloc: dict = {}
+                    _snap_alloc_amt: dict = {}
                     _coin_pct2 = 0.0
+                    _coin_amt2 = 0.0
                     for _, _sr2 in _rot_df.iterrows():
                         _us2  = str(_sr2.get("US ETF", "")).upper()
                         _ac2  = str(_sr2.get("계좌", ""))
                         _pct2 = float(_sr2.get("현재비중(%)") or 0)
+                        _amt2 = float(_sr2.get("현재금액(원)") or 0)
                         if _us2 == "CASH" or _ac2 == "현금":
                             _snap_alloc["cash"] = _pct2
+                            _snap_alloc_amt["cash"] = _amt2
                         elif _ac2 == "코인" or "-USD" in _us2:
                             _coin_pct2 += _pct2
+                            _coin_amt2 += _amt2
                         elif _us2 in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
                             _snap_alloc[_us2] = _pct2
+                            _snap_alloc_amt[_us2] = _amt2
                     _snap_alloc["coin"] = round(_coin_pct2, 1)
-                    _snap_entry = {"month": _snap_month_sel, "total": _rot_total,
-                                   "alloc": _snap_alloc}
+                    _snap_alloc_amt["coin"] = _coin_amt2
+                    _snap_entry = {
+                        "date": _snap_date_sel, "person": selected_person,
+                        "total": int(round(_rot_total)),
+                        "alloc": _snap_alloc,
+                        "alloc_amount": {k: int(round(v)) for k, v in _snap_alloc_amt.items()},
+                    }
                     _cur_snaps = _snap_load()
                     _cur_snaps = _snap_upsert(_cur_snaps, _snap_entry)
                     _saved_ok  = _snap_save(_cur_snaps)
                     if _saved_ok:
-                        st.success(f"✅ {_snap_month_sel} 스냅샷 저장 완료")
+                        st.success(f"✅ {_snap_date_sel} 스냅샷 저장 완료")
                     else:
                         st.warning(f"로컬 저장만 완료 (GitHub 동기화 실패 — GH_PAT 확인)")
 
@@ -2010,28 +2036,44 @@ elif new_money > 0:
 
 st.divider()
 
-# ── 월별 비중 변화 이력 ──────────────────────────────────────────
-st.subheader("📋 월별 비중 변화 이력")
-st.caption("위 리밸런싱 표에서 '이번 달 비중 저장'을 누를 때마다 자동으로 쌓입니다.")
+# ── 비중 변화 이력 ────────────────────────────────────────────────
+st.subheader("📋 비중 변화 이력")
+st.caption(
+    "'보유 내역 관리'에서 저장할 때마다(가구 전체 기준) 자동으로 쌓이고, "
+    "위 '📸 지금 비중 저장'을 누르면 그 시점 사람 필터 기준으로도 남길 수 있습니다. "
+    "같은 날짜·같은 대상으로 다시 저장하면 마지막 상태로 덮어씁니다."
+)
 
 _hist_snaps = _snap_load()
 if _hist_snaps:
     _ROLE_LABELS = {
-        "VOO":  "미국주식(%)",
-        "SCHD": "배당/가치(%)",
-        "SOXX": "성장/반도체(%)",
-        "TLT":  "장기국채(%)",
-        "GLD":  "금(%)",
-        "coin": "코인(%)",
-        "cash": "현금(%)",
+        "VOO":  "미국주식",
+        "SCHD": "배당/가치",
+        "SOXX": "성장/반도체",
+        "TLT":  "장기국채",
+        "GLD":  "금",
+        "coin": "코인",
+        "cash": "현금",
     }
     _hist_rows = []
     for _hs in _hist_snaps:
-        _hrow = {"기준월": _hs.get("month", ""),
-                 "총자산(만원)": round(_hs.get("total", 0) / 10000)}
+        _h_total = _hs.get("total", 0) or 0
+        _h_amt   = _hs.get("alloc_amount", {})
+        _hrow = {
+            "날짜": _hs.get("date") or _hs.get("month", ""),
+            "총자산(원)": int(_h_total),
+        }
         for _rk, _rlabel in _ROLE_LABELS.items():
-            _v = _hs.get("alloc", {}).get(_rk)
-            _hrow[_rlabel] = round(float(_v), 1) if _v is not None else None
+            _pct = _hs.get("alloc", {}).get(_rk)
+            if _pct is None:
+                _hrow[_rlabel] = None
+                continue
+            # alloc_amount가 없는 옛 항목(2026-07-23 이전 저장분)은 총자산×비중으로
+            # 근사 — 반올림 오차가 조금 있을 수 있지만 표시용이라 문제 없음.
+            _amt = _h_amt.get(_rk)
+            _amt = float(_amt) if _amt is not None else _h_total * float(_pct) / 100
+            _hrow[_rlabel] = f"{_amt:,.0f}원 ({float(_pct):.1f}%)"
+        _hrow["대상"] = _hs.get("person", "전체")
         _hist_rows.append(_hrow)
     _hist_df = pd.DataFrame(_hist_rows)
     st.dataframe(
@@ -2039,14 +2081,15 @@ if _hist_snaps:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "기준월":      st.column_config.TextColumn("기준월", width="small"),
-            "총자산(만원)": st.column_config.NumberColumn("총자산(만원)", format="%,d", width="medium"),
-            **{_rl: st.column_config.NumberColumn(_rl, format="%.1f", width="small")
+            "날짜":        st.column_config.TextColumn("날짜", width="small"),
+            "총자산(원)":  st.column_config.NumberColumn("총자산(원)", format="%,d", width="medium"),
+            **{_rl: st.column_config.TextColumn(_rl, width="small")
                for _rl in _ROLE_LABELS.values()},
+            "대상":        st.column_config.TextColumn("대상", width="small"),
         },
     )
 else:
-    st.info("아직 기록이 없습니다. 위 리밸런싱 표 하단 '이번 달 비중 저장' 버튼을 눌러보세요.")
+    st.info("아직 기록이 없습니다. '보유 내역 관리'에서 저장하거나 위 '📸 지금 비중 저장' 버튼을 눌러보세요.")
 
 st.divider()
 
