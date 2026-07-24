@@ -23,7 +23,7 @@ from scripts.etf_recommend import (
     market_regime, score_etfs, tactical_alloc, enrich_with_volume,
     volume_signals, technical_signals,
 )
-from scripts.etf_rotation import rotation_target, PHASE_LABELS, PHASE_DESCS
+from scripts.etf_rotation import rotation_target
 from scripts.holdings_io import parse_buy_dates, format_buy_dates
 from scripts.onchain import classify_regime, REGIME_LABEL_KR
 from scripts.crypto_analysis import (
@@ -1232,17 +1232,6 @@ if new_money > 0 and alloc["Total"] > 0:
         _spy_12m = _e_regime.get("spy_12m", 0)
         _rot_df, _phase = rotation_target(_vix or 18.0, _spy_1m, _spy_12m, _e_scored, regime_dict=_e_regime)
         _rot_df = _rot_df[~_rot_df["US ETF"].str.upper().isin(["COPX", "XLV"])].reset_index(drop=True)
-
-        _phase_label = PHASE_LABELS.get(_phase, _phase)
-        _phase_desc  = PHASE_DESCS.get(_phase, "")
-        if _phase == "fear":
-            st.error(f"**{_phase_label}** — {_phase_desc}")
-        elif _phase == "overheated":
-            st.warning(f"**{_phase_label}** — {_phase_desc}")
-        elif _phase == "recovery":
-            st.info(f"**{_phase_label}** — {_phase_desc}")
-        else:
-            st.success(f"**{_phase_label}** — {_phase_desc}")
 
         # 총 보유금액 (역할 합산 전 기준 — 비중 분모)
         _total_held = sum(v.get("보유금액", 0) for v in _held_map.values()) or 1.0
