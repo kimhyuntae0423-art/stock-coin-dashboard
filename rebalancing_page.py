@@ -1778,7 +1778,8 @@ if new_money > 0 and alloc["Total"] > 0:
             for _, _rr in _r_sell.iterrows():
                 _kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [_rr["US ETF"]])
                 _sell_name_list.append(_kr[0] if _kr else _rr["US ETF"])
-            st.markdown(f"**1단계 — 매도** ({', '.join(_sell_name_list)} 비중 초과 · 초과분의 1/{_SELL_MONTHS}만 우선 매도 권장)")
+            st.markdown("##### 1단계 — 매도")
+            st.caption(f"{', '.join(_sell_name_list)} 비중 초과 · 초과분의 1/{_SELL_MONTHS}만 우선 매도 권장")
             _r_sell_disp = _r_sell.copy()
             _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
                 lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
@@ -1821,7 +1822,7 @@ if new_money > 0 and alloc["Total"] > 0:
                 _step_label = "이번 매수 배분"
                 _fund_desc = f"신규 투입 {new_money:,.0f}원 배분"
 
-            st.markdown(f"**{_step_label}**")
+            st.markdown(f"##### {_step_label}")
             st.caption(_fund_desc)
 
             _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]].copy()
