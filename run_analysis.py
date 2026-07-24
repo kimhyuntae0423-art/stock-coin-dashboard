@@ -14,12 +14,15 @@ from scripts.onchain import (
     compute_pi_cycle, compute_altcoin_season,
     classify_regime,
 )
+from scripts.price_archive import update_archive, load_core_etf_tickers
 
 
 def run_stocks(out_dir):
     print("=== 주식 분석 ===")
     tickers = fetch_tickers("../tickers.csv")
     raw = download_prices(tickers)
+    core_etf_tickers = load_core_etf_tickers()
+    archive_closes = {}
     rows = []
     for t, df in raw.items():
         try:
@@ -45,9 +48,16 @@ def run_stocks(out_dir):
             last_rsi = sigs["rsi14"].iloc[-1] if "rsi14" in sigs.columns else None
             meta["rsi14"] = round(float(last_rsi), 2) if last_rsi is not None and not pd.isna(last_rsi) else None
             rows.append(meta)
+
+            # 코어 ETF 후보군은 5년 롤링과 별도로 종가를 무제한 누적(백테스트용,
+            # 2026-07-24 신설) — {ticker}_signals.csv는 5년마다 오래된 날짜가
+            # 빠지지만 이 아카이브는 삭제 없이 계속 쌓인다.
+            if t in core_etf_tickers:
+                archive_closes[t] = sigs["Close"]
         except Exception as e:
             print(f"{t}: 처리 실패 - {e}")
     pd.DataFrame(rows).to_csv(out_dir / "summary_signals.csv", index=False)
+    update_archive(archive_closes)
     print("주식 펀더멘털 수집 중...")
     fetch_fundamentals(tickers).to_csv(out_dir / "fundamentals.csv", index=False)
 
