@@ -5,7 +5,7 @@ AMZN,5.6861267,Consumer Cyclical,74.8,Q2
 GOOGL,8.039935,Communication Services,141.5,Q3
 META,6.3126864,Communication Services,91.9,Q3
 NVDA,25.86865,Technology,347.6,Q4
-TSLA,14.599717,Consumer Cyclical,19.5,Q4
+TSLA,14.271238,Consumer Cyclical,19.5,Q4
 JPM,2.6306884,Financial Services,136.6,Q2
 V,18.860638,Financial Services,51.3,Q4
 JNJ,7.685489,Healthcare,68.9,Q3
@@ -25,36 +25,36 @@ CRM,3.7542164,Technology,-29.0,Q2
 ADBE,7.349915,Technology,-61.2,Q3
 COST,24.841997,Consumer Defensive,71.9,Q4
 AVGO,21.29517,Technology,352.8,Q4
-MU,15.414948,Technology,1302.5,Q4
+MU,11.099143,Technology,1302.5,Q4
 MRVL,10.061526,Technology,224.4,Q3
 AMAT,18.688982,Technology,280.5,Q4
 KLAC,49.03161,Technology,336.5,Q4
 LRCX,37.781193,Technology,357.2,Q4
 QCOM,6.642985,Technology,38.2,Q3
-ASML,1622.7788,Technology,158.2,Q4
+ASML,1623.0488,Technology,158.2,Q4
 TER,18.610268,Technology,234.7,Q4
 FORM,8.301429,Technology,203.4,Q3
 AMKR,3.5713117,Technology,135.6,Q2
 ASX,7.989971,Technology,429.2,Q3
 SNDK,17.299007,Technology,3337.2,Q4
 ARM,36.34776,Technology,428.8,Q4
-005930.KS,3.61,Technology,291.2,Q2
-000660.KS,7.94,Technology,1421.3,Q3
+005930.KS,3.59,Technology,292.7,Q2
+000660.KS,7.93,Technology,1428.8,Q3
 035420.KS,1.05,Communication Services,-6.6,Q1
-005380.KS,0.88,Consumer Cyclical,136.5,Q1
-000270.KS,0.89,Consumer Cyclical,100.9,Q1
-005490.KS,0.42,Basic Materials,-46.6,Q1
-051910.KS,0.6,Basic Materials,-58.4,Q1
-006400.KS,1.56,Industrials,-31.9,Q1
+005380.KS,0.88,Consumer Cyclical,136.8,Q1
+000270.KS,0.89,Consumer Cyclical,100.8,Q1
+005490.KS,0.42,Basic Materials,-46.5,Q1
+051910.KS,0.59,Basic Materials,-58.3,Q1
+006400.KS,1.56,Industrials,-31.8,Q1
 035720.KS,1.39,Communication Services,-28.7,Q1
-207940.KS,8.66,Healthcare,26.4,Q3
-068270.KS,2.31,Healthcare,40.7,Q2
-105560.KS,0.99,Financial Services,267.0,Q1
-055550.KS,0.83,Financial Services,235.3,Q1
-015760.KS,0.46,Utilities,96.7,Q1
-066570.KS,1.23,Technology,67.6,Q1
-003670.KS,3.1,Industrials,-72.4,Q2
-247540.KQ,6.1,Industrials,-73.3,Q2
+207940.KS,8.67,Healthcare,26.0,Q3
+068270.KS,2.32,Healthcare,40.3,Q2
+105560.KS,1.0,Financial Services,269.5,Q1
+055550.KS,0.83,Financial Services,236.3,Q1
+015760.KS,0.46,Utilities,97.8,Q1
+066570.KS,1.23,Technology,68.0,Q1
+003670.KS,3.09,Industrials,-72.3,Q2
+247540.KQ,6.09,Industrials,-73.2,Q2
 VOO,1.7362237,,67.8,Q2
 VTI,2.614153,,66.1,Q2
 QQQ,1.9340702,,83.5,Q2
