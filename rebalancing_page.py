@@ -1776,7 +1776,7 @@ if new_money > 0 and alloc["Total"] > 0:
         # _SELL_MONTHS/_this_month_proceeds는 위(1457행 부근)에서 이미 계산해둠.
         if not _r_sell.empty:
             with st.container(border=True):
-                st.markdown("##### 1단계 — 매도")
+                st.markdown("##### 🔴 1단계 — 매도")
                 _r_sell_disp = _r_sell.copy()
                 _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
                     lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
@@ -1814,7 +1814,7 @@ if new_money > 0 and alloc["Total"] > 0:
                 _step_label = "이번 매수 배분"
 
             with st.container(border=True):
-                st.markdown(f"##### {_step_label}")
+                st.markdown(f"##### 🟢 {_step_label}")
 
                 _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]].copy()
                 _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "합계(원)"})
