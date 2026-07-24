@@ -183,6 +183,49 @@ def _snap_save(snaps: list) -> bool:
         (ROOT / _SNAP_FILE).write_text(json_str, encoding="utf-8")
     return ok
 
+
+def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coin_price_map_krw):
+    """"이번 달 비중 저장" 버튼과 같은 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금 %,
+    개별주는 alloc 집계 제외)를 _rot_df(리밸런싱 추천표, 페이지 하단에서 계산) 없이
+    holdings_df만으로 독립 계산 — "보유 내역 관리" 저장 시 자동 스냅샷용(2026-07-24
+    신설). _rot_df는 "🎯 리밸런싱 실행" 섹션(new_money>0 게이트 안)에서만 계산돼서
+    편집기 저장 시점엔 아직 없고, new_money=0이면 아예 안 만들어짐 — 그 무거운
+    표 전체를 여기서 또 계산하는 대신 필요한 role% 계산만 가볍게 재구현."""
+    role_map = dict(zip(core_etfs_df["ticker"].astype(str).str.upper(), core_etfs_df["rotation_role"].astype(str)))
+    role_val: dict = {}
+    coin_val = 0.0
+    cash_val = 0.0
+    total = 0.0
+    for _, r in holdings_df.iterrows():
+        tk  = str(r.get("ticker", "")).strip().upper()
+        qty = float(r.get("qty") or 0)
+        if not tk:
+            continue
+        if tk == "CASH":
+            val = qty * float(r.get("buy_price") or 1)
+            cash_val += val
+        elif "-USD" in tk:
+            px = coin_price_map_krw.get(tk)
+            if px is None:
+                continue
+            val = qty * float(px)
+            coin_val += val
+        else:
+            px = stock_price_map.get(tk)
+            if px is None:
+                continue
+            val = qty * float(px)
+            role = role_map.get(tk)
+            if role in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
+                role_val[role] = role_val.get(role, 0.0) + val
+        total += val
+    if total <= 0:
+        return {}, 0.0
+    result = {role: round(v / total * 100, 1) for role, v in role_val.items()}
+    result["coin"] = round(coin_val / total * 100, 1)
+    result["cash"] = round(cash_val / total * 100, 1)
+    return result, total
+
 # =====================================================================
 # 공통 데이터 로드
 # =====================================================================
@@ -388,14 +431,35 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
             _he_save = _he_cur.copy()
 
         (ROOT / "holdings.csv").write_text(_he_save.to_csv(index=False), encoding="utf-8")
+
+        # 보유 내역 저장과 동시에 이번 달 스냅샷도 자동 갱신 — 예전엔 "이번 달 비중
+        # 저장" 버튼을 따로 눌러야만 "월별 비중 변화 이력"에 반영돼서, 방금 여기서
+        # 리밸런싱하고 저장해도 이력 표엔 안 뜨는 게 당연한 동작인데 사용자 입장에선
+        # "왜 안 떠?"로 보였음(2026-07-24 피드백). 이제 저장할 때마다 당월 스냅샷을
+        # 최신 상태로 덮어씀(_snap_upsert가 월 단위 upsert라 여러 번 저장해도 안전 —
+        # 같은 달에 두 번 리밸런싱해도 마지막 상태로만 남음).
+        from datetime import date as _he_date_cls
+        _stock_price_map = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
+        _coin_price_map  = {str(k).upper(): v for k, v in _i_cp.items()}
+        _snap_alloc_auto, _snap_total_auto = _compute_role_alloc_snapshot(
+            _he_save, core_etfs, _stock_price_map, _coin_price_map
+        )
+        _snap_msg_suffix = ""
+        if _snap_total_auto > 0:
+            _snap_month_now = _he_date_cls.today().strftime("%Y-%m")
+            _snap_save(_snap_upsert(_snap_load(), {
+                "month": _snap_month_now, "total": int(round(_snap_total_auto)), "alloc": _snap_alloc_auto,
+            }))
+            _snap_msg_suffix = f" · {_snap_month_now} 스냅샷도 갱신됨"
+
         if _rb_gh_token():
             _he_ok, _he_err = _rb_gh_put("holdings.csv", _he_save.to_csv(index=False), "data: 보유 내역 갱신")
             if _he_ok:
-                st.session_state["_he_save_msg"] = ("✅ GitHub에 저장됐습니다.", True)
+                st.session_state["_he_save_msg"] = (f"✅ GitHub에 저장됐습니다.{_snap_msg_suffix}", True)
             else:
-                st.session_state["_he_save_msg"] = (f"⚠️ 로컬 저장됨. GitHub 저장 실패 — {_he_err}", False)
+                st.session_state["_he_save_msg"] = (f"⚠️ 로컬 저장됨. GitHub 저장 실패 — {_he_err}{_snap_msg_suffix}", False)
         else:
-            st.session_state["_he_save_msg"] = ("⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.", False)
+            st.session_state["_he_save_msg"] = (f"⚠️ GITHUB_TOKEN 미설정 — 로컬에만 저장됐습니다.{_snap_msg_suffix}", False)
         st.rerun()
 
 st.divider()
