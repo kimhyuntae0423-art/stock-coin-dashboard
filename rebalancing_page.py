@@ -194,8 +194,9 @@ def _snap_save(snaps: list) -> bool:
 
 
 def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coin_price_map_krw):
-    """비중 스냅샷 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금, 개별주는
-    집계 제외)를 _rot_df(리밸런싱 추천표, 페이지 하단 "🎯 리밸런싱 실행"
+    """비중 스냅샷 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금 + 개별주는
+    "기타"로 합산 — amounts 합계가 항상 total과 일치)를 _rot_df(리밸런싱 추천표,
+    페이지 하단 "🎯 리밸런싱 실행"
     섹션에서만 계산되고 new_money=0이면 아예 안 만들어짐)에 기대지 않고
     holdings_df만으로 독립 계산 — "보유 내역 관리" 저장 시 자동 스냅샷용
     (2026-07-24 신설, 이후 수동 스냅샷 버튼은 중복이라 제거하고 이 경로만 남음).
@@ -227,6 +228,13 @@ def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coi
             role = role_map.get(tk)
             if role in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
                 role_val[role] = role_val.get(role, 0.0) + val
+            else:
+                # core_etfs.csv 역할 화이트리스트에 없는 보유(개별주 등)는 total에는
+                # 이미 포함되는데 역할 버킷에는 안 들어가서, 이걸 안 모으면 pct 합이
+                # 100%보다 작게 나옴(김보라·전체처럼 개별주를 든 경우 67~78%까지
+                # 떨어짐 — 회의적 감사에서 발견, 2026-07-24). "기타" 버킷으로 모아서
+                # amounts 합계가 항상 total과 일치하도록 보정.
+                role_val["기타"] = role_val.get("기타", 0.0) + val
         total += val
     if total <= 0:
         return {}, {}, 0.0
@@ -1978,6 +1986,7 @@ if _hist_snaps:
         "GLD":  "금",
         "coin": "코인",
         "cash": "현금",
+        "기타": "개별주 등",
     }
     _hist_rows = []
     for _hs in _hist_snaps:
