@@ -194,12 +194,11 @@ def _snap_save(snaps: list) -> bool:
 
 
 def _compute_role_alloc_snapshot(holdings_df, core_etfs_df, stock_price_map, coin_price_map_krw):
-    """"지금 비중 저장" 버튼과 같은 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금,
-    개별주는 alloc 집계 제외)를 _rot_df(리밸런싱 추천표, 페이지 하단에서 계산) 없이
-    holdings_df만으로 독립 계산 — "보유 내역 관리" 저장 시 자동 스냅샷용(2026-07-24
-    신설). _rot_df는 "🎯 리밸런싱 실행" 섹션(new_money>0 게이트 안)에서만 계산돼서
-    편집기 저장 시점엔 아직 없고, new_money=0이면 아예 안 만들어짐 — 그 무거운
-    표 전체를 여기서 또 계산하는 대신 필요한 role 계산만 가볍게 재구현.
+    """비중 스냅샷 집계(VOO/SCHD/SOXX/TLT/GLD 역할 + 코인 + 현금, 개별주는
+    집계 제외)를 _rot_df(리밸런싱 추천표, 페이지 하단 "🎯 리밸런싱 실행"
+    섹션에서만 계산되고 new_money=0이면 아예 안 만들어짐)에 기대지 않고
+    holdings_df만으로 독립 계산 — "보유 내역 관리" 저장 시 자동 스냅샷용
+    (2026-07-24 신설, 이후 수동 스냅샷 버튼은 중복이라 제거하고 이 경로만 남음).
     반환: (비중% dict, 금액(원) dict, 총자산)."""
     role_map = dict(zip(core_etfs_df["ticker"].astype(str).str.upper(), core_etfs_df["rotation_role"].astype(str)))
     role_val: dict = {}
@@ -1737,61 +1736,6 @@ if new_money > 0 and alloc["Total"] > 0:
         )
         st.caption("목표금액 = 현재금액 + 합계(신규자금+재배분).  매도분은 별도로 이번 달 실제 매도할 금액입니다.")
 
-        # ── 비중 스냅샷 저장 ──────────────────────────────────────────
-        from datetime import date as _rb_date_cls
-        with st.container(border=True):
-            st.markdown("#### 📸 지금 비중 스냅샷")
-            st.markdown("""
-            <style>
-            div[data-testid="stHorizontalBlock"]:has(input[aria-label="기준일 선택"]) {
-                align-items: flex-end;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            _sc_col1, _sc_col2 = st.columns([2, 2])
-            with _sc_col1:
-                _snap_date_sel = st.date_input(
-                    "기준일 선택", value=_rb_date_cls.today(), format="YYYY-MM-DD",
-                    key="snap_month_picker",
-                    help="선택한 날짜 기준으로 현재 비중을 스냅샷으로 저장합니다",
-                ).strftime("%Y-%m-%d")
-            with _sc_col2:
-                st.write("")  # 세로 정렬용 공백
-                if st.button("📸 지금 비중 저장", use_container_width=True, type="primary", key="snap_save_btn"):
-                    _snap_alloc: dict = {}
-                    _snap_alloc_amt: dict = {}
-                    _coin_pct2 = 0.0
-                    _coin_amt2 = 0.0
-                    for _, _sr2 in _rot_df.iterrows():
-                        _us2  = str(_sr2.get("US ETF", "")).upper()
-                        _ac2  = str(_sr2.get("계좌", ""))
-                        _pct2 = float(_sr2.get("현재비중(%)") or 0)
-                        _amt2 = float(_sr2.get("현재금액(원)") or 0)
-                        if _us2 == "CASH" or _ac2 == "현금":
-                            _snap_alloc["cash"] = _pct2
-                            _snap_alloc_amt["cash"] = _amt2
-                        elif _ac2 == "코인" or "-USD" in _us2:
-                            _coin_pct2 += _pct2
-                            _coin_amt2 += _amt2
-                        elif _us2 in ("VOO", "SCHD", "SOXX", "TLT", "GLD"):
-                            _snap_alloc[_us2] = _pct2
-                            _snap_alloc_amt[_us2] = _amt2
-                    _snap_alloc["coin"] = round(_coin_pct2, 1)
-                    _snap_alloc_amt["coin"] = _coin_amt2
-                    _snap_entry = {
-                        "date": _snap_date_sel, "person": selected_person,
-                        "total": int(round(_rot_total)),
-                        "alloc": _snap_alloc,
-                        "alloc_amount": {k: int(round(v)) for k, v in _snap_alloc_amt.items()},
-                    }
-                    _cur_snaps = _snap_load()
-                    _cur_snaps = _snap_upsert(_cur_snaps, _snap_entry)
-                    _saved_ok  = _snap_save(_cur_snaps)
-                    if _saved_ok:
-                        st.success(f"✅ {_snap_date_sel} 스냅샷 저장 완료")
-                    else:
-                        st.warning(f"로컬 저장만 완료 (GitHub 동기화 실패 — GH_PAT 확인)")
-
         # US 역할 → 실제 보유 ETF 이름 역방향 맵 (표시용)
         _role_to_held_kr: dict = {}
         if "rotation_role" in core_etfs.columns and _held_map:
@@ -2043,8 +1987,7 @@ st.divider()
 # ── 비중 변화 이력 ────────────────────────────────────────────────
 st.subheader("📋 비중 변화 이력")
 st.caption(
-    "'보유 내역 관리'에서 저장할 때마다(가구 전체 기준) 자동으로 쌓이고, "
-    "위 '📸 지금 비중 저장'을 누르면 그 시점 사람 필터 기준으로도 남길 수 있습니다. "
+    "'보유 내역 관리'에서 저장할 때마다 그 시점 사람 필터 기준으로 자동으로 쌓입니다. "
     "같은 날짜·같은 대상으로 다시 저장하면 마지막 상태로 덮어씁니다."
 )
 
@@ -2093,7 +2036,7 @@ if _hist_snaps:
         },
     )
 else:
-    st.info("아직 기록이 없습니다. '보유 내역 관리'에서 저장하거나 위 '📸 지금 비중 저장' 버튼을 눌러보세요.")
+    st.info("아직 기록이 없습니다. 위 '보유 내역 관리'에서 저장하면 자동으로 쌓입니다.")
 
 st.divider()
 
