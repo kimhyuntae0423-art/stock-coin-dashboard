@@ -1745,26 +1745,27 @@ if new_money > 0 and alloc["Total"] > 0:
 
         # _guide_df/_r_buy/_r_sell은 위(1457행 부근)에서 이미 계산해둠 — "배분 현황"
         # 표의 추가금액에 판돈을 반영하려면 그보다 먼저 알아야 해서 앞으로 옮김.
-        _rc1, _rc2 = st.columns(2)
-        with _rc1:
-            if not _r_buy.empty:
-                st.success("**확대 필요** (+3%p↑)")
-                for _, _rr in _r_buy.iterrows():
-                    _isa_txt = _rr["ISA(원화)"].split("\n")[0]
-                    _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
-                    _held_str = f" — 보유: {', '.join(_held_kr)}" if _held_kr else ""
-                    st.markdown(f"- **{_rr['US ETF']}** / ISA: {_isa_txt}{_held_str} `+{_rr['차이(%p)']:.1f}%p`")
-            else:
-                st.success("확대 필요 역할 없음")
-        with _rc2:
-            if not _r_sell.empty:
-                st.warning("**축소 필요** (−3%p↓)")
-                for _, _rr in _r_sell.iterrows():
-                    _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
-                    _held_str = f" ({', '.join(_held_kr)})" if _held_kr else ""
-                    st.markdown(f"- **{_rr['US ETF']}**{_held_str} `{_rr['차이(%p)']:.1f}%p`")
-            else:
-                st.warning("축소 필요 역할 없음")
+        with st.container(border=True):
+            _rc1, _rc2 = st.columns(2)
+            with _rc1:
+                if not _r_buy.empty:
+                    st.success("**확대 필요** (+3%p↑)")
+                    for _, _rr in _r_buy.iterrows():
+                        _isa_txt = _rr["ISA(원화)"].split("\n")[0]
+                        _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
+                        _held_str = f" — 보유: {', '.join(_held_kr)}" if _held_kr else ""
+                        st.markdown(f"- **{_rr['US ETF']}** / ISA: {_isa_txt}{_held_str} `+{_rr['차이(%p)']:.1f}%p`")
+                else:
+                    st.success("확대 필요 역할 없음")
+            with _rc2:
+                if not _r_sell.empty:
+                    st.warning("**축소 필요** (−3%p↓)")
+                    for _, _rr in _r_sell.iterrows():
+                        _held_kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [])
+                        _held_str = f" ({', '.join(_held_kr)})" if _held_kr else ""
+                        st.markdown(f"- **{_rr['US ETF']}**{_held_str} `{_rr['차이(%p)']:.1f}%p`")
+                else:
+                    st.warning("축소 필요 역할 없음")
 
         # ── 1단계 — 매도 (비중 초과 · 이번 달 권장분) ────────────────────────
         # 2026-07-21: 예전엔 "2차(다음달)/3차(그다음)" 예상칸을 같이 보여줬는데,
@@ -1774,32 +1775,27 @@ if new_money > 0 and alloc["Total"] > 0:
         # "이번 달에 얼마 팔지"만 남기고 정리.
         # _SELL_MONTHS/_this_month_proceeds는 위(1457행 부근)에서 이미 계산해둠.
         if not _r_sell.empty:
-            _sell_name_list = []
-            for _, _rr in _r_sell.iterrows():
-                _kr = _role_to_held_kr.get(_rr["US ETF"].upper(), [_rr["US ETF"]])
-                _sell_name_list.append(_kr[0] if _kr else _rr["US ETF"])
-            st.markdown("##### 1단계 — 매도")
-            st.caption(f"{', '.join(_sell_name_list)} 비중 초과 · 초과분의 1/{_SELL_MONTHS}만 우선 매도 권장")
-            _r_sell_disp = _r_sell.copy()
-            _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
-                lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
-            )
-            _r_sell_disp["총 초과금(원)"] = (
-                _r_sell_disp["차이(%p)"].abs() / 100 * _total_held
-            ).round(0)
-            _r_sell_disp["이번 달 매도 권장(원)"] = (_r_sell_disp["총 초과금(원)"] / _SELL_MONTHS).round(0)
-            st.dataframe(
-                _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "인사이트",
-                               "총 초과금(원)", "이번 달 매도 권장(원)"]],
-                hide_index=True, use_container_width=True,
-                column_config={
-                    "차이(%p)":               st.column_config.NumberColumn(format="%+.1f", width="small"),
-                    "인사이트":               st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
-                    "총 초과금(원)":          st.column_config.NumberColumn(format="%,.0f", width="small"),
-                    "이번 달 매도 권장(원)": st.column_config.NumberColumn(format="%,.0f", width="small"),
-                },
-            )
-            st.caption("나머지 초과분은 다음 달 재실행 시 그 시점 비중 기준으로 다시 계산됩니다(고정된 다음 달 계획 아님).")
+            with st.container(border=True):
+                st.markdown("##### 1단계 — 매도")
+                _r_sell_disp = _r_sell.copy()
+                _r_sell_disp["보유 ETF"] = _r_sell_disp["US ETF"].apply(
+                    lambda u: ", ".join(_role_to_held_kr.get(u.upper(), [u]))
+                )
+                _r_sell_disp["총 초과금(원)"] = (
+                    _r_sell_disp["차이(%p)"].abs() / 100 * _total_held
+                ).round(0)
+                _r_sell_disp["이번 달 매도 권장(원)"] = (_r_sell_disp["총 초과금(원)"] / _SELL_MONTHS).round(0)
+                st.dataframe(
+                    _r_sell_disp[["역할", "보유 ETF", "차이(%p)", "인사이트",
+                                   "총 초과금(원)", "이번 달 매도 권장(원)"]],
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "차이(%p)":               st.column_config.NumberColumn(format="%+.1f", width="small"),
+                        "인사이트":               st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
+                        "총 초과금(원)":          st.column_config.NumberColumn(format="%,.0f", width="small"),
+                        "이번 달 매도 권장(원)": st.column_config.NumberColumn(format="%,.0f", width="small"),
+                    },
+                )
 
         # ── 2단계 — 판돈 포함 매수 배분 ──────────────────────────────────────
         # "신규자금분(원)"/"판돈분(원)"/"추가금액(원)"은 위 "배분 현황" 표 계산에서
@@ -1814,50 +1810,41 @@ if new_money > 0 and alloc["Total"] > 0:
         if not _buy_rows.empty or cash_res_tot > 0:
             if _this_month_proceeds > 0:
                 _step_label = "2단계 — 판돈 재배분"
-                _fund_desc = (
-                    f"신규 투입 {new_money:,.0f}원 + 이번 달 매도 판돈 {_this_month_proceeds:,.0f}원 "
-                    f"= 총 {(new_money + _this_month_proceeds):,.0f}원 배분"
-                )
             else:
                 _step_label = "이번 매수 배분"
-                _fund_desc = f"신규 투입 {new_money:,.0f}원 배분"
 
-            st.markdown(f"##### {_step_label}")
-            st.caption(_fund_desc)
+            with st.container(border=True):
+                st.markdown(f"##### {_step_label}")
 
-            _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]].copy()
-            _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "합계(원)"})
-            if cash_res_tot > 0:
-                _cash_disp_row = pd.DataFrame([{
-                    "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—",
-                    "신규자금분(원)": round(cash_res), "판돈분(원)": round(cash_res_tot - cash_res),
-                    "합계(원)": round(cash_res_tot),
-                    "인사이트": "🔵 목표 현금비중 채우기 — 다음 조정 시 사용",
+                _buy_disp = _buy_rows[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "추가금액(원)", "인사이트"]].copy()
+                _buy_disp = _buy_disp.rename(columns={"추가금액(원)": "합계(원)"})
+                if cash_res_tot > 0:
+                    _cash_disp_row = pd.DataFrame([{
+                        "역할": "현금", "US ETF": "CASH", "ISA(원화)": "—",
+                        "신규자금분(원)": round(cash_res), "판돈분(원)": round(cash_res_tot - cash_res),
+                        "합계(원)": round(cash_res_tot),
+                        "인사이트": "🔵 목표 현금비중 채우기 — 다음 조정 시 사용",
+                    }])
+                    _buy_disp = pd.concat([_buy_disp, _cash_disp_row], ignore_index=True)
+                _total_row = pd.DataFrame([{
+                    "역할": "합계", "US ETF": "", "ISA(원화)": "",
+                    "신규자금분(원)": int(_buy_disp["신규자금분(원)"].astype(float).sum()),
+                    "판돈분(원)":     int(_buy_disp["판돈분(원)"].astype(float).sum()),
+                    "합계(원)":       int(_buy_disp["합계(원)"].astype(float).sum()),
+                    "인사이트": "",
                 }])
-                _buy_disp = pd.concat([_buy_disp, _cash_disp_row], ignore_index=True)
-            _total_row = pd.DataFrame([{
-                "역할": "합계", "US ETF": "", "ISA(원화)": "",
-                "신규자금분(원)": int(_buy_disp["신규자금분(원)"].astype(float).sum()),
-                "판돈분(원)":     int(_buy_disp["판돈분(원)"].astype(float).sum()),
-                "합계(원)":       int(_buy_disp["합계(원)"].astype(float).sum()),
-                "인사이트": "",
-            }])
-            _buy_disp = pd.concat([_buy_disp, _total_row], ignore_index=True)
-            _buy_disp = _buy_disp[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "합계(원)", "인사이트"]]
-            st.dataframe(
-                _buy_disp,
-                hide_index=True, use_container_width=True,
-                column_config={
-                    "신규자금분(원)": st.column_config.NumberColumn("신규자금", format="%,.0f", width="small"),
-                    "판돈분(원)":     st.column_config.NumberColumn("재배분", format="%,.0f", width="small"),
-                    "합계(원)":       st.column_config.NumberColumn("합계", format="%,.0f", width="small"),
-                    "인사이트":       st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
-                },
-            )
-        st.caption(
-            "목표비중 = VIX 경기국면 기본비중 × H15 상대저점 tilt(±20%).  "
-            "차이(%p) ±3%p 이내는 리밸런싱 생략 권장."
-        )
+                _buy_disp = pd.concat([_buy_disp, _total_row], ignore_index=True)
+                _buy_disp = _buy_disp[["역할", "US ETF", "ISA(원화)", "신규자금분(원)", "판돈분(원)", "합계(원)", "인사이트"]]
+                st.dataframe(
+                    _buy_disp,
+                    hide_index=True, use_container_width=True,
+                    column_config={
+                        "신규자금분(원)": st.column_config.NumberColumn("신규자금", format="%,.0f", width="small"),
+                        "판돈분(원)":     st.column_config.NumberColumn("재배분", format="%,.0f", width="small"),
+                        "합계(원)":       st.column_config.NumberColumn("합계", format="%,.0f", width="small"),
+                        "인사이트":       st.column_config.TextColumn("신호 & 행동 가이드", width="large"),
+                    },
+                )
 
     # ── 코어 ETF 매수 후보 (순위 테이블만) ──────────────────────────────────
     with st.expander("🏛️ 코어 ETF 매수 후보 — 종합 순위", expanded=False):
