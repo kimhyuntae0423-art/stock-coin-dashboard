@@ -376,7 +376,11 @@ with tab_strat:
     _rot_ai_f      = RESULTS_DIR / "rotation_ai_compare_metrics.csv"
     _rot_ai_ann_f  = RESULTS_DIR / "rotation_ai_compare_annual.csv"
 
-    if not _rot_metrics_f.exists():
+    if not (_rot_metrics_f.exists() and _rot_equity_f.exists() and _rot_phase_f.exists()):
+        # 세 파일 다 있어야 함 — rotation_backtest.py가 순차 저장이라(원자적이지
+        # 않음) 중간에 끊기면 metrics만 있고 equity/phase가 없는 상태가 될 수
+        # 있음(2026-07-24 감사에서 발견, metrics만 확인하면 이후 phase 파일
+        # read_csv에서 FileNotFoundError로 페이지 전체가 죽었음).
         st.info("백테스트 결과 없음 — run_analysis.py 실행 후 갱신됩니다.")
     else:
         _rot_m  = pd.read_csv(_rot_metrics_f)
