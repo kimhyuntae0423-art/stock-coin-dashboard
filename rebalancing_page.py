@@ -338,27 +338,36 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         _he_show["buy_date"] = None
     _he_show.insert(0, "종목명", _he_show["ticker"].map(NAMES).fillna(""))
     _he_show = _he_show.rename(columns={
-        "ticker": "티커", "qty": "수량", "buy_price": "매수가", "buy_date": "매수일", "person": "이름", "notes": "메모"
+        "ticker": "티커", "qty": "수량", "buy_price": "평균단가", "buy_date": "일자", "person": "이름", "notes": "메모"
     })
-    _he_disp_cols = [c for c in ["종목명","티커","수량","매수가","매수일","이름","메모"] if c in _he_show.columns]
+    _he_disp_cols = [c for c in ["종목명","티커","수량","평균단가","일자","이름","메모"] if c in _he_show.columns]
 
-    _he_edited = st.data_editor(
-        _he_show[_he_disp_cols],
-        num_rows="dynamic",
-        key=f"rebal_he_{selected_person}",
-        column_config={
-            "종목명": st.column_config.SelectboxColumn("종목명", options=_he_all_names, width="medium"),
-            "티커":   st.column_config.TextColumn("티커", width="small"),
-            "수량":   st.column_config.NumberColumn("수량", format="%.8g"),
-            "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
-            "매수일": st.column_config.DateColumn("매수일", format="YYYY-MM-DD"),
-            "이름":   st.column_config.TextColumn("이름", width="small"),
-            "메모":   st.column_config.TextColumn("메모"),
-        },
-        use_container_width=True,
-    )
+    # data_editor의 셀 편집이 버튼 클릭과 같은 타이밍에 아직 커밋 안 된 상태로
+    # 저장 로직이 읽어가는 경우가 있어(Streamlit의 널리 알려진 동작) 수량을
+    # 수정하고 바로 저장을 눌렀는데 반영이 안 되는 문제가 있었음(2026-07-23
+    # 사용자 보고). st.form으로 감싸면 폼 안의 모든 위젯 값이 제출 시점에
+    # 한번에 확정되어 이 경합이 사라짐.
+    with st.form(key=f"rebal_he_form_{selected_person}"):
+        _he_edited = st.data_editor(
+            _he_show[_he_disp_cols],
+            num_rows="dynamic",
+            key=f"rebal_he_{selected_person}",
+            column_config={
+                "종목명":   st.column_config.SelectboxColumn("종목명", options=_he_all_names, width="medium"),
+                "티커":     st.column_config.TextColumn("티커", width="small"),
+                "수량":     st.column_config.NumberColumn("수량", format="%.8g"),
+                "평균단가": st.column_config.NumberColumn("평균단가", format="%,.0f"),
+                "일자":     st.column_config.DateColumn("일자", format="YYYY-MM-DD"),
+                "이름":     st.column_config.TextColumn("이름", width="small"),
+                "메모":     st.column_config.TextColumn("메모"),
+            },
+            use_container_width=True,
+        )
+        _he_submitted = st.form_submit_button(
+            "💾 저장 & GitHub 반영", type="primary", use_container_width=True
+        )
 
-    if st.button("💾 저장 & GitHub 반영", key="rebal_he_save", type="primary", use_container_width=True):
+    if _he_submitted:
         _he_cp = _he_edited.copy()
         for _hi, _hr in _he_cp.iterrows():
             _htk = str(_hr.get("티커", "") or "").strip()
@@ -367,7 +376,7 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
                 _he_cp.at[_hi, "티커"] = _he_name_to_ticker.get(_hnm, "")
 
         _he_cur = _he_cp.drop(columns=["종목명"]).rename(columns={
-            "티커": "ticker", "수량": "qty", "매수가": "buy_price", "매수일": "buy_date", "이름": "person", "메모": "notes"
+            "티커": "ticker", "수량": "qty", "평균단가": "buy_price", "일자": "buy_date", "이름": "person", "메모": "notes"
         })
         _he_cur["buy_date"] = format_buy_dates(_he_cur["buy_date"])
         _he_cur = _he_cur[

@@ -210,7 +210,7 @@ _edit_df["person"] = _edit_df["person"].fillna("").astype(str) if "person" in _e
 _edit_df["notes"] = _edit_df["notes"].fillna("").astype(str) if "notes" in _edit_df.columns else ""
 # 종목명 열 추가 (첫 열)
 _edit_df.insert(0, "종목명", _edit_df["ticker"].map(NAMES).fillna(""))
-_edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "매수가", "buy_date": "매수일", "person": "이름", "notes": "메모"})
+_edit_df = _edit_df.rename(columns={"ticker": "티커", "qty": "수량", "buy_price": "평균단가", "buy_date": "일자", "person": "이름", "notes": "메모"})
 
 # 선택한 사람만 편집 테이블에 표시
 if selected_person != "전체":
@@ -220,30 +220,38 @@ else:
     _edit_df_show = _edit_df.copy()
     _others = None
 
-edited_partial = st.data_editor(
-    _edit_df_show,
-    num_rows="dynamic",
-    use_container_width=True,
-    key=f"holdings_editor_{selected_person}",
-    column_config={
-        "종목명": st.column_config.SelectboxColumn(
-            "종목명 검색",
-            options=_ALL_NAMES,
-            help="이름 선택 → 저장 시 티커 자동 입력",
-            width="medium",
-        ),
-        "티커": st.column_config.TextColumn(
-            "티커",
-            width="small",
-            help="직접 입력 권장. 예: 005930.KS, AAPL, BTC-USD. 종목명 선택 시 저장 후 자동 채워짐.",
-        ),
-        "수량": st.column_config.NumberColumn("수량", format="%.8g"),
-        "매수가": st.column_config.NumberColumn("매수가", format="%,.0f"),
-        "매수일": st.column_config.DateColumn("매수일", format="YYYY-MM-DD", help="비워두면 미기록으로 저장됩니다."),
-        "이름": st.column_config.TextColumn("이름", width="small"),
-        "메모": st.column_config.TextColumn("메모"),
-    },
-)
+# data_editor의 셀 편집이 저장 버튼 클릭과 같은 타이밍에 아직 커밋 안 된 채로
+# 읽히는 경우가 있어(Streamlit의 널리 알려진 동작) 값을 고치고 바로 저장을
+# 눌렀는데 반영이 안 되는 문제가 있었음(2026-07-23, rebalancing_page.py에서도
+# 동일 증상 보고돼 같이 수정). st.form으로 감싸면 폼 안 위젯 값이 제출 시점에
+# 한번에 확정되어 이 경합이 사라짐. st.download_button은 폼 안에 못 들어가서
+# 폼 밖으로 분리.
+with st.form(key=f"holdings_editor_form_{selected_person}"):
+    edited_partial = st.data_editor(
+        _edit_df_show,
+        num_rows="dynamic",
+        use_container_width=True,
+        key=f"holdings_editor_{selected_person}",
+        column_config={
+            "종목명": st.column_config.SelectboxColumn(
+                "종목명 검색",
+                options=_ALL_NAMES,
+                help="이름 선택 → 저장 시 티커 자동 입력",
+                width="medium",
+            ),
+            "티커": st.column_config.TextColumn(
+                "티커",
+                width="small",
+                help="직접 입력 권장. 예: 005930.KS, AAPL, BTC-USD. 종목명 선택 시 저장 후 자동 채워짐.",
+            ),
+            "수량":     st.column_config.NumberColumn("수량", format="%.8g"),
+            "평균단가": st.column_config.NumberColumn("평균단가", format="%,.0f"),
+            "일자":     st.column_config.DateColumn("일자", format="YYYY-MM-DD", help="비워두면 미기록으로 저장됩니다."),
+            "이름":     st.column_config.TextColumn("이름", width="small"),
+            "메모":     st.column_config.TextColumn("메모"),
+        },
+    )
+    _save_submitted = st.form_submit_button("💾 저장", type="primary", use_container_width=True)
 
 # 종목명으로 티커 자동 파생 (티커가 비어 있고 종목명이 선택된 경우)
 edited_partial = edited_partial.copy()
@@ -254,7 +262,7 @@ for idx, row in edited_partial.iterrows():
             edited_partial.at[idx, "티커"] = derived
 
 edited_cur = edited_partial.drop(columns=["종목명"]).rename(
-    columns={"티커": "ticker", "수량": "qty", "매수가": "buy_price", "매수일": "buy_date", "이름": "person", "메모": "notes"}
+    columns={"티커": "ticker", "수량": "qty", "평균단가": "buy_price", "일자": "buy_date", "이름": "person", "메모": "notes"}
 )
 edited_cur["buy_date"] = format_buy_dates(edited_cur["buy_date"])
 
@@ -267,19 +275,17 @@ else:
 # 현황 계산용은 현재 편집 대상만
 holdings_view = edited_cur.copy()
 
-sc1, sc2 = st.columns([1, 1])
-with sc1:
-    if st.button("💾 저장", type="primary", use_container_width=True):
-        _save_holdings(edited)
-        ok, msg = _push_to_github(edited)
-        # session_state에 결과 보관 → rerun 후에도 메시지 표시
-        st.session_state["_save_ok"] = ok
-        st.session_state["_save_msg"] = msg
-        st.rerun()
-with sc2:
-    csv_dl = edited.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
-                       mime="text/csv", use_container_width=True)
+if _save_submitted:
+    _save_holdings(edited)
+    ok, msg = _push_to_github(edited)
+    # session_state에 결과 보관 → rerun 후에도 메시지 표시
+    st.session_state["_save_ok"] = ok
+    st.session_state["_save_msg"] = msg
+    st.rerun()
+
+csv_dl = edited.to_csv(index=False).encode("utf-8")
+st.download_button("📥 백업", data=csv_dl, file_name="holdings_backup.csv",
+                   mime="text/csv", use_container_width=True)
 
 # 저장 결과 메시지 — rerun 후에도 유지
 if "_save_ok" in st.session_state:
