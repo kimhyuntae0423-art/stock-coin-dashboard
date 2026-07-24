@@ -448,19 +448,23 @@ with st.expander("✏️ 보유 내역 관리 (줄 추가 · 편집 · 저장)",
         # 리밸런싱하고 저장해도 이력 표엔 안 뜨는 게 당연한 동작인데 사용자 입장에선
         # "왜 안 떠?"로 보였음(2026-07-24 피드백). 이제 저장할 때마다 오늘 날짜
         # 스냅샷을 최신 상태로 덮어씀(_snap_upsert가 (date,person) 단위 upsert라
-        # 같은 날 여러 번 저장해도 안전 — 마지막 상태로만 남음). _he_save는 person
-        # 필터와 무관하게 항상 가구 전체 데이터라 person="전체"로 고정.
+        # 같은 날 여러 번 저장해도 안전 — 마지막 상태로만 남음). _he_cur는 현재
+        # person 필터가 보여주는 범위 그대로(전체 선택 시 이미 전체, 특정 사람
+        # 선택 시 그 사람 행만 — CASH 행 포함) — "지금 비중 저장" 버튼과 동일하게
+        # selected_person을 그대로 태그(2026-07-24, "대상이 왜 전체냐" 피드백으로
+        # _he_save/"전체" 고정에서 변경 — _he_save는 파일 저장용 병합본이라 스냅샷
+        # 범위엔 안 맞았음).
         from datetime import date as _he_date_cls
         _stock_price_map = dict(zip(summary["ticker"].astype(str).str.upper(), summary["close"])) if not summary.empty else {}
         _coin_price_map  = {str(k).upper(): v for k, v in _i_cp.items()}
         _snap_pct_auto, _snap_amt_auto, _snap_total_auto = _compute_role_alloc_snapshot(
-            _he_save, core_etfs, _stock_price_map, _coin_price_map
+            _he_cur, core_etfs, _stock_price_map, _coin_price_map
         )
         _snap_msg_suffix = ""
         if _snap_total_auto > 0:
             _snap_date_now = _he_date_cls.today().strftime("%Y-%m-%d")
             _snap_save(_snap_upsert(_snap_load(), {
-                "date": _snap_date_now, "person": "전체",
+                "date": _snap_date_now, "person": selected_person,
                 "total": int(round(_snap_total_auto)),
                 "alloc": _snap_pct_auto,
                 "alloc_amount": {k: int(round(v)) for k, v in _snap_amt_auto.items()},
@@ -2061,7 +2065,7 @@ if _hist_snaps:
         _h_amt   = _hs.get("alloc_amount", {})
         _hrow = {
             "날짜": _hs.get("date") or _hs.get("month", ""),
-            "총자산(원)": int(_h_total),
+            "총자산": f"{int(_h_total):,}원",
         }
         for _rk, _rlabel in _ROLE_LABELS.items():
             _pct = _hs.get("alloc", {}).get(_rk)
@@ -2081,8 +2085,8 @@ if _hist_snaps:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "날짜":        st.column_config.TextColumn("날짜", width="small"),
-            "총자산(원)":  st.column_config.NumberColumn("총자산(원)", format="%,d", width="medium"),
+            "날짜":   st.column_config.TextColumn("날짜", width="small"),
+            "총자산": st.column_config.TextColumn("총자산", width="medium"),
             **{_rl: st.column_config.TextColumn(_rl, width="small")
                for _rl in _ROLE_LABELS.values()},
             "대상":        st.column_config.TextColumn("대상", width="small"),
