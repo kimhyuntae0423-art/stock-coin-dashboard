@@ -5,16 +5,16 @@ AMZN,5.6484075,Consumer Cyclical,73.6,Q2
 GOOGL,6.2822223,Communication Services,143.0,Q3
 META,6.199056,Communication Services,88.5,Q3
 NVDA,25.630732,Technology,343.5,Q4
-TSLA,14.295566,Consumer Cyclical,17.1,Q4
+TSLA,13.97393,Consumer Cyclical,17.1,Q4
 JPM,2.6555743,Financial Services,138.9,Q2
 V,19.082716,Financial Services,53.1,Q4
 JNJ,7.8079143,Healthcare,71.6,Q3
 WMT,9.239534,Consumer Defensive,112.3,Q3
 MA,71.232834,Financial Services,39.3,Q4
-PG,6.3866386,Consumer Defensive,1.3,Q3
+PG,6.3866386,Consumer Defensive,2.1,Q3
 UNH,3.6472862,Healthcare,-11.7,Q2
 HD,23.927853,Consumer Cyclical,7.6,Q4
-DIS,1.5225452,Communication Services,10.1,Q1
+DIS,1.5225452,Communication Services,7.7,Q1
 NFLX,9.679602,Communication Services,59.7,Q3
 AMD,13.19822,Technology,356.3,Q4
 INTC,4.1628714,Technology,163.4,Q2
@@ -23,7 +23,7 @@ PEP,8.44656,Consumer Defensive,-19.1,Q3
 ORCL,8.818252,Technology,1.6,Q3
 CRM,3.9152176,Technology,-26.0,Q2
 ADBE,7.7981777,Technology,-58.8,Q3
-COST,25.082623,Consumer Defensive,73.6,Q4
+COST,25.082623,Consumer Defensive,73.9,Q4
 AVGO,20.722734,Technology,340.6,Q4
 MU,14.336753,Technology,1204.4,Q4
 MRVL,9.3361845,Technology,201.0,Q3
@@ -31,11 +31,11 @@ AMAT,17.807331,Technology,262.5,Q4
 KLAC,47.191216,Technology,320.2,Q4
 LRCX,36.059784,Technology,336.4,Q4
 QCOM,6.4822583,Technology,34.8,Q3
-ASML,1581.4578,Technology,151.7,Q4
+ASML,1581.721,Technology,151.7,Q4
 TER,17.423693,Technology,213.4,Q4
 FORM,7.6601386,Technology,180.0,Q3
 AMKR,3.5510852,Technology,134.3,Q2
-ASX,7.471795,Technology,394.1,Q3
+ASX,7.4534373,Technology,394.1,Q3
 SNDK,15.432281,Technology,2966.3,Q4
 ARM,33.390266,Technology,385.8,Q4
 005930.KS,3.47,Technology,277.6,Q2
@@ -56,7 +56,7 @@ ARM,33.390266,Technology,385.8,Q4
 003670.KS,3.04,Industrials,-73.1,Q2
 247540.KQ,5.93,Industrials,-74.1,Q2
 VOO,1.7375798,,67.9,Q2
-VTI,2.6149414,,66.2,Q2
+VTI,2.6149414,,66.1,Q2
 QQQ,1.9124643,,81.4,Q2
 SPY,1.7215647,,67.5,Q2
 VTV,2.9166393,,61.1,Q2
