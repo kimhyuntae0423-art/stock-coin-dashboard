@@ -1,64 +1,70 @@
 ticker,pbr,sector,ret_36m,q
-AAPL,41.225544,Technology,63.5,Q4
-MSFT,8.186854,Technology,52.0,Q3
-AMZN,6.911639,Consumer Cyclical,105.8,Q3
-GOOGL,7.3386908,Communication Services,176.7,Q3
-META,6.1475005,Communication Services,101.2,Q2
-NVDA,25.60595,Technology,319.5,Q4
-TSLA,14.37793,Consumer Cyclical,24.8,Q4
-JPM,2.651289,Financial Services,157.4,Q2
-V,19.378378,Financial Services,52.0,Q4
-JNJ,7.2103505,Healthcare,70.5,Q3
-WMT,9.344193,Consumer Defensive,110.3,Q3
-MA,89.26985,Financial Services,40.9,Q4
-PG,6.347754,Consumer Defensive,1.6,Q2
-UNH,3.6006482,Healthcare,-7.4,Q2
-HD,24.433744,Consumer Cyclical,10.4,Q4
-DIS,1.5753567,Communication Services,21.0,Q1
-NFLX,10.127054,Communication Services,69.1,Q3
-AMD,12.254786,Technology,358.4,Q4
-INTC,5.2422376,Technology,163.3,Q2
-KO,10.339246,Consumer Defensive,58.6,Q3
-PEP,8.631391,Consumer Defensive,-13.5,Q3
-ORCL,10.878068,Technology,22.1,Q3
-CRM,4.448458,Technology,-14.6,Q2
-ADBE,8.706827,Technology,-55.1,Q3
-COST,25.593649,Consumer Defensive,80.7,Q4
-AVGO,21.282148,Technology,340.6,Q4
-MU,9.297764,Technology,1099.3,Q3
-MRVL,9.314314,Technology,235.8,Q3
-AMAT,17.208275,Technology,246.9,Q4
-KLAC,40.966152,Technology,272.5,Q4
-LRCX,34.80742,Technology,330.9,Q4
-QCOM,5.884386,Technology,40.3,Q2
-ASML,1392.2078,Technology,154.9,Q4
-TER,18.214409,Technology,242.7,Q4
-FORM,7.639377,Technology,208.0,Q3
-AMKR,2.7110329,Technology,90.8,Q2
-ASX,6.702608,Technology,380.6,Q2
-SNDK,13.836693,Technology,2649.3,Q4
-ARM,30.699883,Technology,346.7,Q4
-005930.KS,3.33,Technology,297.7,Q2
-000660.KS,6.76,Technology,1322.8,Q3
-035420.KS,1.05,Communication Services,-6.6,Q1
-005380.KS,0.86,Consumer Cyclical,127.5,Q1
-000270.KS,0.82,Consumer Cyclical,86.4,Q1
-005490.KS,0.4,Basic Materials,-47.5,Q1
-051910.KS,0.55,Basic Materials,-59.5,Q1
-006400.KS,1.36,Industrials,-39.9,Q1
-035720.KS,1.43,Communication Services,-26.8,Q1
-207940.KS,8.3,Healthcare,26.1,Q3
-068270.KS,2.37,Healthcare,47.6,Q2
-105560.KS,1.01,Financial Services,271.2,Q1
-055550.KS,0.82,Financial Services,224.3,Q1
-015760.KS,0.44,Utilities,89.1,Q1
-066570.KS,1.12,Technology,54.5,Q1
-003670.KS,2.94,Industrials,-73.8,Q2
-247540.KQ,5.3,Industrials,-75.3,Q2
-QQQ,1.9567381,,88.4,Q2
-SPY,1.7652253,,74.6,Q1
-VTV,2.9163752,,65.0,Q2
-TLT,0.55211097,,-3.9,Q1
-GLD,2.1863108,,106.5,Q2
-SOXX,1.1970987,,204.3,Q1
-XLU,0.6932333,,54.2,Q1
+AAPL,42.035324,Technology,66.8,Q4
+MSFT,8.273483,Technology,53.6,Q3
+AMZN,5.4230204,Consumer Cyclical,101.0,Q2
+GOOGL,7.420033,Communication Services,179.8,Q3
+META,6.1235456,Communication Services,100.4,Q3
+NVDA,26.262703,Technology,330.3,Q4
+TSLA,14.949537,Consumer Cyclical,26.8,Q4
+JPM,2.6879787,Financial Services,161.0,Q2
+V,19.586115,Financial Services,53.6,Q4
+JNJ,7.2250876,Healthcare,70.9,Q3
+WMT,9.4150915,Consumer Defensive,111.9,Q3
+MA,89.29018,Financial Services,40.9,Q4
+PG,6.412634,Consumer Defensive,3.8,Q3
+UNH,3.5329454,Healthcare,-9.1,Q2
+HD,25.024431,Consumer Cyclical,13.0,Q4
+DIS,1.5759988,Communication Services,21.0,Q1
+NFLX,10.160198,Communication Services,69.6,Q3
+AMD,13.113005,Technology,390.5,Q4
+INTC,5.8102427,Technology,191.8,Q2
+KO,10.3035345,Consumer Defensive,58.0,Q3
+PEP,8.598628,Consumer Defensive,-13.8,Q3
+ORCL,11.176381,Technology,25.4,Q4
+CRM,4.56903,Technology,-12.3,Q2
+ADBE,8.919873,Technology,-54.0,Q3
+COST,25.426525,Consumer Defensive,79.6,Q4
+AVGO,22.689095,Technology,369.7,Q4
+MU,10.005829,Technology,1190.6,Q3
+MRVL,10.507113,Technology,278.8,Q3
+AMAT,18.15169,Technology,265.9,Q4
+KLAC,40.21605,Technology,298.4,Q4
+LRCX,37.54017,Technology,364.7,Q4
+QCOM,6.2166085,Technology,50.5,Q3
+ASML,1451.0061,Technology,165.7,Q4
+TER,18.371193,Technology,278.0,Q4
+FORM,8.446848,Technology,240.6,Q3
+AMKR,2.9792566,Technology,109.7,Q2
+ASX,7.071727,Technology,407.0,Q3
+SNDK,15.336242,Technology,2947.2,Q4
+ARM,34.718475,Technology,424.2,Q4
+005930.KS,3.34,Technology,279.3,Q2
+000660.KS,6.8,Technology,1223.1,Q3
+035420.KS,1.15,Communication Services,7.6,Q1
+005380.KS,0.86,Consumer Cyclical,138.5,Q1
+000270.KS,0.82,Consumer Cyclical,88.8,Q1
+005490.KS,0.42,Basic Materials,-41.7,Q1
+051910.KS,0.58,Basic Materials,-55.2,Q1
+006400.KS,1.46,Industrials,-31.3,Q1
+035720.KS,1.45,Communication Services,-20.9,Q1
+207940.KS,8.61,Healthcare,30.3,Q3
+068270.KS,2.42,Healthcare,49.6,Q2
+105560.KS,1.01,Financial Services,250.6,Q1
+055550.KS,0.82,Financial Services,224.8,Q1
+015760.KS,0.45,Utilities,105.9,Q1
+066570.KS,1.16,Technology,73.6,Q1
+003670.KS,3.07,Industrials,-68.2,Q2
+247540.KQ,5.61,Industrials,-68.4,Q2
+VOO,1.8139254,,78.2,Q2
+VTI,2.7297752,,76.9,Q2
+QQQ,2.0232046,,94.8,Q2
+SPY,1.7970505,,77.8,Q2
+VTV,2.9542484,,67.1,Q2
+VEU,1.3681436,,71.7,Q1
+SHY,0.94930553,,12.7,Q1
+TLT,0.55634296,,-2.8,Q1
+GLD,2.2007213,,107.8,Q2
+SOXX,1.2785197,,224.9,Q1
+XLV,1.2738104,,28.0,Q1
+XLU,0.68932647,,53.3,Q1
+VPU,1.8374687,,53.2,Q2
