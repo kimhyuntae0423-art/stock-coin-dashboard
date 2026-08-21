@@ -81,15 +81,15 @@ jobs:
           [ -n "$NEW_REFRESH" ] && echo "$NEW_REFRESH" | gh secret set KAKAO_REFRESH_TOKEN -R kimhyuntae0423-art/morning-briefing
           echo "두 레포 시크릿 업데이트 완료"
 
-      - name: 사이클 상태 변경 시 커밋 & 푸시
+      - name: 사이클/추세 상태 변경 시 커밋 & 푸시
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add results/cycle_alert_state.json
+          git add results/cycle_alert_state.json results/coin_trend_alert_state.json
           if git diff --cached --quiet; then
-            echo "사이클 단계 변경 없음 — 커밋 스킵"
+            echo "사이클/추세 상태 변경 없음 — 커밋 스킵"
           else
-            git commit -m "alert: BTC 사이클 단계 변경 기록"
+            git commit -m "alert: BTC 사이클/보유 코인 추세 상태 기록"
             git pull --rebase origin main || true
             git push
           fi

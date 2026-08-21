@@ -1,17 +1,16 @@
 """
-보유 종목 매도/주의 신호 + BTC 사이클 단계 변경 점검 후 카카오 알림 발송.
+보유 종목 매도/주의 신호 + BTC MVRV 국면(regime) 변경 + 보유 코인 추세(MA50/MA200) 전환 점검 후 카카오 알림 발송.
 
 GitHub Actions의 매일 자동 갱신 마지막 단계에서 실행.
 환경변수 KAKAO_* 가 설정돼 있을 때만 알림 발송, 아니면 콘솔에만 출력.
 
-사이클 단계 정의 (v3 포트폴리오 룰 — 2026-05-23_portfolio_v3_with_btc.md):
-  peak         MVRV Z > 6  / NUPL > 0.9  / Pi > 0.95   → BTC 비중 3~5%
-  euphoria     MVRV Z 4~6  / NUPL .75~.9 / Pi .85~.95  → BTC 비중 8%
-  strong       MVRV Z 2~4  / NUPL .5~.75 / Pi .6~.85   → BTC 비중 12%
-  accumulation MVRV Z 0~2  / NUPL 0~.5   / Pi < .6     → BTC 비중 15%
-  capitulation MVRV Z < 0  / NUPL < 0                   → BTC 비중 20% (MAX)
+BTC 국면 정의는 scripts/onchain.py::classify_regime()이 SSOT (0/1.5/2.5 경계,
+deep_value/accumulation/bull/top) — 대시보드(portfolio_page.py 등)와 완전히
+동일한 기준을 쓴다. 예전엔 이 파일 안에만 있던 별도 임계값(0/2/4/6, NUPL·Pi
+Cycle 포함, 백테스트 근거 없음)을 써서 대시보드와 다른 국면을 카톡으로
+보내던 불일치가 있었음(2026-08-21 발견·수정, ARCHITECTURE.md 38행 참고).
 
-가장 강한 신호로 보수적 판정. 단계가 변경된 날만 카톡 푸시 (스팸 방지).
+국면이 변경된 날만 카톡 푸시 (스팸 방지).
 """
 import json
 import os
@@ -28,12 +27,28 @@ sys.path.insert(0, str(_SCRIPTS_DIR))
 sys.path.insert(0, str(ROOT))
 
 from crypto_analysis import coin_alt_stoploss_status, COIN_EXIT_GROUPS
+from onchain import classify_regime, REGIME_LABEL_KR
+from config import NAMES_FILE, COIN_NAMES_FILE
 HOLDINGS = ROOT / "holdings.csv"
 SUMMARY = ROOT / "results" / "summary_signals.csv"
 COIN_SUMMARY = ROOT / "results" / "coin_summary.csv"
 CYCLE_METRICS = ROOT / "results" / "cycle_metrics.csv"
 CYCLE_STATE = ROOT / "results" / "cycle_alert_state.json"
+TREND_STATE = ROOT / "results" / "coin_trend_alert_state.json"
 _RESULTS = ROOT / "results"
+
+
+def load_names() -> dict:
+    """티커→한글명 매핑. portfolio_page.py::load_names()와 동일 패턴(SSOT: names.csv/coin_names.csv)."""
+    names: dict = {}
+    for path in (NAMES_FILE, COIN_NAMES_FILE):
+        if path.exists():
+            df = pd.read_csv(path)
+            names.update(dict(zip(df["ticker"], df["name"])))
+    return names
+
+
+NAMES = load_names()
 
 
 def _coin_bb(ticker: str) -> dict | None:
@@ -107,10 +122,12 @@ def severity_for_holding(
         if is_btc:
             if mvrv_z is not None and pd.notna(mvrv_z):
                 z = float(mvrv_z)
-                if z >= 2.5:
-                    return 2, [f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 비중 목표, 백테스트 검증)"]
-                elif z >= 1.5:
-                    return 1, [f"MVRV Z-Score {z:.2f} — 과열 경계 (BTC 45% 구간)"]
+                regime = classify_regime(z)["regime"]
+                label = REGIME_LABEL_KR.get(regime, regime)
+                if regime == "top":
+                    return 2, [f"MVRV Z-Score {z:.2f} — {label} (백테스트 검증)"]
+                elif regime == "bull":
+                    return 1, [f"MVRV Z-Score {z:.2f} — {label}"]
             return 0, []
 
         # 알트코인: BB + 손익 복합 신호
@@ -208,58 +225,11 @@ def severity_for_holding(
     return severity, reasons
 
 
-def classify_cycle_stage(mvrv_z, nupl, pi_ratio) -> str | None:
-    """세 지표 중 가장 강한 신호로 BTC 사이클 단계 판정 (보수적)."""
-    stages: list[str] = []
-
-    if pd.notna(mvrv_z):
-        if mvrv_z > 6:
-            stages.append("peak")
-        elif mvrv_z > 4:
-            stages.append("euphoria")
-        elif mvrv_z > 2:
-            stages.append("strong")
-        elif mvrv_z >= 0:
-            stages.append("accumulation")
-        else:
-            stages.append("capitulation")
-
-    if pd.notna(nupl):
-        if nupl > 0.9:
-            stages.append("peak")
-        elif nupl > 0.75:
-            stages.append("euphoria")
-        elif nupl > 0.5:
-            stages.append("strong")
-        elif nupl >= 0:
-            stages.append("accumulation")
-        else:
-            stages.append("capitulation")
-
-    if pd.notna(pi_ratio):
-        if pi_ratio > 0.95:
-            stages.append("peak")
-        elif pi_ratio > 0.85:
-            stages.append("euphoria")
-        elif pi_ratio > 0.6:
-            stages.append("strong")
-        else:
-            stages.append("accumulation")
-
-    if not stages:
-        return None
-
-    # 위험·기회 시급도 우선: peak(매도) > capitulation(매수) > euphoria > strong > accumulation
-    priority = {"peak": 0, "capitulation": 1, "euphoria": 2, "strong": 3, "accumulation": 4}
-    return min(stages, key=lambda s: priority[s])
-
-
-STAGE_TEMPLATES = {
-    "peak":         "🚨 BTC 정점 위험 — 비중 3~5%로 대량 매도 룰",
-    "euphoria":     "⚠️ BTC 도취 영역 — 30% 부분 익절 검토 (목표 8%)",
-    "strong":       "📈 BTC 강세 — 자연 비중 상승 허용 (목표 12%)",
-    "accumulation": "📊 BTC 축적/회복 — 분할매수 진행 (목표 15%)",
-    "capitulation": "🟢 BTC 항복 — Cash로 적극 매수 (목표 20%)",
+CYCLE_TEMPLATES = {
+    "deep_value":   "🟢 BTC 바닥권 — 적극 매수 구간 (100% 목표, 백테스트 검증)",
+    "accumulation": "📊 BTC 매집 — 저평가 구간 (75% 목표)",
+    "bull":         "🟠 BTC 중립~과열 경계 (45% 목표)",
+    "top":          "🚨 BTC 과열 — 비중 축소 검토 (20% 목표, 백테스트 검증)",
 }
 
 
@@ -273,21 +243,23 @@ def _load_prev_stage() -> str | None:
         return None
 
 
-def _save_state(stage: str, prev: str | None, metrics: dict) -> None:
+def _save_state(stage: str, prev: str | None, mvrv_z) -> None:
     CYCLE_STATE.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "stage": stage,
         "prev_stage": prev,
-        "mvrv_z": float(metrics["mvrv_z"]) if pd.notna(metrics["mvrv_z"]) else None,
-        "nupl": float(metrics["nupl"]) if pd.notna(metrics["nupl"]) else None,
-        "pi_ratio": float(metrics["pi_ratio"]) if pd.notna(metrics["pi_ratio"]) else None,
+        "mvrv_z": float(mvrv_z) if pd.notna(mvrv_z) else None,
     }
     with open(CYCLE_STATE, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 def check_cycle() -> dict | None:
-    """BTC 사이클 단계 변경 감지. 변경 시만 dict 반환, 없으면 None."""
+    """BTC MVRV 국면(regime) 변경 감지. 대시보드(portfolio_page.py 등)와 동일하게
+    scripts/onchain.py::classify_regime()을 SSOT로 사용 — 예전엔 이 파일 안에만
+    있던 별도 임계값(0/2/4/6, classify_cycle_stage)을 써서 대시보드와 다른 국면을
+    카톡으로 보내던 불일치가 있었음(2026-08-21 발견, ARCHITECTURE.md 38행 참고).
+    변경 시만 dict 반환, 없으면 None."""
     if not CYCLE_METRICS.exists():
         return None
     try:
@@ -297,32 +269,28 @@ def check_cycle() -> dict | None:
     if df.empty:
         return None
 
-    row = df.iloc[0]
-    metrics = {
-        "mvrv_z": row.get("mvrv_z"),
-        "nupl": row.get("nupl"),
-        "pi_ratio": row.get("pi_ratio"),
-    }
-    current = classify_cycle_stage(**metrics)
-    if current is None:
+    mvrv_z = df.iloc[0].get("mvrv_z")
+    if pd.isna(mvrv_z):
         return None
+    mvrv_z = float(mvrv_z)
+    current = classify_regime(mvrv_z)["regime"]
 
     prev = _load_prev_stage()
     if prev == current:
         return None  # 변경 없음 → 알림 스킵
 
-    _save_state(current, prev, metrics)
-    return {"stage": current, "prev_stage": prev, **metrics}
+    _save_state(current, prev, mvrv_z)
+    return {"stage": current, "prev_stage": prev, "mvrv_z": mvrv_z}
 
 
 def format_cycle_alert(cycle: dict) -> str:
-    head = STAGE_TEMPLATES.get(cycle["stage"], f"BTC 단계: {cycle['stage']}")
+    head = CYCLE_TEMPLATES.get(cycle["stage"], REGIME_LABEL_KR.get(cycle["stage"], cycle["stage"]))
     mvrv_z = cycle.get("mvrv_z")
     if mvrv_z is not None and pd.notna(mvrv_z):
         head += f" (Z={mvrv_z:.2f})"
     prev = cycle.get("prev_stage")
     if prev:
-        head += f" [from {prev}]"
+        head += f" [from {REGIME_LABEL_KR.get(prev, prev)}]"
     return head
 
 
@@ -390,6 +358,71 @@ def check() -> list[dict]:
     return alerts
 
 
+def check_trend_flip() -> list[dict]:
+    """보유 코인의 MA50/MA200 추세(state) 전환(bear↔bull) 감지.
+    골든/데드크로스 자체는 백테스트 검증된 예측 신호가 아니므로(CLAUDE.md
+    참고) 매매 권고가 아닌 '참고 정보'로만 표시한다. 전환된 종목만 반환
+    (스팸 방지, check_cycle()과 같은 패턴)."""
+    if not HOLDINGS.exists():
+        return []
+    try:
+        h = pd.read_csv(HOLDINGS)
+    except pd.errors.EmptyDataError:
+        return []
+    if h.empty or h["ticker"].dropna().empty:
+        return []
+
+    tickers = sorted({
+        str(t).strip().upper() for t in h["ticker"].dropna()
+        if "-USD" in str(t).upper()
+    })
+    if not tickers:
+        return []
+
+    prev_states: dict = {}
+    if TREND_STATE.exists():
+        try:
+            with open(TREND_STATE, "r", encoding="utf-8") as f:
+                prev_states = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            prev_states = {}
+
+    flips: list[dict] = []
+    current_states = dict(prev_states)
+    for ticker in tickers:
+        path = _RESULTS / f"coin_{ticker}_signals.csv"
+        if not path.exists():
+            continue
+        try:
+            state = pd.read_csv(path, usecols=["state"]).iloc[-1]["state"]
+        except Exception:
+            continue
+        if pd.isna(state):
+            continue
+        state = str(state)
+        prev = prev_states.get(ticker)
+        current_states[ticker] = state
+        if prev is not None and prev != state:
+            flips.append({"ticker": ticker, "from": prev, "to": state})
+
+    TREND_STATE.parent.mkdir(parents=True, exist_ok=True)
+    with open(TREND_STATE, "w", encoding="utf-8") as f:
+        json.dump(current_states, f, ensure_ascii=False, indent=2)
+    return flips
+
+
+def format_trend_flips(flips: list[dict]) -> list[str]:
+    lines = []
+    for flip in flips:
+        label = NAMES.get(flip["ticker"], flip["ticker"])
+        arrow = "📈" if flip["to"] == "bull" else "📉"
+        lines.append(
+            f"{arrow} {label}({flip['ticker']}): 추세 전환 {flip['from']}→{flip['to']}"
+            f" (MA50/MA200 참고용, 단독 신뢰도 낮음)"
+        )
+    return lines
+
+
 def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
     """카카오 200자 한도 내 메시지 조립. 사이클 경보가 가장 위에 표시됨."""
     if not alerts and not cycle:
@@ -407,13 +440,15 @@ def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
             parts.append("")
         parts.append("🔴 매도 검토")
         for a in high:
-            parts.append(f"· {a['ticker']}: {', '.join(a['reasons'])}")
+            label = NAMES.get(a["ticker"], a["ticker"])
+            parts.append(f"· {label}({a['ticker']}): {', '.join(a['reasons'])}")
     if warn:
         if parts:
             parts.append("")
         parts.append("🟠 주의")
         for a in warn:
-            parts.append(f"· {a['ticker']}: {', '.join(a['reasons'])}")
+            label = NAMES.get(a["ticker"], a["ticker"])
+            parts.append(f"· {label}({a['ticker']}): {', '.join(a['reasons'])}")
 
     msg = "\n".join(parts)
     # 200자 초과 시 잘라서 "+ N개 더"
@@ -422,30 +457,49 @@ def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
     return msg
 
 
+def build_trend_message(trend_flips: list[dict]) -> str | None:
+    """추세 전환 알림 — 매도 검토와 한 메시지에 같이 넣으면 200자 한도에서
+    뒤로 밀려 조용히 잘려나가는 문제가 있어서(2026-08-21 발견) 별도 메시지로
+    분리 발송한다."""
+    if not trend_flips:
+        return None
+    parts = ["🔄 추세 전환"] + format_trend_flips(trend_flips)
+    msg = "\n".join(parts)
+    if len(msg) > 195:
+        msg = msg[:190] + "…"
+    return msg
+
+
 def main():
     alerts = check()
     cycle = check_cycle()
+    trend_flips = check_trend_flip()
     msg = build_message(alerts, cycle)
+    trend_msg = build_trend_message(trend_flips)
 
-    if msg is None:
-        print("✓ 알림 없음 — 보유 종목 정상 + BTC 사이클 단계 변경 없음")
+    if msg is None and trend_msg is None:
+        print("✓ 알림 없음 — 보유 종목 정상 + BTC 사이클/추세 변경 없음")
         return 0
 
-    print("=== 발송할 메시지 ===")
-    print(msg)
-    print("====================")
-
-    if os.environ.get("KAKAO_REST_API_KEY") and os.environ.get("KAKAO_REFRESH_TOKEN"):
-        try:
-            from kakao_notify import send_to_self
-            send_to_self(msg)
-            print("✓ 카카오톡 발송 완료")
-        except Exception as e:
-            print(f"✗ 카카오 발송 실패: {e}")
-            return 1
-    else:
-        print("ℹ KAKAO_REST_API_KEY / KAKAO_REFRESH_TOKEN 미설정 — 실제 발송 스킵")
-    return 0
+    has_kakao = bool(os.environ.get("KAKAO_REST_API_KEY") and os.environ.get("KAKAO_REFRESH_TOKEN"))
+    exit_code = 0
+    for label, m in (("매도/주의/사이클", msg), ("추세 전환", trend_msg)):
+        if m is None:
+            continue
+        print(f"=== 발송할 메시지 ({label}) ===")
+        print(m)
+        print("====================")
+        if has_kakao:
+            try:
+                from kakao_notify import send_to_self
+                send_to_self(m)
+                print("✓ 카카오톡 발송 완료")
+            except Exception as e:
+                print(f"✗ 카카오 발송 실패: {e}")
+                exit_code = 1
+        else:
+            print("ℹ KAKAO_REST_API_KEY / KAKAO_REFRESH_TOKEN 미설정 — 실제 발송 스킵")
+    return exit_code
 
 
 if __name__ == "__main__":

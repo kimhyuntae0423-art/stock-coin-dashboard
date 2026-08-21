@@ -14,7 +14,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 sys.path.append(str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from scripts.check_alerts import severity_for_holding
+from scripts.check_alerts import severity_for_holding, check_cycle, format_trend_flips
+from scripts.onchain import classify_regime
 
 USDKRW = 1380.0
 
@@ -96,3 +97,31 @@ def test_btc_severity_uses_mvrv_only_not_pnl():
     )
     assert severity == 0  # accumulation 구간(0~1.5)이라 알림 없음
     assert reasons == []
+
+
+def test_btc_severity_matches_dashboard_regime_at_bull_boundary():
+    """2026-08-21 발견된 버그의 회귀 테스트: 카톡(check_alerts)이 대시보드
+    (portfolio_page.py::holding_signal)와 다른 MVRV Z 경계를 쓰던 사고.
+    z=1.8은 classify_regime() 기준 'bull'(45% 구간, 대시보드는 🟠로 표시) —
+    카톡도 반드시 severity 1(주의)을 내야 하고, 예전처럼 severity 0으로
+    조용히 넘어가면 안 된다."""
+    row = {"buy_price": 133_952_455.0, "ticker": "BTC-USD"}
+    sig_row = {"close": 65_972.0}
+    z = 1.8
+    assert classify_regime(z)["regime"] == "bull"
+    severity, reasons = severity_for_holding(
+        row, sig_row, mvrv_z=z, is_coin=True, is_etf=False, bb=None, usdkrw=USDKRW,
+    )
+    assert severity == 1
+    assert reasons
+
+
+def test_format_trend_flips_uses_korean_name_and_shows_direction():
+    """티커만 오면 못 알아본다는 사용자 피드백(2026-08-21) — 한글명을 반드시 병기해야 한다."""
+    flips = [{"ticker": "ETH-USD", "from": "bull", "to": "bear"}]
+    lines = format_trend_flips(flips)
+    assert len(lines) == 1
+    assert "이더리움" in lines[0]
+    assert "ETH-USD" in lines[0]
+    assert "bull" in lines[0] and "bear" in lines[0]
+    assert "📉" in lines[0]  # bear 전환은 하락 방향 아이콘
