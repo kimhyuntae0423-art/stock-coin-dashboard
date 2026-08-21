@@ -1,7 +1,16 @@
 """
-매일 09:30 KST 시장 요약 카카오톡 발송.
+매일 09:30 KST 시장 분석 카카오톡 발송.
 
-내용: 국내 지수, 미국 지수, 환율, 미국채 10y, VIX, 공포탐욕지수.
+내용: 검증된 매크로 신호(scripts/etf_recommend.py::market_regime()/macro_signals())
+기반 시장 국면 해석. 예전엔 KOSPI/KOSDAQ/S&P/나스닥/환율/VIX/공포탐욕지수를 그냥
+숫자로만 나열해서 "도움이 안 된다"는 피드백을 받음(2026-08-21) — CLAUDE.md
+"자산별 검증된 신호" 표에 등재된 VIX 국면(IC=+0.14)·수익률곡선(IC=+0.25)·
+달러강도(IC=+0.16)·구리금비율(IC=-0.37) 해석으로 교체. CNN 공포탐욕지수는
+ARCHITECTURE.md에 이미 있는 전례(2026-07-20, stocks_page VIX 기반으로 통일)와
+일관되게 제거.
+
+results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
+그대로 재사용 — 실시간 yfinance 호출 없음.
 GitHub Actions의 daily-market-report.yml 에서 실행.
 """
 import os
@@ -14,82 +23,48 @@ from zoneinfo import ZoneInfo
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-import yfinance as yf
+import pandas as pd
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
+ROOT = _SCRIPTS_DIR.parent
 sys.path.insert(0, str(_SCRIPTS_DIR))
+sys.path.insert(0, str(ROOT))
 
-from fear_greed import fetch_cnn_fear_greed
+from config import RESULTS_DIR
+from etf_recommend import market_regime, macro_signals
 
-
-# yfinance 티커
-TICKERS = {
-    "KOSPI": "^KS11",
-    "KOSDAQ": "^KQ11",
-    "S&P": "^GSPC",
-    "나스닥": "^IXIC",
-    "USD/KRW": "KRW=X",
-    "US10Y": "^TNX",
-    "VIX": "^VIX",
-}
+SUMMARY = RESULTS_DIR / "summary_signals.csv"
 
 
-def fetch_quote(symbol: str) -> dict:
-    """yfinance로 최근 종가와 전일 대비 변동률 조회."""
-    try:
-        t = yf.Ticker(symbol)
-        hist = t.history(period="10d", interval="1d", auto_adjust=False)
-        hist = hist.dropna(subset=["Close"])
-        if len(hist) < 2:
-            return {"error": "no data"}
-        last = float(hist["Close"].iloc[-1])
-        prev = float(hist["Close"].iloc[-2])
-        change_pct = (last / prev - 1) * 100
-        return {"close": last, "change_pct": change_pct}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def _fmt_index(name: str, q: dict, decimals: int = 0) -> str:
-    if "error" in q:
-        return f"{name} -"
-    c = q["close"]
-    p = q["change_pct"]
-    sign = "+" if p >= 0 else ""
-    if decimals == 0:
-        return f"{name} {c:,.0f} ({sign}{p:.1f}%)"
-    return f"{name} {c:,.{decimals}f} ({sign}{p:.1f}%)"
+def _short(label: str) -> str:
+    """macro_signals()의 긴 신호 문구에서 괄호 설명 제거 + 공백 압축 (200자 한도 대응).
+    예: '⚠️ 과열 경계 (향후 수익 저조 경향)' → '⚠️과열경계'"""
+    return label.split(" (")[0].replace(" ", "")
 
 
 def build_message() -> str:
-    quotes = {name: fetch_quote(sym) for name, sym in TICKERS.items()}
-    fng = fetch_cnn_fear_greed()
+    if not SUMMARY.exists():
+        return "📊 시장 분석 — summary_signals.csv 없음 (run_analysis.py 먼저 실행 필요)"
+    df = pd.read_csv(SUMMARY)
+    regime = market_regime(df)
+    macro = macro_signals(df)
 
     today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%m/%d")
+    lines = [f"📊 시장 분석 {today}", f"{regime['label']} — {regime['desc']}"]
 
-    lines = [f"📊 시장 요약 {today}"]
-    lines.append("─ 국내")
-    lines.append(_fmt_index("KOSPI", quotes["KOSPI"]))
-    lines.append(_fmt_index("KOSDAQ", quotes["KOSDAQ"]))
-    lines.append("─ 미국(전일)")
-    lines.append(_fmt_index("S&P", quotes["S&P"]))
-    lines.append(_fmt_index("나스닥", quotes["나스닥"]))
-    lines.append("─ 매크로")
+    vix = regime.get("vix")
+    if vix is not None:
+        lines.append(f"VIX {vix:.1f} {regime['vix_signal']}")
 
-    krw = quotes["USD/KRW"]
-    if "error" not in krw:
-        lines.append(f"USD/KRW {krw['close']:,.1f}")
-
-    us10 = quotes["US10Y"]
-    if "error" not in us10:
-        lines.append(f"US10Y {us10['close']:.2f}%")
-
-    vix = quotes["VIX"]
-    if "error" not in vix:
-        lines.append(f"VIX {vix['close']:.1f}")
-
-    if "error" not in fng:
-        lines.append(f"F&G {fng['score']:.0f} ({fng['label']})")
+    macro_parts = []
+    if "경기신호" in macro:
+        macro_parts.append(f"구리금 {_short(macro['경기신호'])}")
+    if "곡선신호" in macro:
+        macro_parts.append(f"곡선 {_short(macro['곡선신호'])}")
+    if "달러강도" in macro:
+        macro_parts.append(f"달러 {_short(macro['달러강도'])}")
+    if macro_parts:
+        lines.append("🧭 " + " · ".join(macro_parts))
 
     msg = "\n".join(lines)
     # 카카오 텍스트 메시지 한도 200자
@@ -106,7 +81,7 @@ def main():
     print("====================")
 
     has_env = os.environ.get("KAKAO_REST_API_KEY") and os.environ.get("KAKAO_REFRESH_TOKEN")
-    has_local = (_SCRIPTS_DIR.parent / "kakao_tokens.json").exists()
+    has_local = (ROOT / "kakao_tokens.json").exists()
 
     if not (has_env or has_local):
         print("ℹ 토큰 없음 — 실제 발송 스킵 (드라이런)")
