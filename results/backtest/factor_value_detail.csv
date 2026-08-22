@@ -9,7 +9,7 @@ TSLA,16.497385,Consumer Cyclical,40.6,Q4
 JPM,2.6433194,Financial Services,156.7,Q2
 V,19.662956,Financial Services,54.5,Q4
 JNJ,7.658995,Healthcare,81.1,Q3
-WMT,8.752532,Consumer Defensive,97.0,Q3
+WMT,8.752532,Consumer Defensive,97.4,Q3
 MA,90.780174,Financial Services,43.2,Q4
 PG,6.304963,Consumer Defensive,1.4,Q3
 UNH,3.586196,Healthcare,-13.0,Q2
@@ -27,7 +27,7 @@ COST,25.423574,Consumer Defensive,79.5,Q4
 AVGO,19.991861,Technology,313.9,Q4
 MU,10.836519,Technology,1297.7,Q3
 MRVL,11.393962,Technology,310.7,Q3
-AMAT,15.253911,Technology,229.9,Q4
+AMAT,15.246353,Technology,229.9,Q4
 KLAC,37.87361,Technology,275.4,Q4
 LRCX,31.503963,Technology,359.2,Q4
 QCOM,6.143234,Technology,48.8,Q2
@@ -35,8 +35,8 @@ ASML,1475.4774,Technology,173.7,Q4
 TER,18.709356,Technology,252.0,Q4
 FORM,8.024744,Technology,223.2,Q3
 AMKR,2.6801045,Technology,88.6,Q2
-ASX,6.568505,Technology,378.3,Q3
-SNDK,17.145926,Technology,3306.8,Q4
+ASX,6.5733194,Technology,378.3,Q3
+SNDK,15.11282,Technology,3306.8,Q4
 ARM,30.110134,Technology,354.6,Q4
 005930.KS,3.27,Technology,344.9,Q2
 000660.KS,4.67,Technology,1351.5,Q2
@@ -46,7 +46,7 @@ ARM,30.110134,Technology,354.6,Q4
 005490.KS,0.41,Basic Materials,-41.9,Q1
 051910.KS,0.57,Basic Materials,-55.9,Q1
 006400.KS,1.67,Industrials,-21.7,Q1
-035720.KS,1.37,Communication Services,-25.3,Q1
+035720.KS,1.37,Communication Services,-25.2,Q1
 207940.KS,9.05,Healthcare,36.9,Q3
 068270.KS,2.5,Healthcare,54.9,Q2
 105560.KS,0.98,Financial Services,243.5,Q1
