@@ -422,8 +422,14 @@ def _render_phrase_groups(alerts: list[dict]) -> list[str]:
     lines: list[str] = []
     for phrases in order:
         items = groups[phrases]
-        phrase_str = ", ".join(phrases) if phrases else "특이 사유 없음"
-        lines.append(f"📌 {phrase_str}")
+        if not phrases:
+            lines.append("📌 특이 사유 없음")
+        else:
+            # 사유가 여러 개면 쉼표로 욱여넣지 않고 한 줄씩 풀어써서(2026-08-24,
+            # "이유를 좀더 이쁘게" 요청) 읽을 때 문장이 아니라 나열이라는 게
+            # 눈에 보이게 함 — 첫 사유는 📌, 그 다음부터는 들여쓴 "+".
+            lines.append(f"📌 {phrases[0]}")
+            lines.extend(f"   + {p}" for p in phrases[1:])
         lines.extend(f"  · {label} {pct}" for label, pct in items)
     lines.extend(f"ℹ️ {text}" for text in footnotes.values())
     return lines
@@ -435,6 +441,7 @@ def _render_alert_group(alerts: list[dict], budget: int) -> tuple[list[str], int
     달아달라"는 요청 반영 — 둘은 판단 근거 자체가 다름: 코인은 온체인 국면·
     손절 로드맵, 주식은 손익·데드크로스). 각주도 전체 메시지 끝이 아니라
     해당 코인/주식 섹션 바로 아래 붙인다("코인은 코인 밑에" 요청 반영).
+    두 섹션 사이엔 빈 줄을 하나 넣는다("코인하고 주식 사이에 한 줄 띄워달라").
     반환: (렌더된 줄 목록, 생략된 종목 수)."""
     truncated = alerts[:budget]
     coins = [a for a in truncated if "-USD" in a["ticker"]]
@@ -445,6 +452,8 @@ def _render_alert_group(alerts: list[dict], budget: int) -> tuple[list[str], int
         lines.append("🪙 코인")
         lines.extend(_render_phrase_groups(coins))
     if stocks:
+        if coins:
+            lines.append("")
         lines.append("📈 주식")
         lines.extend(_render_phrase_groups(stocks))
 
