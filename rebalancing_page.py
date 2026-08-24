@@ -1999,7 +1999,10 @@ if _hist_snaps:
         for _rk, _rlabel in _ROLE_LABELS.items():
             _pct = _hs.get("alloc", {}).get(_rk)
             if _pct is None:
-                _hrow[_rlabel] = None
+                # 키 자체가 없으면 그 버킷 보유가 0이라는 뜻(_compute_role_alloc_snapshot이
+                # 해당 없는 역할은 dict에 안 넣음) — 화면에 파이썬 None이 그대로 찍히던
+                # 걸 0으로 명시.
+                _hrow[_rlabel] = "0원 (0.0%)"
                 continue
             # alloc_amount가 없는 옛 항목(2026-07-23 이전 저장분)은 총자산×비중으로
             # 근사 — 반올림 오차가 조금 있을 수 있지만 표시용이라 문제 없음.
@@ -2010,32 +2013,47 @@ if _hist_snaps:
         _hist_rows.append(_hrow)
     _hist_df = pd.DataFrame(_hist_rows)
 
-    # 총자산 변화 그래프 — 사람(대상)별로 선을 나누되, 대상이 하나뿐이면 범례 생략
-    _asset_hist_df = pd.DataFrame([
-        {"날짜": pd.to_datetime(_hs.get("date") or _hs.get("month", ""), errors="coerce"),
-         "총자산": _hs.get("total", 0) or 0,
-         "대상": _hs.get("person") or "전체"}
-        for _hs in _hist_snaps
-    ]).dropna(subset=["날짜"]).sort_values("날짜")
-    if not _asset_hist_df.empty:
+    # 자산군별 누적(스택) 그래프 — 사람마다 금액을 한 스택에 섞으면 의미가 없어서
+    # person 정확히 일치하는 스냅샷만 모아 스택(2026-08-24). 페이지 상단 "👤 계산
+    # 대상" 셀렉터에 안 맞을 수 있어(예: 저장은 "김현태"로만 했는데 상단은 "전체"
+    # 기본값) 이 섹션 전용으로 실제 기록이 있는 대상만 따로 선택하게 함.
+    _ROLE_COLORS = {
+        "VOO": "#2a78d6", "SCHD": "#eb6834", "SOXX": "#1baf7a", "TLT": "#eda100",
+        "GLD": "#e87ba4", "coin": "#008300", "cash": "#4a3aa7", "기타": "#e34948",
+    }
+    _stack_persons = sorted({(_hs.get("person") or "전체") for _hs in _hist_snaps})
+    if len(_stack_persons) > 1:
+        _default_idx = _stack_persons.index(selected_person) if selected_person in _stack_persons else 0
+        _chart_person = st.selectbox("차트로 볼 대상", _stack_persons, index=_default_idx, key="rebal_stack_person")
+    else:
+        _chart_person = _stack_persons[0]
+    _stack_snaps = sorted(
+        (_hs for _hs in _hist_snaps if (_hs.get("person") or "전체") == _chart_person),
+        key=lambda _hs: _hs.get("date") or _hs.get("month") or "",
+    )
+    if _stack_snaps:
         import plotly.graph_objects as _pgo
-        _ASSET_COLORS = {"전체": "#2563eb", "김현태": "#059669", "김보라": "#d97706"}
-        _fig_asset = _pgo.Figure()
-        _asset_targets = list(_asset_hist_df["대상"].unique())
-        for _person in _asset_targets:
-            _grp = _asset_hist_df[_asset_hist_df["대상"] == _person]
-            _fig_asset.add_trace(_pgo.Scatter(
-                x=_grp["날짜"], y=_grp["총자산"], mode="lines+markers", name=_person,
-                line=dict(color=_ASSET_COLORS.get(_person, "#6b7280"), width=2),
-                marker=dict(size=8),
+        _stack_dates = [pd.to_datetime(_hs.get("date") or _hs.get("month", ""), errors="coerce")
+                        for _hs in _stack_snaps]
+        _fig_stack = _pgo.Figure()
+        for _rk, _rlabel in _ROLE_LABELS.items():
+            _y = [float(_hs.get("alloc_amount", {}).get(_rk) or 0.0) for _hs in _stack_snaps]
+            if not any(_y):
+                continue
+            _fig_stack.add_trace(_pgo.Scatter(
+                x=_stack_dates, y=_y, mode="lines", name=_rlabel, stackgroup="one",
+                line=dict(width=0.5, color=_ROLE_COLORS.get(_rk, "#9ca3af")),
+                fillcolor=_ROLE_COLORS.get(_rk, "#9ca3af"),
             ))
-        _asset_title = "총자산 변화" if len(_asset_targets) != 1 else f"총자산 변화 ({_asset_targets[0]})"
-        _fig_asset.update_layout(
-            title=_asset_title, yaxis_title="원", yaxis=dict(tickformat=","),
-            hovermode="x unified", height=320, margin=dict(t=40, b=30),
-            showlegend=len(_asset_targets) > 1, legend=dict(x=0.01, y=0.99),
+        _fig_stack.update_layout(
+            title=f"자산군별 비중 변화 ({_chart_person})",
+            yaxis_title="원", yaxis=dict(tickformat=","),
+            hovermode="x unified", height=380, margin=dict(t=40, b=30),
+            legend=dict(x=0.01, y=0.99),
         )
-        st.plotly_chart(_fig_asset, use_container_width=True)
+        st.plotly_chart(_fig_stack, use_container_width=True)
+    else:
+        st.info(f"'{_chart_person}' 대상으로 저장된 기록이 없습니다.")
 
     st.dataframe(
         _hist_df,
