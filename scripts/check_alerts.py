@@ -353,79 +353,66 @@ def format_trend_flips(flips: list[dict]) -> list[str]:
     return lines
 
 
-# 피드 템플릿도 무한정 길어지면 "간단 요약 보고서"가 아니라 다시 나열이 되므로
-# (2026-08-24, 실제로 보유 코인이 한꺼번에 과열 신호를 받은 날 12건이 뜬 것
-# 확인) 종목 단위로 최대 이 개수까지만 보여주고 나머지는 건수만 알림.
-_MAX_ALERT_ITEMS = 5
+# 2026-08-24: "text 템플릿은 200자 한도"라는 가정으로 한때 feed 템플릿을
+# 거쳤다가(채팅창 안에서 4줄로 강제 절단되고 펼쳐볼 방법이 없어서 폐기,
+# 스크린샷으로 확인) 다시 text로 돌아왔는데, 그 200자 가정 자체가 틀렸다는
+# 게 최종 확인됨(같은 계정으로 몇 달째 쓰는 morning-briefing 레포가 450자
+# text 메시지를 안 자르고 보냄) — kakao_notify._text_template()의 인위적
+# 200자 컷도 제거했으므로, 종목별 전체 사유 문장을 다시 그대로 쓴다. 다만
+# 개수 자체는 여전히 제한(한꺼번에 12건씩 뜨면 "요약"이 아니라 "나열"이
+# 되므로, 2026-08-24 실제로 겪음) — 최대 이 개수까지만.
+_MAX_ALERT_ITEMS = 6
 
 
 def _render_alert_group(alerts: list[dict], budget: int) -> tuple[list[str], int]:
-    """alerts를 최대 budget개까지 "종목명(티커)\n  · 이유" 블록으로 렌더링.
+    """alerts를 최대 budget개까지 "종목명(티커): 이유1 · 이유2" 줄로 렌더링.
     반환: (렌더된 줄 목록, 생략된 종목 수)."""
     lines: list[str] = []
     for a in alerts[:budget]:
         label = NAMES.get(a["ticker"], a["ticker"])
-        lines.append(f"{label}({a['ticker']})")
-        lines.extend(f"  · {reason}" for reason in a["reasons"])
+        lines.append(f"{label}({a['ticker']}): " + " · ".join(a["reasons"]))
     return lines, max(0, len(alerts) - budget)
 
 
-def build_message(alerts: list[dict], cycle: dict | None = None) -> tuple[str, str] | None:
-    """(title, description) 반환 — kakao_notify.send_feed_to_self()용 피드 템플릿.
-
-    2026-08-24: 예전엔 "· 종목명(티커): 이유1, 이유2"를 한 줄에 다 욱여넣어서
-    "신호 나열처럼 보인다"는 피드백을 받음 — 종목마다 줄을 나누고, 제목에서
-    가장 급한 등급(매도 검토 > 주의)을 먼저 알려주는 보고서 형태로 교체.
-    피드 템플릿은 text 템플릿의 200자 한도보다 훨씬 여유롭지만, 그렇다고
-    전부 나열하면 다시 "보고서"가 아니라 "목록"이 되므로 종목당 개수는 제한."""
+def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
+    """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지 — 종목마다
+    줄을 나누고 사유 문장을 그대로 담는다(압축하지 않음)."""
     if not alerts and not cycle:
         return None
 
     high = [a for a in (alerts or []) if a["severity"] == 2]
     warn = [a for a in (alerts or []) if a["severity"] == 1]
 
-    if high:
-        title = f"🔴 보유 종목 점검 — 매도 검토 {len(high)}건"
-    elif warn:
-        title = f"🟠 보유 종목 점검 — 주의 {len(warn)}건"
-    else:
-        title = "📊 BTC 사이클 알림"
-
-    parts: list[str] = []
+    lines: list[str] = []
     if cycle:
-        parts.append(format_cycle_alert(cycle))
+        lines.append(format_cycle_alert(cycle))
 
     budget = _MAX_ALERT_ITEMS
     omitted_total = 0
     if high:
-        if parts:
-            parts.append("")
-        parts.append("🔴 매도 검토")
-        lines, omitted = _render_alert_group(high, budget)
-        parts.extend(lines)
+        lines.append(f"🔴 매도 검토 ({len(high)}건)")
+        rendered, omitted = _render_alert_group(high, budget)
+        lines.extend(rendered)
         budget = max(0, budget - len(high))
         omitted_total += omitted
     if warn:
-        if parts:
-            parts.append("")
-        parts.append("🟠 주의")
-        lines, omitted = _render_alert_group(warn, budget)
-        parts.extend(lines)
+        lines.append(f"🟠 주의 ({len(warn)}건)")
+        rendered, omitted = _render_alert_group(warn, budget)
+        lines.extend(rendered)
         omitted_total += omitted
     if omitted_total:
-        parts.append("")
-        parts.append(f"+ {omitted_total}건 더 — 대시보드에서 전체 확인")
+        lines.append(f"+ {omitted_total}건 더 — 대시보드에서 전체 확인")
 
-    return title, "\n".join(parts)
+    return "\n".join(lines)
 
 
-def build_trend_message(trend_flips: list[dict]) -> tuple[str, str] | None:
+def build_trend_message(trend_flips: list[dict]) -> str | None:
     """추세 전환 알림 — 매도 검토와 한 메시지에 같이 넣으면 뒤로 밀려 조용히
     잘려나가는 문제가 있어서(2026-08-21 발견) 별도 메시지로 분리 발송한다."""
     if not trend_flips:
         return None
-    title = f"🔄 보유 코인 추세 전환 {len(trend_flips)}건"
-    return title, "\n".join(format_trend_flips(trend_flips))
+    lines = [f"🔄 보유 코인 추세 전환 ({len(trend_flips)}건)"] + format_trend_flips(trend_flips)
+    return "\n".join(lines)
 
 
 def main():
@@ -444,15 +431,14 @@ def main():
     for label, m in (("매도/주의/사이클", msg), ("추세 전환", trend_msg)):
         if m is None:
             continue
-        title, description = m
         print(f"=== 발송할 메시지 ({label}) ===")
-        print(f"[제목] {title}")
-        print(description)
+        print(m)
+        print(f"(길이: {len(m)}자)")
         print("====================")
         if has_kakao:
             try:
-                from kakao_notify import send_feed_to_self
-                send_feed_to_self(title, description)
+                from kakao_notify import send_to_self
+                send_to_self(m)
                 print("✓ 카카오톡 발송 완료")
             except Exception as e:
                 print(f"✗ 카카오 발송 실패: {e}")

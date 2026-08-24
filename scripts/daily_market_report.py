@@ -7,14 +7,17 @@
 
 2026-08-24 여러 차례 사용자 피드백을 거쳐 지금 형태로 정착했다 (자세한 변경
 이력은 git log 참고, 여기는 "왜 이렇게 생겼는지"만 남김):
-- 카카오 200자 text 템플릿은 신호를 태그로 압축하게 만들어서 "신호 나열처럼
-  보인다"는 피드백 → 피드형 템플릿(title+description)으로 교체.
 - market_regime()의 5단계 국면(bull/bear/fear/complacent/mixed) 라벨 하나로만
   뭉뚱그리면 "너무 뭉뚱그렸다"는 피드백 → breadth·SPY 1개월 모멘텀·VIX·매크로
-  3개 신호(중립 아닌 것 전부, 1개로 자르지 않음)를 실제 수치 그대로 2단락
-  에세이에 풀어씀(_outlook_paragraph1/2, 사용자가 문안을 직접 확인·승인).
-  보유종목 맞춤 리밸런싱 문장을 3번째 문단으로 넣었다가 "너무 길다"는
-  피드백으로 다시 뺐다 — 이 메시지는 시장 전망만 다룬다.
+  3개 신호(중립 아닌 것 전부, 1개로 자르지 않음)·코인 온체인 국면을 실제
+  수치 그대로 3단락 에세이에 풀어씀(_outlook_paragraph1/2/3, 사용자가 문안을
+  직접 확인·승인).
+- "text 템플릿은 200자 한도"라는 가정으로 한때 태그 압축판/피드 템플릿을
+  거쳤는데, (1) feed 템플릿은 실제로 카카오톡 채팅창 안에서 4줄로 강제
+  절단되고 펼쳐볼 방법이 없었고(스크린샷으로 확인), (2) 같은 계정으로 몇
+  달째 문제없이 쓰는 morning-briefing 레포가 450자 text 메시지를 안 자르고
+  보내는 걸 확인 — 200자 한도 자체가 잘못된 가정이었음. text 템플릿 +
+  상세 에세이 그대로가 최종 형태.
 - 보유종목 매수/매도 신호(scripts/check_alerts.py)는 별도 메시지라 안 섞음.
 
 results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
@@ -40,7 +43,7 @@ sys.path.insert(0, str(ROOT))
 
 from config import RESULTS_DIR
 from etf_recommend import market_regime, macro_signals
-from onchain import classify_regime, REGIME_LABEL_KR
+from onchain import classify_regime
 
 SUMMARY = RESULTS_DIR / "summary_signals.csv"
 CYCLE_METRICS = RESULTS_DIR / "cycle_metrics.csv"
@@ -209,18 +212,24 @@ def _outlook_paragraph3(cycle: dict) -> str | None:
     return " ".join(parts)
 
 
-def build_message() -> tuple[str, str]:
-    """(title, description) 반환 — kakao_notify.send_feed_to_self()용 피드 템플릿.
-    description은 3단락 에세이: ①미국 증시 국면+실측 지표, ②매크로 상세+균형
-    결론, ③코인(BTC) 온체인 국면+알트시즌.
-    2026-08-24: 보유종목 맞춤 리밸런싱 문장을 넣었다가 "너무 길다"는 피드백으로
-    제거(보유종목 관련은 scripts/check_alerts.py가 별도 메시지로 담당). 이후
-    "코인은 언급이 없다"는 피드백으로 3단락(_outlook_paragraph3) 추가."""
+# 2026-08-24: "text 템플릿은 200자 한도"라는 가정으로 여기 있던 압축 버전
+# (_compact_regime_line 등, 국면 5개로 뭉뚱그리지 않으려던 상세 에세이를 다시
+# 태그로 압축해버린 것)을 썼었는데, 같은 계정으로 몇 달째 문제없이 쓰고 있는
+# morning-briefing 레포(briefing-cloud.py)가 450자짜리 text 메시지를 전혀
+# 안 자르고 보내는 걸 확인 — 200자 한도 자체가 잘못된 가정이었음. kakao_notify.
+# _text_template()의 인위적 200자 컷도 같이 제거했으므로, 이제 다시
+# _outlook_paragraph1/2/3(사용자가 직접 승인한 상세 에세이)를 그대로 쓴다.
+
+
+def build_message() -> str:
+    """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지. 3단락 에세이:
+    ①미국 증시 국면+실측 지표, ②매크로 상세+균형 결론, ③코인(BTC) 온체인
+    국면+알트시즌 — 전부 실제 수치 그대로, 태그로 압축하지 않음."""
     today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%m/%d")
     title = f"📊 오늘의 시장 조각글 {today}"
 
     if not SUMMARY.exists():
-        return title, "summary_signals.csv 없음 — run_analysis.py 먼저 실행 필요"
+        return f"{title}\nsummary_signals.csv 없음 — run_analysis.py 먼저 실행 필요"
 
     df = pd.read_csv(SUMMARY)
     regime = market_regime(df)
@@ -236,14 +245,14 @@ def build_message() -> tuple[str, str]:
         if coin_paragraph:
             paragraphs.append(coin_paragraph)
 
-    return title, "\n\n".join(paragraphs)
+    return title + "\n\n" + "\n\n".join(paragraphs)
 
 
 def main():
-    title, description = build_message()
+    msg = build_message()
     print("=== 발송할 메시지 ===")
-    print(f"[제목] {title}")
-    print(description)
+    print(msg)
+    print(f"(길이: {len(msg)}자)")
     print("====================")
 
     has_env = os.environ.get("KAKAO_REST_API_KEY") and os.environ.get("KAKAO_REFRESH_TOKEN")
@@ -254,8 +263,8 @@ def main():
         return 0
 
     try:
-        from kakao_notify import send_feed_to_self
-        send_feed_to_self(title, description)
+        from kakao_notify import send_to_self
+        send_to_self(msg)
         print("✓ 카카오톡 발송 완료")
         return 0
     except Exception as e:

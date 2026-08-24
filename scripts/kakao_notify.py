@@ -82,9 +82,14 @@ def _load_local_tokens() -> dict | None:
 
 
 def _text_template(text: str, url: str, button_title: str) -> dict:
+    # 2026-08-24: "text 템플릿은 200자 한도"라고 가정하고 여기서 잘라왔는데,
+    # 같은 계정으로 몇 달째 잘 쓰고 있는 morning-briefing 레포(briefing-cloud.py
+    # ::send_message())가 450자짜리 text 메시지를 전혀 안 자르고 그대로 보내고
+    # 있는 걸 확인 — 실제 카카오 API엔 그런 하드 제한이 없었다(과거의 잘못된
+    # 가정). 완전히 안 자르진 않고(진짜 폭주 방지용) 훨씬 넉넉한 상한만 둠.
     return {
         "object_type": "text",
-        "text": text[:200],
+        "text": text[:1000],
         "link": {"web_url": url, "mobile_web_url": url},
         "button_title": button_title,
     }
