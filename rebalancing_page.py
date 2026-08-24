@@ -2009,6 +2009,34 @@ if _hist_snaps:
         _hrow["대상"] = _hs.get("person", "전체")
         _hist_rows.append(_hrow)
     _hist_df = pd.DataFrame(_hist_rows)
+
+    # 총자산 변화 그래프 — 사람(대상)별로 선을 나누되, 대상이 하나뿐이면 범례 생략
+    _asset_hist_df = pd.DataFrame([
+        {"날짜": pd.to_datetime(_hs.get("date") or _hs.get("month", ""), errors="coerce"),
+         "총자산": _hs.get("total", 0) or 0,
+         "대상": _hs.get("person") or "전체"}
+        for _hs in _hist_snaps
+    ]).dropna(subset=["날짜"]).sort_values("날짜")
+    if not _asset_hist_df.empty:
+        import plotly.graph_objects as _pgo
+        _ASSET_COLORS = {"전체": "#2563eb", "김현태": "#059669", "김보라": "#d97706"}
+        _fig_asset = _pgo.Figure()
+        _asset_targets = list(_asset_hist_df["대상"].unique())
+        for _person in _asset_targets:
+            _grp = _asset_hist_df[_asset_hist_df["대상"] == _person]
+            _fig_asset.add_trace(_pgo.Scatter(
+                x=_grp["날짜"], y=_grp["총자산"], mode="lines+markers", name=_person,
+                line=dict(color=_ASSET_COLORS.get(_person, "#6b7280"), width=2),
+                marker=dict(size=8),
+            ))
+        _asset_title = "총자산 변화" if len(_asset_targets) != 1 else f"총자산 변화 ({_asset_targets[0]})"
+        _fig_asset.update_layout(
+            title=_asset_title, yaxis_title="원", yaxis=dict(tickformat=","),
+            hovermode="x unified", height=320, margin=dict(t=40, b=30),
+            showlegend=len(_asset_targets) > 1, legend=dict(x=0.01, y=0.99),
+        )
+        st.plotly_chart(_fig_asset, use_container_width=True)
+
     st.dataframe(
         _hist_df,
         use_container_width=True,
