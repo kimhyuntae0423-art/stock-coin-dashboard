@@ -1,43 +1,43 @@
 ticker,pbr,sector,ret_36m,q
-AAPL,42.03125,Technology,66.9,Q4
-MSFT,8.112818,Technology,50.9,Q3
-AMZN,5.055712,Consumer Cyclical,87.4,Q2
-GOOGL,6.7749925,Communication Services,155.5,Q3
-META,5.363832,Communication Services,87.5,Q2
-NVDA,26.60719,Technology,335.9,Q4
-TSLA,16.497385,Consumer Cyclical,40.6,Q4
-JPM,2.6433194,Financial Services,156.7,Q2
-V,19.662956,Financial Services,54.5,Q4
-JNJ,7.658995,Healthcare,81.1,Q3
-WMT,8.752532,Consumer Defensive,97.4,Q3
-MA,90.780174,Financial Services,43.2,Q4
-PG,6.304963,Consumer Defensive,1.4,Q2
-UNH,3.586196,Healthcare,-13.0,Q2
-HD,20.075972,Consumer Cyclical,8.9,Q4
-DIS,1.6946007,Communication Services,32.8,Q1
-NFLX,10.991575,Communication Services,83.5,Q3
-AMD,11.48916,Technology,347.6,Q4
-INTC,5.188663,Technology,160.6,Q2
-KO,10.843947,Consumer Defensive,66.3,Q3
-PEP,8.869382,Consumer Defensive,-11.1,Q3
-ORCL,11.232362,Technology,26.0,Q3
-CRM,5.0039473,Technology,-3.9,Q2
-ADBE,9.53684,Technology,-50.8,Q3
-COST,25.423574,Consumer Defensive,79.5,Q4
-AVGO,19.991861,Technology,313.9,Q4
-MU,10.836519,Technology,1297.7,Q3
-MRVL,11.393962,Technology,310.7,Q3
-AMAT,15.246353,Technology,229.9,Q4
-KLAC,37.87361,Technology,275.4,Q4
-LRCX,31.503963,Technology,359.2,Q4
-QCOM,6.143234,Technology,48.8,Q2
-ASML,1475.4774,Technology,173.7,Q4
-TER,18.709356,Technology,252.0,Q4
-FORM,8.024744,Technology,223.2,Q3
-AMKR,2.6801045,Technology,88.6,Q2
-ASX,6.5733194,Technology,378.3,Q3
-SNDK,15.11282,Technology,3306.8,Q4
-ARM,30.110134,Technology,354.6,Q4
+AAPL,42.16576,Technology,67.4,Q4
+MSFT,8.181147,Technology,52.2,Q3
+AMZN,5.1229577,Consumer Cyclical,89.9,Q2
+GOOGL,6.838651,Communication Services,157.9,Q3
+META,5.4527903,Communication Services,90.6,Q3
+NVDA,25.833954,Technology,323.2,Q4
+TSLA,15.864969,Consumer Cyclical,35.2,Q4
+JPM,2.6794832,Financial Services,160.2,Q2
+V,20.265501,Financial Services,59.2,Q4
+JNJ,7.738352,Healthcare,83.0,Q3
+WMT,8.988015,Consumer Defensive,102.8,Q3
+MA,93.78674,Financial Services,48.0,Q4
+PG,6.3886347,Consumer Defensive,2.8,Q3
+UNH,3.6657138,Healthcare,-11.1,Q2
+HD,20.184843,Consumer Cyclical,9.5,Q4
+DIS,1.7390963,Communication Services,36.3,Q1
+NFLX,11.049579,Communication Services,84.5,Q4
+AMD,11.088466,Technology,332.0,Q4
+INTC,5.0267878,Technology,152.5,Q2
+KO,10.949886,Consumer Defensive,67.9,Q3
+PEP,8.942944,Consumer Defensive,-10.3,Q3
+ORCL,10.92408,Technology,22.6,Q3
+CRM,5.001316,Technology,-4.0,Q2
+ADBE,9.570443,Technology,-50.6,Q3
+COST,26.058266,Consumer Defensive,84.0,Q4
+AVGO,19.466087,Technology,303.0,Q4
+MU,10.204899,Technology,1216.3,Q3
+MRVL,11.021438,Technology,297.3,Q3
+AMAT,14.99458,Technology,224.5,Q4
+KLAC,37.375465,Technology,270.5,Q4
+LRCX,31.119696,Technology,353.6,Q4
+QCOM,6.058394,Technology,46.7,Q3
+ASML,1455.7097,Technology,170.1,Q4
+TER,16.61128,Technology,241.8,Q4
+FORM,7.5847044,Technology,205.5,Q3
+AMKR,2.554258,Technology,79.8,Q2
+ASX,6.5247087,Technology,374.8,Q3
+SNDK,16.039877,Technology,3087.0,Q4
+ARM,29.548323,Technology,346.2,Q4
 005930.KS,2.99,Technology,306.2,Q2
 000660.KS,4.51,Technology,1302.0,Q2
 035420.KS,1.13,Communication Services,6.2,Q1
@@ -45,7 +45,7 @@ ARM,30.110134,Technology,354.6,Q4
 000270.KS,0.83,Consumer Cyclical,91.6,Q1
 005490.KS,0.43,Basic Materials,-38.6,Q1
 051910.KS,0.61,Basic Materials,-52.4,Q1
-006400.KS,1.79,Industrials,-15.6,Q1
+006400.KS,1.79,Industrials,-15.6,Q2
 035720.KS,1.37,Communication Services,-25.2,Q1
 207940.KS,8.7,Healthcare,38.8,Q3
 068270.KS,2.53,Healthcare,56.3,Q2
@@ -55,10 +55,16 @@ ARM,30.110134,Technology,354.6,Q4
 066570.KS,1.34,Technology,110.2,Q1
 003670.KS,3.62,Industrials,-61.9,Q2
 247540.KQ,6.41,Industrials,-63.9,Q3
-QQQ,1.9941081,,92.0,Q2
-SPY,1.7839801,,76.5,Q1
-VTV,2.9876351,,69.0,Q2
-TLT,0.5511705,,-3.7,Q1
-GLD,2.490104,,135.2,Q2
-SOXX,1.2262669,,211.7,Q1
-XLU,0.6683857,,48.7,Q1
+VOO,1.7956321,,76.4,Q2
+VTI,2.7028947,,75.1,Q2
+QQQ,1.9742073,,90.1,Q2
+SPY,1.7787381,,76.0,Q1
+VTV,2.991594,,69.2,Q2
+VEU,1.3783343,,72.9,Q1
+SHY,0.95075494,,12.9,Q1
+TLT,0.5545964,,-3.1,Q1
+GLD,2.5096903,,137.0,Q2
+SOXX,1.1935617,,203.4,Q1
+XLV,1.3728232,,37.9,Q1
+XLU,0.675418,,50.3,Q1
+VPU,1.8021737,,50.2,Q2
