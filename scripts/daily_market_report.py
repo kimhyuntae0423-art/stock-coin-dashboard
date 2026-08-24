@@ -2,19 +2,20 @@
 매일 09:30 KST 시장 분석 카카오톡 발송.
 
 내용: 검증된 매크로 신호(scripts/etf_recommend.py::market_regime()/macro_signals())
-기반 시장 국면 해석. 예전엔 KOSPI/KOSDAQ/S&P/나스닥/환율/VIX/공포탐욕지수를 그냥
-숫자로만 나열해서 "도움이 안 된다"는 피드백을 받음(2026-08-21) — CLAUDE.md
-"자산별 검증된 신호" 표에 등재된 VIX 국면(IC=+0.14)·수익률곡선(IC=+0.25)·
-달러강도(IC=+0.16)·구리금비율(IC=-0.37) 해석으로 교체. CNN 공포탐욕지수는
-ARCHITECTURE.md에 이미 있는 전례(2026-07-20, stocks_page VIX 기반으로 통일)와
-일관되게 제거.
+기반 시장 국면 해석. CLAUDE.md "자산별 검증된 신호" 표에 등재된 VIX 국면
+(IC=+0.14)·수익률곡선(IC=+0.25)·달러강도(IC=+0.16)·구리금비율(IC=-0.37)만 씀.
 
-2026-08-24: 카카오 text 템플릿(200자 한도)에 맞추려고 _short()로 신호를
-"⚠️과열경계" 식 태그로 압축했더니 "신호 나열처럼 보인다"는 피드백을 받음 —
-피드형 템플릿(title+description, 4줄 안팎 여유)으로 바꾸고 태그 압축 없이
-실제 문장으로 풀어씀. 매크로 신호는 중립이 아닌 것만(우선순위: 구리금비율
-IC=-0.37 > 수익률곡선 IC=+0.25 > 달러강도 IC=+0.16 — 절대값 큰 순) 최대
-1개만 골라 한 줄로 보여줌(전부 나열하면 다시 태그 수프가 됨).
+2026-08-24 여러 차례 사용자 피드백을 거쳐 지금 형태로 정착했다 (자세한 변경
+이력은 git log 참고, 여기는 "왜 이렇게 생겼는지"만 남김):
+- 카카오 200자 text 템플릿은 신호를 태그로 압축하게 만들어서 "신호 나열처럼
+  보인다"는 피드백 → 피드형 템플릿(title+description)으로 교체.
+- market_regime()의 5단계 국면(bull/bear/fear/complacent/mixed) 라벨 하나로만
+  뭉뚱그리면 "너무 뭉뚱그렸다"는 피드백 → breadth·SPY 1개월 모멘텀·VIX·매크로
+  3개 신호(중립 아닌 것 전부, 1개로 자르지 않음)를 실제 수치 그대로 2단락
+  에세이에 풀어씀(_outlook_paragraph1/2, 사용자가 문안을 직접 확인·승인).
+  보유종목 맞춤 리밸런싱 문장을 3번째 문단으로 넣었다가 "너무 길다"는
+  피드백으로 다시 뺐다 — 이 메시지는 시장 전망만 다룬다.
+- 보유종목 매수/매도 신호(scripts/check_alerts.py)는 별도 메시지라 안 섞음.
 
 results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
 그대로 재사용 — 실시간 yfinance 호출 없음.
@@ -39,30 +40,184 @@ sys.path.insert(0, str(ROOT))
 
 from config import RESULTS_DIR
 from etf_recommend import market_regime, macro_signals
+from onchain import classify_regime, REGIME_LABEL_KR
 
 SUMMARY = RESULTS_DIR / "summary_signals.csv"
+CYCLE_METRICS = RESULTS_DIR / "cycle_metrics.csv"
 
 
-# 매크로 신호 우선순위 — 절대 IC 큰 순(백테스트 근거는 CLAUDE.md "자산별 검증된
-# 신호" 표). 전부 보여주면 다시 태그 수프가 되니 중립이 아닌 것 중 1개만 고름.
+# market_regime()의 5단계를 "강세/약세/…" 서랍 문장 하나로 뭉뚱그리지 않고,
+# breadth·SPY 1개월 모멘텀·VIX·채권 대비 강도를 실제 숫자 그대로 문장에 녹여
+# 넣는다 — 2026-08-24, "국면 5개로만 나누면 너무 뭉뚱그린 것 같다"는 피드백
+# 반영. 사용자가 직접 문안을 확인·승인한 스타일(2단락: ①국면+지표 실측치,
+# ②매크로 신호 상세 + 균형 잡힌 결론)을 그대로 코드화.
+def _bond_clause(bond_winning: bool, positive_regime: bool) -> str:
+    if positive_regime:
+        return (
+            "다만 채권 쪽으로도 자금이 몰리는 신호가 있어서, 안전자산 선호 심리가 완전히 가시진 않았습니다."
+            if bond_winning else
+            "채권보다 주식 쪽으로 돈이 더 몰리고 있다는 신호까지 겹쳐서 위험자산을 선호하는 분위기가 이어지고 있습니다."
+        )
+    return (
+        "채권 쪽으로 자금이 몰리는 안전자산 선호 심리까지 겹쳐 있습니다."
+        if bond_winning else
+        "다만 채권보다는 아직 주식이 선호되는 편이라 패닉 수준까지는 아닙니다."
+    )
+
+
+def _vix_phrase(vix_signal: str) -> str:
+    """문장 중간에 자연스럽게 넣을 VIX 수준 형용구(접두어 없음)."""
+    if "공포 극단" in vix_signal:
+        return "극단적으로 높고"
+    if "변동성 상승" in vix_signal:
+        return "다소 높아진 편이고"
+    if "과열 경계" in vix_signal:
+        return "낮은 편이고"
+    return "안정적인 수준이고"
+
+
+def _outlook_paragraph1(regime: dict) -> str:
+    """1단락: 국면을 한 문장으로 먼저 짚고, breadth·모멘텀·VIX·채권 대비 강도를
+    실제 수치와 함께 풀어씀."""
+    breadth = regime.get("breadth") or 0.0
+    spy_1m = regime.get("spy_1m") or 0.0
+    vix = regime.get("vix")
+    vix_signal = regime.get("vix_signal", "")
+    bond_winning = bool(regime.get("bond_winning"))
+    key = regime.get("key")
+
+    if key == "bull":
+        return (
+            f"오늘 미국 증시는 뚜렷한 강세 흐름을 타고 있어요. 추적 중인 종목의 {breadth:.0f}%가 상승 추세에 올라타 있고, "
+            f"대표 지수는 최근 한 달 새 {spy_1m:+.1f}% 올랐습니다. 변동성 지표(VIX)도 {vix:.1f}로 낮은 편이라 시장이 크게 "
+            f"불안해하는 상황은 아니고요, {_bond_clause(bond_winning, True)}"
+        )
+    if key == "bear":
+        return (
+            f"오늘 미국 증시는 약세 국면이에요. 추적 중인 종목의 {breadth:.0f}%만 상승 추세에 있고, 대표 지수도 최근 한 달 새 "
+            f"{spy_1m:+.1f}%로 힘을 못 쓰고 있습니다. 변동성 지표(VIX)는 {vix:.1f}로 {_vix_phrase(vix_signal)}, "
+            f"{_bond_clause(bond_winning, False)}"
+        )
+    if key == "fear":
+        return (
+            f"오늘은 시장이 공포에 가까운 상태예요. 변동성 지표(VIX)가 {vix:.1f}까지 치솟았고, 대표 지수도 최근 한 달 새 "
+            f"{spy_1m:+.1f}%로 흔들리고 있습니다. 다만 역사적으로 이런 극단적인 공포 구간은 오히려 저가에 살 기회였던 경우가 "
+            f"많았어요(검증된 신호)."
+        )
+    if key == "complacent":
+        return (
+            f"오늘 시장은 너무 조용합니다. 추적 중인 종목의 {breadth:.0f}%가 상승 추세이고 변동성 지표(VIX)는 {vix:.1f}까지 "
+            f"낮아져서, 다들 안심하는 분위기예요. 다만 이렇게 과도하게 잠잠할 때가 오히려 조심할 시점이라는 신호이기도 합니다."
+        )
+    # mixed
+    return (
+        f"오늘 시장은 방향을 못 정하고 있어요. 상승 추세 종목이 {breadth:.0f}%로 뚜렷한 쪽이 없고, 대표 지수도 최근 한 달 새 "
+        f"{spy_1m:+.1f}%로 큰 움직임이 없습니다. 변동성 지표(VIX)는 {vix:.1f}로 {_vix_phrase(vix_signal)}."
+    )
+
+
+_MACRO_SENTENCE: dict[tuple[str, str], tuple[str, str]] = {
+    # (macro key, 부분 문자열 매치) -> (극성 warn/support, 문장)
+    ("경기신호", "과열"): ("warn", "구리 가격이 금값 대비 유독 비싸지는 흐름이 나타나고 있는데, 이건 이 프로젝트가 검증한 신호 중 가장 신뢰도가 높은 지표라 지금의 상승세가 이미 과열 국면에 가까워졌을 가능성을 보여줍니다."),
+    ("경기신호", "저점"): ("support", "구리 가격이 금값 대비 저평가되는 흐름이 나타나고 있는데, 이건 경기 회복 초기에 흔히 보이는 신호라 앞으로가 기대되는 구간입니다."),
+    ("곡선신호", "안전자산선호"): ("warn", "채권 시장에서도 안전자산을 선호하는 분위기가 감지되고 있어서, 지금 흐름이 계속될지는 조금 더 지켜봐야 합니다."),
+    ("곡선신호", "위험자산선호"): ("support", "채권 시장 흐름도 위험자산을 선호하는 쪽이라, 지금 분위기와 방향이 맞아떨어집니다."),
+    ("달러강도", "강달러"): ("support", "달러도 강세를 보이고 있어서 이 흐름을 뒷받침하고 있습니다."),
+    ("달러강도", "약달러"): ("warn", "달러는 약세인데, 이 역시 과거 패턴상 주식 수익률엔 그다지 좋은 신호가 아니었어요."),
+}
 _MACRO_PRIORITY = ["경기신호", "곡선신호", "달러강도"]
-_MACRO_LABEL = {"경기신호": "구리/금 비율", "곡선신호": "채권 수익률곡선", "달러강도": "달러 강도"}
 
 
-def _pick_macro_sentence(macro: dict) -> str | None:
-    """중립이 아닌 매크로 신호 중 우선순위가 가장 높은 것 하나를 문장으로."""
+def _outlook_paragraph2(macro: dict, regime_key: str) -> str:
+    """2단락: 매크로 선행지표 3개를 중립 아닌 것만 전부(1개로 자르지 않음)
+    풀어쓰고, 국면과 macro가 같은 방향인지 엇갈리는지로 균형 잡힌 결론을 냄."""
+    parts: list[str] = []
+    polarities: list[str] = []
     for key in _MACRO_PRIORITY:
         val = macro.get(key)
         if val is None or "중립" in val:
             continue
-        return f"{_MACRO_LABEL[key]}: {val}"
-    return None
+        for (mkey, sub), (polarity, sentence) in _MACRO_SENTENCE.items():
+            if mkey == key and sub in val:
+                parts.append(sentence)
+                polarities.append(polarity)
+                break
+
+    if not parts:
+        return "매크로 선행 지표들은 오늘 특별한 경고 신호 없이 중립적입니다."
+
+    positive_regime = regime_key in ("bull", "complacent")
+    negative_regime = regime_key in ("bear", "fear")
+    has_warn = "warn" in polarities
+    has_support = "support" in polarities
+
+    if positive_regime and has_warn:
+        closing = "그러니 지금 분위기를 그대로 믿고 따라가기보다는, 한 박자 쉬어가는 마음으로 지켜볼 시점에 가깝습니다."
+    elif positive_regime:
+        closing = "매크로 신호들도 대체로 지금 흐름을 뒷받침하고 있어 당분간은 이 분위기가 이어질 가능성이 있습니다."
+    elif negative_regime and has_support:
+        closing = "다만 매크로 신호 일부는 회복 조짐을 보이고 있어 마냥 비관적이지만은 않습니다."
+    elif negative_regime:
+        closing = "매크로 신호도 같은 방향을 가리키고 있어 당분간 조심스러운 흐름이 이어질 수 있습니다."
+    else:
+        closing = "매크로 신호까지 겹쳐 있어 당장은 방향을 예단하기보다 지켜보는 쪽이 안전합니다."
+
+    return "매크로 선행 지표를 조금 더 짚어보면, " + " ".join(parts) + " " + closing
+
+
+# 코인(BTC) 국면별 도입 문장 — scripts/onchain.py::classify_regime()이 SSOT
+# (0/1.5/2.5 경계). 대시보드 전체(rebalancing_page.py 등)와 같은 기준.
+_COIN_REGIME_SENTENCE = {
+    "deep_value": "비트코인은 지금 바닥권에 가까운 상태예요. 온체인 지표(MVRV — 지금 가격이 보유자들 평균 매수가 대비 얼마나 비싼지 보여주는 지표)가 {z:.2f}로, 역사적으로 저점 부근에서 나타나는 수준입니다.",
+    "accumulation": "비트코인은 지금 매집 구간에 가까운 상태예요. 온체인 지표(MVRV)가 {z:.2f}로, 아직 크게 부풀려지지 않은 저평가 구간으로 볼 수 있습니다.",
+    "bull": "비트코인은 지금 중립~과열 경계 구간이에요. 온체인 지표(MVRV)가 {z:.2f}로 예전보다 꽤 올라와 있어서, 과열 진입 전 단계로 봐야 합니다.",
+    "top": "비트코인은 지금 과열 구간에 가까운 상태예요. 온체인 지표(MVRV)가 {z:.2f}로, 보유자들 평균 매수가 대비 가격이 많이 부풀려져 있습니다.",
+}
+
+_ALT_SEASON_CLAUSE = {
+    "altcoin_season": "알트코인들이 비트코인보다 광범위하게 앞서고 있어서(알트시즌 지수 {score:.0f}), 지금은 알트코인이 더 주목받는 구간입니다.",
+    "bitcoin_season": "알트코인들은 비트코인 대비 부진한 편이라(알트시즌 지수 {score:.0f}), 아직 비트코인 위주로 흐름이 이어지고 있습니다.",
+    "transition": "알트코인과 비트코인 어느 한쪽으로 뚜렷하게 쏠리지 않은(알트시즌 지수 {score:.0f}) 애매한 구간이에요.",
+}
+
+
+def _outlook_paragraph3(cycle: dict) -> str | None:
+    """3단락: 코인(BTC) 전망 — 2026-08-24, "코인은 언급이 없다"는 피드백으로
+    추가. 주식 단락과 같은 스타일(국면 하나로 뭉뚱그리지 않고 실제 수치 포함).
+    데이터 없으면 None 반환(문단 자체를 생략)."""
+    z = cycle.get("mvrv_z")
+    if z is None or pd.isna(z):
+        return None
+    z = float(z)
+    regime = classify_regime(z)["regime"]
+    sentence = _COIN_REGIME_SENTENCE.get(regime)
+    if sentence is None:
+        return None
+    parts = [sentence.format(z=z)]
+
+    btc_90d = cycle.get("btc_return_90d_pct")
+    if btc_90d is not None and not pd.isna(btc_90d):
+        btc_90d = float(btc_90d)
+        verb = "부진했어요" if btc_90d < 0 else "올랐습니다"
+        parts.append(f"최근 3개월 동안은 {btc_90d:+.1f}%로 {verb}.")
+
+    alt_regime = cycle.get("alt_season_regime")
+    alt_score = cycle.get("alt_season_score")
+    if alt_regime in _ALT_SEASON_CLAUSE and alt_score is not None and not pd.isna(alt_score):
+        parts.append(_ALT_SEASON_CLAUSE[alt_regime].format(score=float(alt_score)))
+
+    return " ".join(parts)
 
 
 def build_message() -> tuple[str, str]:
-    """(title, description) 반환 — kakao_notify.send_feed_to_self()용 피드 템플릿."""
+    """(title, description) 반환 — kakao_notify.send_feed_to_self()용 피드 템플릿.
+    description은 3단락 에세이: ①미국 증시 국면+실측 지표, ②매크로 상세+균형
+    결론, ③코인(BTC) 온체인 국면+알트시즌.
+    2026-08-24: 보유종목 맞춤 리밸런싱 문장을 넣었다가 "너무 길다"는 피드백으로
+    제거(보유종목 관련은 scripts/check_alerts.py가 별도 메시지로 담당). 이후
+    "코인은 언급이 없다"는 피드백으로 3단락(_outlook_paragraph3) 추가."""
     today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%m/%d")
-    title = f"📊 오늘의 시장 요약 {today}"
+    title = f"📊 오늘의 시장 조각글 {today}"
 
     if not SUMMARY.exists():
         return title, "summary_signals.csv 없음 — run_analysis.py 먼저 실행 필요"
@@ -71,17 +226,17 @@ def build_message() -> tuple[str, str]:
     regime = market_regime(df)
     macro = macro_signals(df)
 
-    lines = [f"{regime['label']} — {regime['desc']}"]
+    paragraphs = [_outlook_paragraph1(regime)]
+    if regime.get("vix") is not None:
+        paragraphs.append(_outlook_paragraph2(macro, regime["key"]))
 
-    vix = regime.get("vix")
-    if vix is not None:
-        lines.append(f"변동성 지수(VIX) {vix:.1f} — {regime['vix_signal']}")
+    if CYCLE_METRICS.exists():
+        cycle = pd.read_csv(CYCLE_METRICS).iloc[0].to_dict()
+        coin_paragraph = _outlook_paragraph3(cycle)
+        if coin_paragraph:
+            paragraphs.append(coin_paragraph)
 
-    macro_sentence = _pick_macro_sentence(macro)
-    if macro_sentence:
-        lines.append(macro_sentence)
-
-    return title, "\n".join(lines)
+    return title, "\n\n".join(paragraphs)
 
 
 def main():
