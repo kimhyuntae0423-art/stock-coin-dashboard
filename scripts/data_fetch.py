@@ -11,6 +11,7 @@ _COINGECKO_IDS = {
     "TRUMP-USD": "official-trump",
     "ZETA-USD":  "zetachain",
     "ENS-USD":   "ethereum-name-service",
+    "POL-USD":   "polygon-ecosystem-token",  # yfinance의 POL-USD는 폴리곤이 아닌 동명의 다른(2023-10 종료) 코인과 충돌 — CoinGecko로 강제 대체 필요
 }
 
 
