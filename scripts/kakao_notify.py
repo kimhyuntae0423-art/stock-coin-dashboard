@@ -81,13 +81,32 @@ def _load_local_tokens() -> dict | None:
         return json.load(f)
 
 
-def _send_with_token(access_token: str, text: str, url: str, button_title: str) -> dict:
-    template = {
+def _text_template(text: str, url: str, button_title: str) -> dict:
+    return {
         "object_type": "text",
         "text": text[:200],
         "link": {"web_url": url, "mobile_web_url": url},
         "button_title": button_title,
     }
+
+
+def _feed_template(title: str, description: str, url: str, button_title: str) -> dict:
+    """피드형 기본 템플릿 — title+description 합쳐 4줄 표시, 400자 안팎까지
+    여유로움(카카오 text 템플릿의 200자 한도보다 훨씬 넉넉해서 신호를 태그로
+    압축하지 않고 문장으로 풀어 쓸 수 있음, 2026-08-24 도입).
+    image_url은 선택 필드라 생략 — link만 필수."""
+    return {
+        "object_type": "feed",
+        "content": {
+            "title": title,
+            "description": description,
+            "link": {"web_url": url, "mobile_web_url": url},
+        },
+        "buttons": [{"title": button_title, "link": {"web_url": url, "mobile_web_url": url}}],
+    }
+
+
+def _send_template(access_token: str, template: dict) -> dict:
     return _post(
         SEND_URL,
         {"template_object": json.dumps(template, ensure_ascii=False)},
@@ -95,13 +114,10 @@ def _send_with_token(access_token: str, text: str, url: str, button_title: str) 
     )
 
 
-def send_to_self(text: str, link_url: str | None = None,
-                 button_title: str = "대시보드 열기") -> dict:
-    """카카오톡 메모챗('나에게 보내기')으로 텍스트 메시지 발송.
-
-    토큰 전략: KAKAO_ACCESS_TOKEN 우선 사용 → 401이면 refresh_token으로 재시도.
+def _send_with_retry(build_template) -> dict:
+    """토큰 전략: KAKAO_ACCESS_TOKEN 우선 사용 → 401이면 refresh_token으로 재시도.
     이 레포는 갱신한 토큰을 저장하지 않음 (morning-briefing 레포가 전담).
-    """
+    build_template(url)이 실제 전송할 template dict를 만든다."""
     api_key = os.environ.get("KAKAO_REST_API_KEY")
     access_token = os.environ.get("KAKAO_ACCESS_TOKEN")
     refresh_token = os.environ.get("KAKAO_REFRESH_TOKEN")
@@ -116,12 +132,12 @@ def send_to_self(text: str, link_url: str | None = None,
             refresh_token = refresh_token or local.get("refresh_token")
             client_secret = client_secret or local.get("client_secret")
 
-    url = link_url or DEFAULT_DASH_URL
+    template = build_template()
 
     # 1) ACCESS_TOKEN 있으면 먼저 시도 (refresh 없음 → 토큰 충돌 방지)
     if access_token:
         try:
-            return _send_with_token(access_token, text, url, button_title)
+            return _send_template(access_token, template)
         except RuntimeError as e:
             if "401" not in str(e):
                 raise
@@ -134,7 +150,24 @@ def send_to_self(text: str, link_url: str | None = None,
         )
     tok = refresh_access_token(api_key, refresh_token, client_secret)
     _save_new_tokens(tok)
-    return _send_with_token(tok["access_token"], text, url, button_title)
+    return _send_template(tok["access_token"], template)
+
+
+def send_to_self(text: str, link_url: str | None = None,
+                 button_title: str = "대시보드 열기") -> dict:
+    """카카오톡 메모챗('나에게 보내기')으로 일반 텍스트 메시지 발송(200자 한도).
+    여러 줄 보고서 형태는 send_feed_to_self()를 쓸 것."""
+    url = link_url or DEFAULT_DASH_URL
+    return _send_with_retry(lambda: _text_template(text, url, button_title))
+
+
+def send_feed_to_self(title: str, description: str, link_url: str | None = None,
+                      button_title: str = "대시보드 열기") -> dict:
+    """카카오톡 메모챗('나에게 보내기')으로 피드형(제목+설명) 메시지 발송.
+    text 템플릿보다 훨씬 여유로워서 신호를 태그로 압축하지 않고 실제 문장·줄바꿈이
+    있는 요약 보고서를 보낼 때 씀(2026-08-24, "신호 나열처럼 보인다"는 피드백)."""
+    url = link_url or DEFAULT_DASH_URL
+    return _send_with_retry(lambda: _feed_template(title, description, url, button_title))
 
 
 if __name__ == "__main__":

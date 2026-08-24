@@ -51,34 +51,6 @@ def load_names() -> dict:
 NAMES = load_names()
 
 
-def _coin_bb(ticker: str) -> dict | None:
-    """해당 코인의 현재 BB %B, RSI, state 계산. 데이터 부족시 None."""
-    path = _RESULTS / f"coin_{ticker}_signals.csv"
-    if not path.exists():
-        return None
-    try:
-        df = pd.read_csv(path, usecols=["Close", "rsi14", "state"]).tail(40)
-    except Exception:
-        return None
-    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
-    df["rsi14"] = pd.to_numeric(df["rsi14"], errors="coerce")
-    if len(df) < 20:
-        return None
-    mid = df["Close"].rolling(20).mean()
-    std = df["Close"].rolling(20).std()
-    upper = mid + 2 * std
-    lower = mid - 2 * std
-    rng = (upper - lower).replace(0, float("nan"))
-    pct_b_s = (df["Close"] - lower) / rng
-    last = df.iloc[-1]
-    pb = pct_b_s.iloc[-1]
-    return {
-        "pct_b": float(pb) if pd.notna(pb) else None,
-        "rsi14": float(last["rsi14"]) if pd.notna(last["rsi14"]) else None,
-        "state": str(last["state"]) if pd.notna(last["state"]) else None,
-    }
-
-
 def load_signals() -> pd.DataFrame:
     """주식 + 코인 summary 합쳐서 반환."""
     dfs = []
@@ -91,26 +63,37 @@ def load_signals() -> pd.DataFrame:
 
 def severity_for_holding(
     row, sig_row, mvrv_z=None, is_etf: bool = False, is_coin: bool = False,
-    bb: dict | None = None, usdkrw: float = 1380.0,
+    usdkrw: float = 1380.0,
 ) -> tuple[int, list[str]]:
     """단일 보유종목의 위험도(0=보유 / 1=논거 재검토 / 2=비중 축소(코인)) 와 사유 리스트.
 
     자산 유형별 신호 기준 (백테스트 검증):
       ETF  → 리밸런싱으로 관리, 알림 없음
-      BTC  → MVRV Z-Score 구간 기반 (0/1.5/2.5)
-      알트 → BB(%B) + 손익 복합 신호(단, 개별손실 자체의 매도판정은 G1 로드맵 기준)
+      코인 → scripts/crypto_analysis.py의 온체인 국면(MVRV) 기준 — rebalancing_page.py
+             "보유 현황" 표와 완전히 같은 판단(coin_holdings_action_text() 동일 로직)
       개별주 → 손실(-8%/-20%) + 데드크로스 + RSI 80+ (모두 1수준, 2수준 없음)
 
     usdkrw: 코인 손익 계산용 환율. sig_row["close"]는 coin_summary.csv 기준
     USD, row["buy_price"]는 holdings.csv 기준 KRW라 변환 없이 나누면 항상
     -100%에 가까운 값이 나오던 버그가 있었음(2026-07-22 발견 — 이 버그 때문에
     카카오 알림이 보유 코인 전부에 "🔴 매도 검토"를 보내고 있었음).
+
+    2026-08-24: 알트코인에 "BB(%B)>1 + RSI>70 → 매도" 신호가 따로 있었는데, 이
+    신호 자체가 백테스트 승률 27%(동전던지기보다 나쁨 — CLAUDE.md "검증 실패"
+    표에 코인 RSI 과매수 신호가 이미 등재돼 있던 것과 같은 부류)였고,
+    rebalancing_page.py의 "보유 현황" 표(coin_holdings_action_text() 기준)와도
+    무관하게 따로 동작해서 — 같은 코인이 카톡에선 "매도 검토", 대시보드에선
+    "매수 우호"로 동시에 뜨는 걸 실제로 확인함(사용자 목격, 예: ENS/XRP/SOL 등
+    6종목이 매집(accumulation) 구간이라 대시보드는 "매수"인데 카톡은 BB 신호로
+    "매도 검토"를 보내고 있었음). BB 신호 전체 제거하고 대시보드와 같은 온체인
+    국면 판단만 쓰도록 통일. G1·G2 개별손실 손절 로드맵(19종목 백테스트 근거)은
+    대시보드와 동일하게 그대로 최우선 유지.
     """
     # ── ETF: 리밸런싱으로 관리 — 알림 불필요 ──────────────────────
     if is_etf:
         return 0, []
 
-    # ── 코인: BTC는 MVRV 순수 적용, 알트는 MVRV + 개별 손실 병행 ──
+    # ── 코인: 대시보드와 동일하게 온체인 국면(MVRV) 하나로 판단 ────
     if is_coin:
         ticker_str = str(row.get("ticker", "")).strip().upper()
         is_btc = ticker_str == "BTC-USD"
@@ -119,78 +102,26 @@ def severity_for_holding(
         if close is not None and pd.notna(close):
             close = float(close) * usdkrw  # USD -> KRW
 
-        if is_btc:
-            if mvrv_z is not None and pd.notna(mvrv_z):
-                z = float(mvrv_z)
-                regime = classify_regime(z)["regime"]
-                label = REGIME_LABEL_KR.get(regime, regime)
-                if regime == "top":
-                    return 2, [f"MVRV Z-Score {z:.2f} — {label} (백테스트 검증)"]
-                elif regime == "bull":
-                    return 1, [f"MVRV Z-Score {z:.2f} — {label}"]
-            return 0, []
+        regime = classify_regime(float(mvrv_z))["regime"] if (mvrv_z is not None and pd.notna(mvrv_z)) else "unknown"
+        label = REGIME_LABEL_KR.get(regime, regime)  # 바닥권/매집/중립~과열/과열/미확인
 
-        # 알트코인: BB + 손익 복합 신호
-        pct_b = bb["pct_b"] if bb else None
-        rsi_bb = bb["rsi14"] if bb else None
-        state_bb = bb["state"] if bb else None
-        cycle_ctx = f" (MVRV Z {float(mvrv_z):.2f})" if mvrv_z is not None and pd.notna(mvrv_z) else ""
-
-        # 신호1. BB 매도: %B>1 + RSI>70 (백테스트 -11.7%, 27% 승률)
-        if pct_b is not None and rsi_bb is not None and pct_b > 1.0 and rsi_bb > 70:
-            return 2, [
-                f"BB 상단 이탈(%B {pct_b:.2f}) + RSI {rsi_bb:.0f}"
-                f" — 알트 과열 매도 신호 (백테스트 -11.7%, 27%){cycle_ctx}"
-            ]
-
-        # 신호2. 추세 반전 조기 경보: bull + %B<0.2 (백테스트 -18.2%, 8%)
-        if pct_b is not None and state_bb == "bull" and pct_b < 0.2:
-            return 1, [
-                f"MA 추세 bull이나 BB 하단(%B {pct_b:.2f})"
-                f" — 추세 반전 조기 경보 (백테스트 -18.2%, 8%)"
-            ]
-
-        # 신호3. 손익 기반 — %B<0+RSI<30(반등 후보 구간)이면 등급 완화.
-        # "-40% → 매도(severity 2)"는 백테스트 검증이 없고 코인 정리 로드맵과도
-        # 무관해서, 리밸런싱 페이지의 "매수 우호"와 정반대인 카카오 알림이
-        # 나가던 원인이었음(2026-07-22). G1·G2(출구 전략 대상 알트)는 실제
-        # 로드맵(coin_alt_stoploss_status: 손절선 -40%, 19종목 백테스트 근거 —
-        # 회복 또는 2027년 말)이 있으므로 그걸 따르고, G3(BTC·ETH·SOL, 핵심
-        # 장기보유)와 로드맵 없는 코인은 severity를 1(주의)로 낮춤.
-        if pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
+        # G1·G2(출구 전략 대상 알트)는 개별손실 로드맵이 온체인 국면보다 우선
+        # (대시보드 coin_holdings_action_with_stoploss()와 동일 우선순위).
+        if not is_btc and pd.notna(buy_price) and pd.notna(close) and float(buy_price) > 0:
             pnl_pct = (float(close) / float(buy_price) - 1) * 100
-            # G1(TRUMP·MASK·ZETA·SAND·ID)은 반등후보 조건(%B<0+RSI<30) 백테스트
-            # 평균 승률 25.75%(TRUMP는 0%)로 뚜렷이 실패 — 이미 손절 로드맵
-            # 대상인 코인에 "반등 후보"까지 붙이면 모순이라 제외(2026-07-22,
-            # portfolio_page.py와 동일 기준).
-            is_bounce = (
-                pct_b is not None and rsi_bb is not None
-                and pct_b < 0.0 and rsi_bb < 30
-                and ticker_str not in COIN_EXIT_GROUPS["G1"]
-            )
             if pnl_pct < 0 and (
                 ticker_str in COIN_EXIT_GROUPS["G1"] or ticker_str in COIN_EXIT_GROUPS["G2"]
             ):
                 alt_status, alt_reason = coin_alt_stoploss_status(pnl_pct)
-                # alt_reason이 이미 "손실 X%로/X% —"로 시작해서 앞에 pnl_pct를 또
-                # 붙이면 중복 표시되던 것 수정(2026-07-22 감사에서 발견).
                 if alt_status == "sell":
-                    return 2, [f"{alt_reason}{cycle_ctx}"]
+                    return 2, [alt_reason]
                 return 0, []  # "wait"/None(아직 손절 검증 구간 진입 전) — 알림 불필요
-            if pnl_pct <= -40:
-                if is_bounce:
-                    return 1, [
-                        f"손익 {pnl_pct:+.1f}% 심각 — 단, BB 하단+RSI 과매도"
-                        f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간{cycle_ctx}"
-                    ]
-                return 1, [
-                    f"손익 {pnl_pct:+.1f}% — 개별 손실 자체는 매도 근거로 검증되지 않음, "
-                    f"MVRV 국면 기준으로 판단 권장{cycle_ctx}"
-                ]
-            elif pnl_pct <= -20:
-                if is_bounce:
-                    return 0, []  # 완화 — 반등 후보 구간
-                return 1, [f"손익 {pnl_pct:+.1f}% — 알트 하락 주의{cycle_ctx}"]
+
+        # 온체인 국면 판단 — rebalancing_page.py "보유 현황" 표와 동일 기준
+        if regime == "top":
+            return 2, [f"온체인 지표가 '{label}' 구간이에요 — 비중을 줄이는 걸 검토해보세요 (백테스트 검증)"]
+        elif regime == "bull":
+            return 1, [f"온체인 지표가 '{label}' 구간으로 넘어가는 중이에요 — 과열 전 주의 단계입니다"]
         return 0, []
 
     # ── 개별주: 매도 검토 + 주의 ─────────────────────────────────
@@ -207,20 +138,20 @@ def severity_for_holding(
         pnl_pct = (close / buy_price - 1) * 100
         if pnl_pct <= -20:
             severity = 2  # 개별주 -20% = 🔴 (ETF와 다름 — 기업 thesis 훼손 가능)
-            reasons.append(f"손익 {pnl_pct:+.1f}% — 매도 검토 (투자 논거 재확인 필요)")
+            reasons.append(f"매수가 대비 {pnl_pct:+.1f}% — 손실이 커서 계속 들고 갈 이유가 맞는지 다시 확인해보세요")
         elif pnl_pct <= -8:
             severity = max(severity, 1)
-            reasons.append(f"손익 {pnl_pct:+.1f}% — 손절 기준선 이탈")
+            reasons.append(f"매수가 대비 {pnl_pct:+.1f}% — 손절 기준선(-8%)을 넘었어요")
 
     # 데드크로스 — 보조 참고 (적중률 50.8%, 단독 신뢰도 낮음)
     if action in ("매도", "미보유"):
         severity = max(severity, 1)
-        reasons.append("데드크로스/하락추세 — 보조 참고 (50.8% 적중)")
+        reasons.append("단기 이동평균이 장기 이동평균 아래로 내려간 하락 신호(데드크로스) — 참고용, 적중률 50.8%로 높지 않음")
 
     # RSI 80+ — severity 1 (RSI 70+ 적중률 45%, 단독 신뢰도 낮음)
     if pd.notna(rsi) and rsi >= 80:
         severity = max(severity, 1)
-        reasons.append(f"RSI {rsi:.0f} — 극단 과매수 (강한 추세에서는 계속 오를 수 있음)")
+        reasons.append(f"RSI(상대강도지수) {rsi:.0f} — 단기 과매수 신호예요 (강한 상승 흐름에선 계속 오를 수도 있어요)")
 
     return severity, reasons
 
@@ -342,9 +273,8 @@ def check() -> list[dict]:
         if s.empty:
             continue
         s = s.iloc[0]
-        bb = _coin_bb(ticker) if (is_coin and not (ticker == "BTC-USD")) else None
         severity, reasons = severity_for_holding(
-            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, bb=bb, usdkrw=_usdkrw,
+            row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, usdkrw=_usdkrw,
         )
         if severity > 0:
             alerts.append({
@@ -423,51 +353,79 @@ def format_trend_flips(flips: list[dict]) -> list[str]:
     return lines
 
 
-def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
-    """카카오 200자 한도 내 메시지 조립. 사이클 경보가 가장 위에 표시됨."""
+# 피드 템플릿도 무한정 길어지면 "간단 요약 보고서"가 아니라 다시 나열이 되므로
+# (2026-08-24, 실제로 보유 코인이 한꺼번에 과열 신호를 받은 날 12건이 뜬 것
+# 확인) 종목 단위로 최대 이 개수까지만 보여주고 나머지는 건수만 알림.
+_MAX_ALERT_ITEMS = 5
+
+
+def _render_alert_group(alerts: list[dict], budget: int) -> tuple[list[str], int]:
+    """alerts를 최대 budget개까지 "종목명(티커)\n  · 이유" 블록으로 렌더링.
+    반환: (렌더된 줄 목록, 생략된 종목 수)."""
+    lines: list[str] = []
+    for a in alerts[:budget]:
+        label = NAMES.get(a["ticker"], a["ticker"])
+        lines.append(f"{label}({a['ticker']})")
+        lines.extend(f"  · {reason}" for reason in a["reasons"])
+    return lines, max(0, len(alerts) - budget)
+
+
+def build_message(alerts: list[dict], cycle: dict | None = None) -> tuple[str, str] | None:
+    """(title, description) 반환 — kakao_notify.send_feed_to_self()용 피드 템플릿.
+
+    2026-08-24: 예전엔 "· 종목명(티커): 이유1, 이유2"를 한 줄에 다 욱여넣어서
+    "신호 나열처럼 보인다"는 피드백을 받음 — 종목마다 줄을 나누고, 제목에서
+    가장 급한 등급(매도 검토 > 주의)을 먼저 알려주는 보고서 형태로 교체.
+    피드 템플릿은 text 템플릿의 200자 한도보다 훨씬 여유롭지만, 그렇다고
+    전부 나열하면 다시 "보고서"가 아니라 "목록"이 되므로 종목당 개수는 제한."""
     if not alerts and not cycle:
         return None
-
-    parts: list[str] = []
-    if cycle:
-        parts.append(format_cycle_alert(cycle))
 
     high = [a for a in (alerts or []) if a["severity"] == 2]
     warn = [a for a in (alerts or []) if a["severity"] == 1]
 
     if high:
+        title = f"🔴 보유 종목 점검 — 매도 검토 {len(high)}건"
+    elif warn:
+        title = f"🟠 보유 종목 점검 — 주의 {len(warn)}건"
+    else:
+        title = "📊 BTC 사이클 알림"
+
+    parts: list[str] = []
+    if cycle:
+        parts.append(format_cycle_alert(cycle))
+
+    budget = _MAX_ALERT_ITEMS
+    omitted_total = 0
+    if high:
         if parts:
             parts.append("")
         parts.append("🔴 매도 검토")
-        for a in high:
-            label = NAMES.get(a["ticker"], a["ticker"])
-            parts.append(f"· {label}({a['ticker']}): {', '.join(a['reasons'])}")
+        lines, omitted = _render_alert_group(high, budget)
+        parts.extend(lines)
+        budget = max(0, budget - len(high))
+        omitted_total += omitted
     if warn:
         if parts:
             parts.append("")
         parts.append("🟠 주의")
-        for a in warn:
-            label = NAMES.get(a["ticker"], a["ticker"])
-            parts.append(f"· {label}({a['ticker']}): {', '.join(a['reasons'])}")
+        lines, omitted = _render_alert_group(warn, budget)
+        parts.extend(lines)
+        omitted_total += omitted
+    if omitted_total:
+        parts.append("")
+        parts.append(f"+ {omitted_total}건 더 — 대시보드에서 전체 확인")
 
-    msg = "\n".join(parts)
-    # 200자 초과 시 잘라서 "+ N개 더"
-    if len(msg) > 195:
-        msg = msg[:190] + "…"
-    return msg
+    return title, "\n".join(parts)
 
 
-def build_trend_message(trend_flips: list[dict]) -> str | None:
-    """추세 전환 알림 — 매도 검토와 한 메시지에 같이 넣으면 200자 한도에서
-    뒤로 밀려 조용히 잘려나가는 문제가 있어서(2026-08-21 발견) 별도 메시지로
-    분리 발송한다."""
+def build_trend_message(trend_flips: list[dict]) -> tuple[str, str] | None:
+    """추세 전환 알림 — 매도 검토와 한 메시지에 같이 넣으면 뒤로 밀려 조용히
+    잘려나가는 문제가 있어서(2026-08-21 발견) 별도 메시지로 분리 발송한다."""
     if not trend_flips:
         return None
-    parts = ["🔄 추세 전환"] + format_trend_flips(trend_flips)
-    msg = "\n".join(parts)
-    if len(msg) > 195:
-        msg = msg[:190] + "…"
-    return msg
+    title = f"🔄 보유 코인 추세 전환 {len(trend_flips)}건"
+    return title, "\n".join(format_trend_flips(trend_flips))
 
 
 def main():
@@ -486,13 +444,15 @@ def main():
     for label, m in (("매도/주의/사이클", msg), ("추세 전환", trend_msg)):
         if m is None:
             continue
+        title, description = m
         print(f"=== 발송할 메시지 ({label}) ===")
-        print(m)
+        print(f"[제목] {title}")
+        print(description)
         print("====================")
         if has_kakao:
             try:
-                from kakao_notify import send_to_self
-                send_to_self(m)
+                from kakao_notify import send_feed_to_self
+                send_feed_to_self(title, description)
                 print("✓ 카카오톡 발송 완료")
             except Exception as e:
                 print(f"✗ 카카오 발송 실패: {e}")

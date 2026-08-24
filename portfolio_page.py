@@ -460,48 +460,21 @@ def holding_signal(row):
                 else:
                     return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간 (BTC 20% 목표, 백테스트 검증)"
 
-            # 알트코인: BB + 손익 복합 신호
+            # 알트코인: G1·G2 개별손실 로드맵이 최우선, 그 외엔 온체인 국면(MVRV)
+            # 하나로만 판단 — rebalancing_page.py "보유 현황" 표(coin_holdings_
+            # action_text())와 완전히 같은 기준.
+            #
+            # 2026-08-24: 여기 있던 "BB(%B)+RSI 매도/추세반전/반등후보" 신호 3개를
+            # 전부 제거했다 — 신호1(BB 매도)은 백테스트 승률 27%(동전던지기보다
+            # 나쁨), 신호3의 알트 전체 "반등 후보"도 pooled 승률 50%(코드 주석에
+            # 이미 무근거라고 적혀 있었음)였는데, 둘 다 실제로 "매도 검토"/"주의"
+            # 라벨을 띄우고 있어서 대시보드(rebalancing_page.py)와 같은 코인에
+            # 반대 신호를 보여주는 사고로 이어졌다 — 예: 매집(accumulation)
+            # 구간이라 리밸런싱 페이지는 "매수 우호"인데 이 페이지는 BB 신호로
+            # "매도 검토"를 보여주고 있었음(카카오 알림도 같은 문제였음,
+            # scripts/check_alerts.py에서 먼저 발견·수정). 이제 이 페이지도
+            # 대시보드 SSOT와 완전히 같은 판단만 쓴다.
             cycle_ctx = f"MVRV Z {z:.2f}({REGIME_LABEL_KR[classify_regime(z)['regime']]})"
-            bb = _coin_bb(ticker)
-            pct_b = bb["pct_b"] if bb else None
-            rsi_bb = bb["rsi14"] if bb else None
-            state_bb = bb["state"] if bb else None
-
-            # 신호1. BB 매도: %B>1 + RSI>70 (백테스트 -11.7%, 27% 승률)
-            if pct_b is not None and rsi_bb is not None and pct_b > 1.0 and rsi_bb > 70:
-                return (
-                    "🔴 매도 검토",
-                    f"BB 상단 이탈(%B {pct_b:.2f}) + RSI {rsi_bb:.0f}"
-                    f" — 과열 매도 신호 (백테스트 -11.7%, 27%). {cycle_ctx}",
-                )
-
-            # 신호2. 추세 반전 조기 경보: bull + %B<0.2 (백테스트 -18.2%, 8%)
-            if pct_b is not None and state_bb == "bull" and pct_b < 0.2:
-                return (
-                    "🟠 추세 반전 경보",
-                    f"MA 추세 bull이나 BB 하단(%B {pct_b:.2f})"
-                    f" — 추세 전환 조기 경보 (백테스트 -18.2%, 8%). {cycle_ctx}",
-                )
-
-            # 신호3. 손익 기반 — %B<0+RSI<30이면 등급 완화.
-            # "반등 후보 (57% 승률)" 인용은 사실 ETC-USD 하나의 결과였음 — 21개
-            # 알트 전체에 같은 조건(%B<0+RSI<30 -> 90일 수익률)을 돌려보니
-            # 통합(pooled) 승률은 50%(동전던지기), n=575로 알트 전체에 대한
-            # 근거는 약함. 특히 G1(TRUMP·MASK·ZETA·SAND·ID) 평균 승률
-            # 25.75%(TRUMP는 0%)로 뚜렷하게 실패 — 이미 손절 로드맵으로
-            # "정리 대상"인 코인에 동시에 "반등 후보, 사라" 신호를 내는 모순이라
-            # G1은 이 신호 대상에서 제외(2026-07-22, 사용자 요청으로 재검증 후 발견).
-            is_bounce = (
-                pct_b is not None and rsi_bb is not None
-                and pct_b < 0.0 and rsi_bb < 30
-                and ticker not in COIN_EXIT_GROUPS["G1"]
-            )
-            # G1·G2(출구 전략 대상 알트)는 개별손실 -40%(백테스트 근거) 회복 또는
-            # 2027년말 데드라인 로드맵으로 판단 — 손실 자체(예: -40%)만으로 즉시
-            # "매도"를 내던 옛 규칙은 백테스트 검증도 없었고, 같은 코인에 대해
-            # 리밸런싱 인사이트(MVRV 기준)와 반대 방향을 말하는 사고로 이어졌었음
-            # (2026-07-22, 사용자 실제 목격). G3(BTC·ETH·SOL)는 핵심 장기보유
-            # 자산이라 이 로드맵 대상에서 제외 — MVRV 트리거로만 관리.
             if pd.notna(pnl_pct) and pnl_pct < 0 and (
                 ticker in COIN_EXIT_GROUPS["G1"] or ticker in COIN_EXIT_GROUPS["G2"]
             ):
@@ -513,46 +486,16 @@ def holding_signal(row):
                 if alt_status == "wait":
                     return "🟡 대기 (로드맵 기준)", f"{alt_reason}. {cycle_ctx}"
 
-            if pd.notna(pnl_pct):
-                if pnl_pct <= -40:
-                    if is_bounce:
-                        return (
-                            "🟠 주의 (반등 후보)",
-                            f"{pnl_pct:.1f}% 손실 심각 — 단, BB 하단+RSI 과매도"
-                            f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간. {cycle_ctx}",
-                        )
-                    return (
-                        "🟠 주의 (손실 심각)",
-                        f"{pnl_pct:.1f}% 손실 — 개별 손실 자체는 매도 근거로 검증되지 않음, "
-                        f"MVRV 국면 기준으로 판단 권장. {cycle_ctx}",
-                    )
-                elif pnl_pct <= -20:
-                    if is_bounce:
-                        return (
-                            "🔵 반등 후보",
-                            f"{pnl_pct:.1f}% 손실 — BB 하단+RSI 과매도"
-                            f"(%B {pct_b:.2f}, RSI {rsi_bb:.0f}) 반등 후보 구간"
-                            f" (종목별 편차 큼, G1 소형알트는 근거 약해 제외). {cycle_ctx}",
-                        )
-                    return "🟠 주의", f"{pnl_pct:.1f}% 손실 — 알트 하락 주의. {cycle_ctx}"
-
-            # 손실 없거나 -20% 이내: BB 반등 후보 or MVRV 기반
-            if is_bounce:
-                return (
-                    "🔵 반등 후보",
-                    f"BB 하단 이탈+RSI 과매도(%B {pct_b:.2f}, RSI {rsi_bb:.0f})"
-                    f" — 평균회귀 반등 후보 (종목별 편차 큼 — ETH·SOL·TRX 등은 승률 65%+,"
-                    f" G1 소형알트는 근거 약해 제외). {cycle_ctx}",
-                )
             _regime = classify_regime(z)["regime"]
+            _label = REGIME_LABEL_KR[_regime]
             if _regime == "deep_value":
-                return "💎 비중 확대 기회", f"MVRV Z-Score {z:.2f} — 역사적 바닥 근접"
+                return "💎 비중 확대 기회", f"온체인 지표가 '{_label}' 구간이에요 — 역사적 바닥권에 가까워요 (MVRV Z-Score {z:.2f})"
             elif _regime == "accumulation":
-                return "🟢 보유 양호", f"MVRV Z-Score {z:.2f} — 저평가 구간"
+                return "🟢 보유 양호", f"온체인 지표가 '{_label}' 구간이에요 — 저평가 구간입니다 (MVRV Z-Score {z:.2f})"
             elif _regime == "bull":
-                return "🟠 중립~과열 경계", f"MVRV Z-Score {z:.2f} — 과열 진입 전"
+                return "🟠 중립~과열 경계", f"온체인 지표가 '{_label}' 구간이에요 — 과열 진입 전 단계예요 (MVRV Z-Score {z:.2f})"
             else:
-                return "🔴 비중 축소", f"MVRV Z-Score {z:.2f} — 과열 구간"
+                return "🔴 비중 축소", f"온체인 지표가 '{_label}' 구간이에요 — 비중을 줄이는 걸 검토해보세요 (MVRV Z-Score {z:.2f})"
         return "🔵 보유", "MVRV 데이터 없음 — 코인 탭에서 온체인 지표 확인 권장"
 
     # ── 개별주: 매도 검토 / 주의 / 긍정 ──────────────────────────
