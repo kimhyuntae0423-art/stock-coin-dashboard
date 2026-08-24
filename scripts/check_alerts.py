@@ -14,6 +14,7 @@ Cycle 포함, 백테스트 근거 없음)을 써서 대시보드와 다른 국�
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 import pandas as pd
@@ -353,30 +354,107 @@ def format_trend_flips(flips: list[dict]) -> list[str]:
     return lines
 
 
-# 2026-08-24: "text 템플릿은 200자 한도"라는 가정으로 한때 feed 템플릿을
-# 거쳤다가(채팅창 안에서 4줄로 강제 절단되고 펼쳐볼 방법이 없어서 폐기,
-# 스크린샷으로 확인) 다시 text로 돌아왔는데, 그 200자 가정 자체가 틀렸다는
-# 게 최종 확인됨(같은 계정으로 몇 달째 쓰는 morning-briefing 레포가 450자
-# text 메시지를 안 자르고 보냄) — kakao_notify._text_template()의 인위적
-# 200자 컷도 제거했으므로, 종목별 전체 사유 문장을 다시 그대로 쓴다. 다만
-# 개수 자체는 여전히 제한(한꺼번에 12건씩 뜨면 "요약"이 아니라 "나열"이
-# 되므로, 2026-08-24 실제로 겪음) — 최대 이 개수까지만.
-_MAX_ALERT_ITEMS = 6
+# 2026-08-24: 글자수는 더 이상 문제가 아님이 확인됐지만(200자 한도는 잘못된
+# 가정이었음, 위 커밋 참고) — 종목마다 전체 사유 문장을 그대로 쓰니 "너무
+# 보기 힘들다"는 피드백을 받음. 문제는 길이가 아니라 시각적 스캔이 안 되는
+# 것 — 종목명 뒤에 긴 문장이 줄줄이 붙어 어디가 핵심(손익%)인지 안 보이고,
+# 특히 "데드크로스…" 같은 설명은 여러 종목에 토씨 하나 안 틀리고 반복돼서
+# 같은 문장을 몇 번이나 읽게 됨. 그래서 ① 손익%를 줄 맨 앞으로 빼서 한눈에
+# 스캔되게 하고 ② 사유는 짧은 태그로 압축하고 ③ 반복되는 태그의 설명은
+# 메시지 끝에 한 번만 각주로 붙인다(같은 문장 반복 제거 = "요약").
+_PCT_RE = re.compile(r"[-+]\d+\.\d+%")
+
+# (사유 문장에 포함된 부분 문자열, 짧은 설명 구절, 구절 안 전문용어 각주 —
+# 각주 없으면 None). 2026-08-24: 태그 한 단어("데드크로스")까지 압축했더니
+# "왜 파는지 이유를 더 풀어써달라"는 피드백 — 완전한 문장은 아니어도 "왜"가
+# 담긴 짧은 구절로 되돌림.
+_MVRV_FOOTNOTE = "온체인 지표(MVRV)=코인 보유자들의 평균 매수가 대비 지금 가격이 얼마나 비싼지 보는 지표. 과열 구간은 역사적으로 고점 근처였음"
+_REASON_TAG_RULES: list[tuple[str, str, str | None]] = [
+    ("손절 검증 구간", "손절 구간 진입, 매도 권장", "손절권장=개별 코인 손실이 -20%~-40% 구간이면 통계적으로 매도가 유리(19종목·10,940건 백테스트, 승률 70~74%)"),
+    ("데드라인 도달", "로드맵 데드라인 도달, 전량 매도 권장", "로드맵데드라인=손실이 -40%보다 깊어 매도해도 통계적 이점은 없지만, 2027년 말까지 회복 안 되면 정리하기로 정한 기한"),
+    ("온체인 지표가 '과열'", "온체인 지표(MVRV) 과열 구간", _MVRV_FOOTNOTE),
+    ("온체인 지표가 '중립~과열'", "온체인 지표 과열 진입 전 주의", _MVRV_FOOTNOTE),
+    ("손실이 커서", "손실 커서 계속 들고 갈지 재검토 필요", None),
+    ("손절 기준선", "손절 기준선(-8%) 이탈", None),
+    ("데드크로스", "데드크로스(하락 전환 신호)", "데드크로스=단기 평균선이 장기 평균선 아래로 내려간 하락 신호, 적중률 50.8%로 단독 신뢰도는 낮음"),
+    ("RSI(상대강도지수)", "RSI 단기 과매수", "RSI=주가가 최근 얼마나 빨리 올랐는지 보는 지표. 과매수여도 강한 상승세에선 계속 오를 수 있어 주의"),
+]
+_MAX_ALERT_ITEMS = 6  # 한꺼번에 너무 많이 뜨면 "요약"이 아니라 "나열"이 됨(2026-08-24 실제로 겪음)
+
+
+def _alert_label_pct_phrases(alert: dict) -> tuple[str, str, tuple[str, ...], list[str]]:
+    """alert 하나에서 (라벨, 손익%, 사유 구절 튜플, 사용된 각주 substr 목록)을 뽑는다."""
+    label = NAMES.get(alert["ticker"], alert["ticker"])
+    reasons_text = " ".join(alert["reasons"])
+    m = _PCT_RE.search(reasons_text)
+    pct = m.group() if m else ""
+
+    phrases: list[str] = []
+    footnote_keys: list[str] = []
+    for reason in alert["reasons"]:
+        for substr, phrase, footnote in _REASON_TAG_RULES:
+            if substr in reason and phrase not in phrases:
+                phrases.append(phrase)
+                if footnote:
+                    footnote_keys.append(substr)
+                break
+    return label, pct, tuple(phrases), footnote_keys
+
+
+def _render_phrase_groups(alerts: list[dict]) -> list[str]:
+    """alerts를 사유 구절이 완전히 같은 종목끼리 묶어서 "📌 설명 / · 종목 %"
+    형태로 렌더링(2026-08-24, "중복 설명 한 번만 쓰고 해당되는 거 밑에
+    나열해달라"는 요청 반영) — 항목이 하나뿐이어도 같은 형태로 통일해서
+    코인 1건짜리도 주식 여러 건짜리와 시각적으로 같은 구조가 되게 한다.
+    각주(전문용어 뜻)는 이 그룹 바로 아래에 붙일 수 있게 별도로 반환."""
+    groups: dict[tuple[str, ...], list[tuple[str, str]]] = {}
+    order: list[tuple[str, ...]] = []
+    footnotes: dict[str, str] = {}
+    for a in alerts:
+        label, pct, phrases, footnote_keys = _alert_label_pct_phrases(a)
+        for k in footnote_keys:
+            footnotes[k] = next(fn for s, _, fn in _REASON_TAG_RULES if s == k)
+        if phrases not in groups:
+            groups[phrases] = []
+            order.append(phrases)
+        groups[phrases].append((label, pct))
+
+    lines: list[str] = []
+    for phrases in order:
+        items = groups[phrases]
+        phrase_str = ", ".join(phrases) if phrases else "특이 사유 없음"
+        lines.append(f"📌 {phrase_str}")
+        lines.extend(f"  · {label} {pct}" for label, pct in items)
+    lines.extend(f"ℹ️ {text}" for text in footnotes.values())
+    return lines
 
 
 def _render_alert_group(alerts: list[dict], budget: int) -> tuple[list[str], int]:
-    """alerts를 최대 budget개까지 "종목명(티커): 이유1 · 이유2" 줄로 렌더링.
+    """alerts를 최대 budget개까지, 코인/주식으로 먼저 나눠서 렌더링한다
+    (2026-08-24, "코인하고 주식하고 크게 두 개로 구분하고 각각 설명을
+    달아달라"는 요청 반영 — 둘은 판단 근거 자체가 다름: 코인은 온체인 국면·
+    손절 로드맵, 주식은 손익·데드크로스). 각주도 전체 메시지 끝이 아니라
+    해당 코인/주식 섹션 바로 아래 붙인다("코인은 코인 밑에" 요청 반영).
     반환: (렌더된 줄 목록, 생략된 종목 수)."""
+    truncated = alerts[:budget]
+    coins = [a for a in truncated if "-USD" in a["ticker"]]
+    stocks = [a for a in truncated if "-USD" not in a["ticker"]]
+
     lines: list[str] = []
-    for a in alerts[:budget]:
-        label = NAMES.get(a["ticker"], a["ticker"])
-        lines.append(f"{label}({a['ticker']}): " + " · ".join(a["reasons"]))
+    if coins:
+        lines.append("🪙 코인")
+        lines.extend(_render_phrase_groups(coins))
+    if stocks:
+        lines.append("📈 주식")
+        lines.extend(_render_phrase_groups(stocks))
+
     return lines, max(0, len(alerts) - budget)
 
 
 def build_message(alerts: list[dict], cycle: dict | None = None) -> str | None:
-    """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지 — 종목마다
-    줄을 나누고 사유 문장을 그대로 담는다(압축하지 않음)."""
+    """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지. 종목당
+    "📌 사유 설명 / · 종목 손익%"으로 묶어 쓰고, 코인·주식 섹션 바로 아래에
+    그 섹션에서 쓰인 전문용어 각주를 붙인다."""
     if not alerts and not cycle:
         return None
 
