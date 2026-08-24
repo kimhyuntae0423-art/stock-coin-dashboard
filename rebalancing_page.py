@@ -2032,22 +2032,66 @@ if _hist_snaps:
         key=lambda _hs: _hs.get("date") or _hs.get("month") or "",
     )
     if _stack_snaps:
+        import math
         import plotly.graph_objects as _pgo
+
+        def _rgba(_hex, _alpha):
+            _hex = _hex.lstrip("#")
+            _r, _g, _b = int(_hex[0:2], 16), int(_hex[2:4], 16), int(_hex[4:6], 16)
+            return f"rgba({_r},{_g},{_b},{_alpha})"
+
         _stack_dates = [pd.to_datetime(_hs.get("date") or _hs.get("month", ""), errors="coerce")
                         for _hs in _stack_snaps]
+        _totals = [float(_hs.get("total", 0) or 0) for _hs in _stack_snaps]
+
+        # x축 좌우 여백 — 기록이 양쪽 끝에 딱 붙어 답답해 보이지 않도록 기간의
+        # 20%(최소 3일)만큼 앞뒤로 띄움. 두 그래프 다 같은 x축 범위 사용.
+        _min_date, _max_date = min(_stack_dates), max(_stack_dates)
+        _x_pad = max((_max_date - _min_date) * 0.2, pd.Timedelta(days=3))
+        _x_range = [_min_date - _x_pad, _max_date + _x_pad]
+
+        # ① 총자산 변화 — 단일 라인이라 y축을 0이 아닌 최소값 근처로 당겨도 왜곡이
+        # 없음(선 하나의 기울기만 보면 되므로). 증감을 잘 보이게 하는 용도. 위쪽
+        # 여백도 넉넉히 둬서 답답하지 않게 함.
+        _min_t, _max_t = min(_totals), max(_totals)
+        _span = max(_max_t - _min_t, _max_t * 0.08)
+        _unit = 5_000_000
+        _y_lo = max(0.0, math.floor((_min_t - _span) / _unit) * _unit)
+        _y_hi = math.ceil((_max_t + _span * 0.8) / _unit) * _unit
+        _fig_total = _pgo.Figure()
+        _fig_total.add_trace(_pgo.Scatter(
+            x=_stack_dates, y=_totals, mode="lines+markers", name="총자산",
+            line=dict(color="#2a78d6", width=2), marker=dict(size=8),
+        ))
+        _fig_total.update_layout(
+            title=f"총자산 변화 ({_chart_person})",
+            xaxis=dict(range=_x_range),
+            yaxis_title="원", yaxis=dict(tickformat=",", range=[_y_lo, _y_hi]),
+            hovermode="x unified", height=280, margin=dict(t=40, b=30), showlegend=False,
+        )
+        st.plotly_chart(_fig_total, use_container_width=True)
+
+        # ② 자산군별 구성 — 스택 차트는 0을 기준으로 쌓이므로 y축을 자르면 아래
+        # 구간들이 통째로 잘려나가 비중이 왜곡돼 보임(실제로 렌더링해보니 코인이
+        # 90%인 것처럼 보이는 문제 확인, 2026-08-24) — 이 차트는 0부터 그대로 둠.
+        # 대신 색은 진하게 보이지 않도록 반투명 처리.
         _fig_stack = _pgo.Figure()
         for _rk, _rlabel in _ROLE_LABELS.items():
             _y = [float(_hs.get("alloc_amount", {}).get(_rk) or 0.0) for _hs in _stack_snaps]
             if not any(_y):
                 continue
+            _color = _ROLE_COLORS.get(_rk, "#9ca3af")
             _fig_stack.add_trace(_pgo.Scatter(
                 x=_stack_dates, y=_y, mode="lines", name=_rlabel, stackgroup="one",
-                line=dict(width=0.5, color=_ROLE_COLORS.get(_rk, "#9ca3af")),
-                fillcolor=_ROLE_COLORS.get(_rk, "#9ca3af"),
+                line=dict(width=0.5, color=_color),
+                fillcolor=_rgba(_color, 0.55),
             ))
+        # 스택 상단 여백 — 0은 그대로 유지하되(비중 왜곡 방지) 위쪽만 20% 띄움
+        _stack_hi = math.ceil((_max_t * 1.2) / _unit) * _unit
         _fig_stack.update_layout(
             title=f"자산군별 비중 변화 ({_chart_person})",
-            yaxis_title="원", yaxis=dict(tickformat=","),
+            xaxis=dict(range=_x_range),
+            yaxis_title="원", yaxis=dict(tickformat=",", range=[0, _stack_hi]),
             hovermode="x unified", height=380, margin=dict(t=40, b=30),
             legend=dict(x=0.01, y=0.99),
         )
