@@ -7,7 +7,7 @@ on:
   workflow_dispatch:   # GitHub UI 수동 실행 가능
 
 permissions:
-  contents: read
+  contents: write   # market_report_state.json 커밋용 (2026-08-25, 국면 지속일수/변화 추적 추가하며 필요해짐)
 
 concurrency:
   group: daily-market-report
@@ -40,6 +40,24 @@ jobs:
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: python scripts/daily_market_report.py
+
+      - name: 국면 지속일수/변화 상태 커밋 & 푸시
+        # 2026-08-25: build_message()가 results/market_report_state.json에
+        # 오늘 국면·streak을 저장하는데, 이 워크플로우엔 원래 커밋 스텝이
+        # 없어서 러너 종료와 함께 매번 그냥 사라졌음(다음날도 "처음 실행"
+        # 상태로 리셋 — "며칠째 이어지는지" 추적이 실제로는 전혀 안 되는
+        # 상태였음). daily-update.yml의 cycle_alert_state.json 커밋 패턴과 동일.
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/market_report_state.json
+          if git diff --cached --quiet; then
+            echo "국면 상태 변경 없음 — 커밋 스킵"
+          else
+            git commit -m "state: 시장 조각글 국면 상태 갱신"
+            git pull --rebase origin main || true
+            git push
+          fi
 
       - name: 카카오 토큰 갱신 시 두 레포 시크릿 동기화
         if: hashFiles('new_tokens.json') != ''

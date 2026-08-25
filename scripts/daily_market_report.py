@@ -20,10 +20,22 @@
   상세 에세이 그대로가 최종 형태.
 - 보유종목 매수/매도 신호(scripts/check_alerts.py)는 별도 메시지라 안 섞음.
 
+2026-08-25: "어제도 오늘도 같은 내용이라 인사이트가 없다"는 피드백 — 매크로
+신호는 원래 하루이틀 만에 잘 안 바뀌는 값들이라, 매일 오늘 스냅샷만 그대로
+문장으로 바꾸면 "인사이트"가 아니라 "같은 설명 반복"이 됨. 그래서
+results/market_report_state.json에 전날 국면을 기록해뒀다가 ①국면이
+바뀌었는지/며칠째 이어지는지(_regime_insight_sentence) ②VIX가 최근 1년
+대비 상대적으로 어느 수준인지(_vix_percentile_clause, check_alerts.py의
+BTC 사이클 변화 추적과 같은 패턴)를 덧붙인다. **이 상태 파일이 실제로
+저장되려면 daily-market-report.yml에 git commit/push 스텝이 있어야
+하는데, 원래 없었음(2026-08-25 발견·수정)** — 없으면 매번 러너 종료와
+함께 상태가 사라져서 "지속일수 추적"이 영원히 작동 안 함.
+
 results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
 그대로 재사용 — 실시간 yfinance 호출 없음.
 GitHub Actions의 daily-market-report.yml 에서 실행.
 """
+import json
 import os
 import sys
 from datetime import datetime
@@ -47,6 +59,14 @@ from onchain import classify_regime
 
 SUMMARY = RESULTS_DIR / "summary_signals.csv"
 CYCLE_METRICS = RESULTS_DIR / "cycle_metrics.csv"
+VIX_SIGNALS = RESULTS_DIR / "^VIX_signals.csv"
+# 2026-08-24: "어제도 오늘도 같은 내용"이라는 피드백 — 매크로 신호 자체가
+# 하루이틀 만에 잘 안 바뀌는 값들이라, 매번 오늘 스냅샷만 그대로 문장으로
+# 바꾸면 "인사이트"가 아니라 "같은 설명 반복"이 된다. 그래서 전날 상태를
+# 기록해뒀다가 ①국면이 바뀌었는지/며칠째 이어지는지 ②매크로 신호가 바뀌었는지
+# 비교해서 "무엇이 새로운지"를 알려주는 쪽으로 바꿨다(check_alerts.py가 BTC
+# 사이클 변화를 추적하는 것과 같은 패턴, CYCLE_STATE 참고).
+REPORT_STATE = RESULTS_DIR / "market_report_state.json"
 
 
 # market_regime()의 5단계를 "강세/약세/…" 서랍 문장 하나로 뭉뚱그리지 않고,
@@ -77,6 +97,75 @@ def _vix_phrase(vix_signal: str) -> str:
     if "과열 경계" in vix_signal:
         return "낮은 편이고"
     return "안정적인 수준이고"
+
+
+def _vix_percentile_clause(vix: float) -> str | None:
+    """오늘 VIX가 최근 1년(252거래일) 대비 어느 정도 수준인지. 절대 수치
+    (15.1)만으로는 감이 잘 안 와서 상대적 위치를 덧붙임 — "인사이트가
+    필요하다"는 피드백 반영. 데이터 부족하면 None(문장 생략)."""
+    if not VIX_SIGNALS.exists():
+        return None
+    try:
+        closes = pd.to_numeric(pd.read_csv(VIX_SIGNALS)["Close"], errors="coerce").dropna().tail(252)
+    except Exception:
+        return None
+    if len(closes) < 60:
+        return None
+    pct = float((closes < vix).mean() * 100)
+    if pct <= 50:
+        return f"최근 1년 중 하위 {pct:.0f}%에 해당하는 낮은 수준이에요"
+    return f"최근 1년 중 상위 {100 - pct:.0f}%에 해당하는 높은 수준이에요"
+
+
+_REGIME_KR = {"bull": "강세", "bear": "약세", "fear": "공포", "complacent": "과열(조용함)", "mixed": "혼조"}
+
+
+def _load_report_state() -> dict:
+    if not REPORT_STATE.exists():
+        return {}
+    try:
+        with open(REPORT_STATE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_report_state(state: dict) -> None:
+    REPORT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    with open(REPORT_STATE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def _regime_insight_sentence(regime_key: str, prev_state: dict, today_str: str) -> tuple[str | None, dict]:
+    """전날 상태와 비교해 국면이 바뀌었는지/며칠째 이어지는지 문장 하나로.
+    반환: (문장 또는 None, 저장할 새 상태 dict). 같은 날 두 번 실행되면(수동
+    재실행 등) streak을 중복 증가시키지 않는다."""
+    if prev_state.get("date") == today_str:
+        streak = prev_state.get("streak", 1)
+        prev_regime_key = prev_state.get("prev_regime_key")
+    else:
+        prev_regime_key = prev_state.get("regime_key")
+        if prev_regime_key == regime_key:
+            streak = prev_state.get("streak", 1) + 1
+        else:
+            streak = 1
+
+    new_state = {
+        "date": today_str, "regime_key": regime_key, "streak": streak,
+        "prev_regime_key": prev_regime_key,
+    }
+
+    if prev_regime_key is None:
+        return None, new_state
+    if prev_regime_key != regime_key:
+        return (
+            f"어제까지의 {_REGIME_KR.get(prev_regime_key, prev_regime_key)} 국면에서 "
+            f"오늘 {_REGIME_KR.get(regime_key, regime_key)}로 바뀌었어요.",
+            new_state,
+        )
+    if streak >= 2:
+        return f"이 흐름이 {streak}일째 이어지고 있어요.", new_state
+    return None, new_state
 
 
 def _outlook_paragraph1(regime: dict) -> str:
@@ -131,9 +220,35 @@ _MACRO_SENTENCE: dict[tuple[str, str], tuple[str, str]] = {
 _MACRO_PRIORITY = ["경기신호", "곡선신호", "달러강도"]
 
 
-def _outlook_paragraph2(macro: dict, regime_key: str) -> str:
+def _cross_signal_insight(regime_key: str, macro: dict, breadth: float) -> str | None:
+    """2026-08-25: "신호값 자체 말고 왜 이런 신호가 떴는지, 애널리스트 아티클처럼
+    알고 싶다"는 피드백 — 지표를 하나씩 나열만 하지 말고 서로 엮어서 "그래서
+    지금 이런 조합이 왜 나타나는지"를 추론한다. 단, 이건 확인된 사실이 아니라
+    지표 조합에 대한 해석(추측)이라는 걸 명시("~일 수 있어요" 톤 유지,
+    CLAUDE.md 절대원칙 3 "데이터 ≠ 의견" · 절대원칙 4 "모르는 숫자는 만들지
+    않는다" — 실제 오늘자 뉴스로 확인된 원인이 아니라 데이터 패턴 간 논리적
+    개연성만 제시)."""
+    def has(key: str, sub: str) -> bool:
+        val = macro.get(key)
+        return val is not None and sub in val
+
+    if has("경기신호", "과열") and has("달러강도", "약달러"):
+        return "구리 과열과 약달러가 동시에 나타난 걸 보면, 달러가 약해지면서 원자재 가격을 밀어올리는 흐름일 가능성이 있어요."
+    if regime_key == "bull" and has("경기신호", "과열"):
+        return "실물경기 지표(구리)가 금융시장보다 먼저 과열 신호를 보내는 건, 전형적으로 경기 확장 국면 후반부에 나타나는 패턴이에요."
+    if regime_key in ("bull", "complacent") and has("곡선신호", "안전자산선호"):
+        return "주가는 오르는데 채권 시장은 이미 안전자산을 선호하는 신호를 보내는 괴리가 있어요 — 두 시장 중 하나가 아직 반응을 덜 했을 수 있습니다."
+    if regime_key == "fear" and has("경기신호", "저점"):
+        return "시장 심리는 공포에 질려 있는데 실물경기 지표는 오히려 회복 초기 신호를 보내는, 흔치 않은 조합이에요."
+    if regime_key == "complacent" and breadth is not None and breadth >= 70:
+        return "변동성은 낮고 대부분 종목이 오르는 전형적인 낙관 국면인데, 역사적으로 이런 안정감이 오래가지 않았던 경우가 많았습니다."
+    return None
+
+
+def _outlook_paragraph2(macro: dict, regime_key: str, breadth: float | None = None) -> str:
     """2단락: 매크로 선행지표 3개를 중립 아닌 것만 전부(1개로 자르지 않음)
-    풀어쓰고, 국면과 macro가 같은 방향인지 엇갈리는지로 균형 잡힌 결론을 냄."""
+    풀어쓰고, 국면과 macro가 같은 방향인지 엇갈리는지로 균형 잡힌 결론을 냄.
+    가능하면 신호 조합에 대한 해석(_cross_signal_insight)도 덧붙임."""
     parts: list[str] = []
     polarities: list[str] = []
     for key in _MACRO_PRIORITY:
@@ -165,7 +280,10 @@ def _outlook_paragraph2(macro: dict, regime_key: str) -> str:
     else:
         closing = "매크로 신호까지 겹쳐 있어 당장은 방향을 예단하기보다 지켜보는 쪽이 안전합니다."
 
-    return "매크로 선행 지표를 조금 더 짚어보면, " + " ".join(parts) + " " + closing
+    insight = _cross_signal_insight(regime_key, macro, breadth)
+    insight_clause = f" 굳이 해석을 붙이자면, {insight}" if insight else ""
+
+    return "매크로 선행 지표를 조금 더 짚어보면, " + " ".join(parts) + " " + closing + insight_clause
 
 
 # 코인(BTC) 국면별 도입 문장 — scripts/onchain.py::classify_regime()이 SSOT
@@ -223,9 +341,12 @@ def _outlook_paragraph3(cycle: dict) -> str | None:
 
 def build_message() -> str:
     """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지. 3단락 에세이:
-    ①미국 증시 국면+실측 지표, ②매크로 상세+균형 결론, ③코인(BTC) 온체인
-    국면+알트시즌 — 전부 실제 수치 그대로, 태그로 압축하지 않음."""
-    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%m/%d")
+    ①미국 증시 국면+실측 지표(+전날 대비 변화/지속일수, +VIX 1년 백분위),
+    ②매크로 상세+균형 결론, ③코인(BTC) 온체인 국면+알트시즌 — 전부 실제
+    수치 그대로, 태그로 압축하지 않음."""
+    today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
+    today = today_kst.strftime("%m/%d")
+    today_str = today_kst.strftime("%Y-%m-%d")
     title = f"📊 오늘의 시장 조각글 {today}"
 
     if not SUMMARY.exists():
@@ -235,9 +356,22 @@ def build_message() -> str:
     regime = market_regime(df)
     macro = macro_signals(df)
 
-    paragraphs = [_outlook_paragraph1(regime)]
+    prev_state = _load_report_state()
+    insight, new_state = _regime_insight_sentence(regime["key"], prev_state, today_str)
+    _save_report_state(new_state)
+
+    para1 = _outlook_paragraph1(regime)
+    vix = regime.get("vix")
+    if vix is not None:
+        pct_clause = _vix_percentile_clause(float(vix))
+        if pct_clause:
+            para1 += f" 참고로 이 변동성 수준은 {pct_clause}."
+    if insight:
+        para1 = insight + " " + para1
+
+    paragraphs = [para1]
     if regime.get("vix") is not None:
-        paragraphs.append(_outlook_paragraph2(macro, regime["key"]))
+        paragraphs.append(_outlook_paragraph2(macro, regime["key"], regime.get("breadth")))
 
     if CYCLE_METRICS.exists():
         cycle = pd.read_csv(CYCLE_METRICS).iloc[0].to_dict()

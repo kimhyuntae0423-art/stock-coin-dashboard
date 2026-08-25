@@ -48,3 +48,30 @@ def test_build_message_is_paragraph_essay_not_truncated():
     msg = build_message()
     assert msg.count("\n\n") >= 2
     assert not msg.rstrip().endswith("…")
+
+
+def test_regime_insight_detects_change_and_streak():
+    """2026-08-25: "어제도 오늘도 같은 내용"이라는 피드백으로 국면 변화/지속일수
+    추적을 추가했다 — 국면이 이어지면 "N일째", 바뀌면 "~에서 ~로 바뀌었다"
+    문장이 나와야 하고, 같은 날 두 번 실행해도 streak이 중복 증가하면 안 된다."""
+    from scripts.daily_market_report import _regime_insight_sentence
+
+    # 첫 실행(과거 상태 없음) — 아직 비교 대상이 없으니 문장 없음
+    sentence, state1 = _regime_insight_sentence("bull", {}, "2026-08-24")
+    assert sentence is None
+    assert state1["streak"] == 1
+
+    # 다음날 같은 국면 지속 — "N일째" 문장
+    sentence, state2 = _regime_insight_sentence("bull", state1, "2026-08-25")
+    assert sentence is not None and "2일째" in sentence
+    assert state2["streak"] == 2
+
+    # 그 다음날 국면 전환 — "~에서 ~로 바뀌었다" 문장
+    sentence, state3 = _regime_insight_sentence("bear", state2, "2026-08-26")
+    assert sentence is not None and "강세" in sentence and "약세" in sentence
+    assert state3["streak"] == 1
+
+    # 같은 날 재실행 — streak 중복 증가 없이 같은 결과 유지
+    sentence_again, state3_again = _regime_insight_sentence("bear", state3, "2026-08-26")
+    assert sentence_again == sentence
+    assert state3_again["streak"] == 1
