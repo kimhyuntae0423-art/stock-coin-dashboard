@@ -31,6 +31,15 @@ BTC 사이클 변화 추적과 같은 패턴)를 덧붙인다. **이 상태 파�
 하는데, 원래 없었음(2026-08-25 발견·수정)** — 없으면 매번 러너 종료와
 함께 상태가 사라져서 "지속일수 추적"이 영원히 작동 안 함.
 
+2026-08-25 (같은 날 두 번째 요청): 위 인사이트는 전부 "우리 데이터 안에서"
+만든 해석(A)이라 한계가 있다 — 사용자가 "실제 뉴스 근거로 설명해주는 것도
+자동으로 되냐"고 물어서, Claude API의 web_search 서버 도구로 오늘자 실제
+뉴스를 검색·요약하는 4번째 단락(B)을 추가했다(_news_grounded_insight).
+scripts/update_reports.py가 이미 ANTHROPIC_API_KEY로 Claude를 호출하는
+전례가 있어 같은 시크릿을 재사용. ANTHROPIC_API_KEY 없거나 API 호출
+실패하면 그냥 그 단락만 생략(A 3단락은 그대로 발송) — 뉴스 인사이트는
+"있으면 좋은 보너스"지 실패해도 카톡 자체가 막히면 안 됨.
+
 results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
 그대로 재사용 — 실시간 yfinance 호출 없음.
 GitHub Actions의 daily-market-report.yml 에서 실행.
@@ -339,6 +348,48 @@ def _outlook_paragraph3(cycle: dict) -> str | None:
 # _outlook_paragraph1/2/3(사용자가 직접 승인한 상세 에세이)를 그대로 쓴다.
 
 
+def _news_grounded_insight(regime: dict, macro: dict) -> str | None:
+    """2026-08-25: _outlook_paragraph1/2/3(A)는 전부 우리 데이터 안에서 만든
+    해석이라 "왜 이런 신호가 떴는지"는 못 짚는다. 여기서는 Claude API의
+    web_search 서버 도구로 오늘자 실제 뉴스를 검색해 근거를 붙인다(B).
+    ANTHROPIC_API_KEY 없거나 호출 실패하면 조용히 None — 이 단락은 "있으면
+    좋은 보너스"라 실패해도 나머지 3단락 발송은 막지 않는다(update_reports.py와
+    같은 폴백 원칙)."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+
+    regime_kr = _REGIME_KR.get(regime.get("key"), regime.get("key"))
+    vix = regime.get("vix")
+    macro_desc = ", ".join(f"{k}={v}" for k, v in macro.items() if v and "중립" not in str(v))
+    today_str = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+
+    prompt = f"""오늘({today_str}) 미국 증시는 "{regime_kr}" 국면이고, 변동성 지표(VIX)는 {vix}입니다.
+매크로 신호: {macro_desc or "특이사항 없음"}.
+
+오늘자 실제 뉴스를 검색해서, 이 흐름과 관련 있어 보이는 구체적인 뉴스나 이벤트가
+있다면 2~3문장으로 쉬운 말로 설명해줘. 전문 용어 없이 투자 비전문가도 이해할 수
+있게 써줘. 확정적 인과관계("이것 때문에 올랐다")로 단정하지 말고 "~영향으로
+보인다" 정도의 톤을 유지하고, "사라/팔아라" 같은 매매 지시는 절대 하지 마.
+검색해봐도 오늘 흐름을 설명할 만한 뚜렷한 뉴스가 없으면, 억지로 지어내지 말고
+"오늘 특별히 부각된 뉴스는 없어 보인다"고 솔직히 말해줘."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=600,
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        return text or None
+    except Exception as e:
+        print(f"뉴스 인사이트 생성 실패: {e} — 이 단락만 생략")
+        return None
+
+
 def build_message() -> str:
     """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지. 3단락 에세이:
     ①미국 증시 국면+실측 지표(+전날 대비 변화/지속일수, +VIX 1년 백분위),
@@ -378,6 +429,10 @@ def build_message() -> str:
         coin_paragraph = _outlook_paragraph3(cycle)
         if coin_paragraph:
             paragraphs.append(coin_paragraph)
+
+    news_paragraph = _news_grounded_insight(regime, macro)
+    if news_paragraph:
+        paragraphs.append(f"📰 {news_paragraph}")
 
     return title + "\n\n" + "\n\n".join(paragraphs)
 

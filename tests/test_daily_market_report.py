@@ -50,6 +50,24 @@ def test_build_message_is_paragraph_essay_not_truncated():
     assert not msg.rstrip().endswith("…")
 
 
+def test_news_grounded_insight_skips_without_api_key(monkeypatch):
+    """2026-08-25: 뉴스 근거 인사이트(B, web_search)는 ANTHROPIC_API_KEY 없으면
+    조용히 None을 반환해야 한다 — 실패해도 나머지 3단락 발송을 막으면 안 됨."""
+    from scripts.daily_market_report import _news_grounded_insight
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    result = _news_grounded_insight({"key": "bull", "vix": 15.0}, {})
+    assert result is None
+
+
+def test_build_message_works_without_anthropic_api_key(monkeypatch):
+    """API 키가 없는 일반적인 로컬/테스트 환경에서도 build_message()는 실제
+    API 호출 없이 정상적으로 3단락 에세이를 반환해야 한다(뉴스 단락만 생략)."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    msg = build_message()
+    assert "📰" not in msg
+
+
 def test_regime_insight_detects_change_and_streak():
     """2026-08-25: "어제도 오늘도 같은 내용"이라는 피드백으로 국면 변화/지속일수
     추적을 추가했다 — 국면이 이어지면 "N일째", 바뀌면 "~에서 ~로 바뀌었다"

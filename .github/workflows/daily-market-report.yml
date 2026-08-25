@@ -39,6 +39,10 @@ jobs:
           KAKAO_REST_API_KEY:  ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          # 2026-08-25: 뉴스 근거 인사이트(_news_grounded_insight, Claude
+          # web_search 도구) 추가하며 필요해짐. daily-update.yml의 리서치
+          # 노트 갱신 스텝과 같은 시크릿 재사용 — 없어도 그 단락만 생략됨.
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/daily_market_report.py
 
       - name: 국면 지속일수/변화 상태 커밋 & 푸시
