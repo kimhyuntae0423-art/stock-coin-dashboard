@@ -33,16 +33,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Node.js 20 설치
+        # 2026-08-25: 뉴스 근거 인사이트(_news_grounded_insight)가 Claude Code
+        # CLI를 헤드리스로 서브프로세스 호출하기 때문에 필요. Console API
+        # (ANTHROPIC_API_KEY, 종량제)는 처음 시도했다가 "추가금 내기 싫다"는
+        # 이유로 폐기 — 이미 쓰는 Claude Code 구독 기반 OAuth 토큰으로 대체.
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Claude Code CLI 설치
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: 시장 요약 발송
         env:
           KAKAO_ACCESS_TOKEN:  ${{ secrets.KAKAO_ACCESS_TOKEN }}
           KAKAO_REST_API_KEY:  ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
-          # 2026-08-25: 뉴스 근거 인사이트(_news_grounded_insight, Claude
-          # web_search 도구) 추가하며 필요해짐. daily-update.yml의 리서치
-          # 노트 갱신 스텝과 같은 시크릿 재사용 — 없어도 그 단락만 생략됨.
-          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          # `claude setup-token`으로 발급한 구독 기반 1년 토큰. 없어도 뉴스
+          # 단락만 조용히 생략되고 나머지 3단락은 그대로 발송됨.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: python scripts/daily_market_report.py
 
       - name: 국면 지속일수/변화 상태 커밋 & 푸시

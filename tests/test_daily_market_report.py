@@ -50,20 +50,38 @@ def test_build_message_is_paragraph_essay_not_truncated():
     assert not msg.rstrip().endswith("…")
 
 
-def test_news_grounded_insight_skips_without_api_key(monkeypatch):
-    """2026-08-25: 뉴스 근거 인사이트(B, web_search)는 ANTHROPIC_API_KEY 없으면
-    조용히 None을 반환해야 한다 — 실패해도 나머지 3단락 발송을 막으면 안 됨."""
+def test_news_grounded_insight_skips_without_oauth_token(monkeypatch):
+    """2026-08-25: 뉴스 근거 인사이트(B)는 CLAUDE_CODE_OAUTH_TOKEN(claude
+    setup-token으로 발급하는 구독 기반 토큰) 없으면 claude CLI를 호출하지도
+    않고 조용히 None을 반환해야 한다 — 실패해도 나머지 3단락 발송을 막으면 안 됨."""
     from scripts.daily_market_report import _news_grounded_insight
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     result = _news_grounded_insight({"key": "bull", "vix": 15.0}, {})
     assert result is None
 
 
-def test_build_message_works_without_anthropic_api_key(monkeypatch):
-    """API 키가 없는 일반적인 로컬/테스트 환경에서도 build_message()는 실제
-    API 호출 없이 정상적으로 3단락 에세이를 반환해야 한다(뉴스 단락만 생략)."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_news_grounded_insight_falls_back_on_subprocess_failure(monkeypatch):
+    """claude CLI 서브프로세스 호출이 실패해도(타임아웃, CLI 미설치 등)
+    예외가 전파되지 않고 None을 반환해야 한다."""
+    import subprocess
+    from scripts.daily_market_report import _news_grounded_insight
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "dummy-token")
+
+    def _boom(*args, **kwargs):
+        raise FileNotFoundError("claude: command not found")
+
+    monkeypatch.setattr(subprocess, "run", _boom)
+    result = _news_grounded_insight({"key": "bull", "vix": 15.0}, {})
+    assert result is None
+
+
+def test_build_message_works_without_claude_oauth_token(monkeypatch):
+    """OAuth 토큰이 없는 일반적인 로컬/테스트 환경에서도 build_message()는
+    실제 서브프로세스 호출 없이 정상적으로 3단락 에세이를 반환해야 한다
+    (뉴스 단락만 생략)."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     msg = build_message()
     assert "📰" not in msg
 

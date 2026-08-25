@@ -33,11 +33,22 @@ BTC 사이클 변화 추적과 같은 패턴)를 덧붙인다. **이 상태 파�
 
 2026-08-25 (같은 날 두 번째 요청): 위 인사이트는 전부 "우리 데이터 안에서"
 만든 해석(A)이라 한계가 있다 — 사용자가 "실제 뉴스 근거로 설명해주는 것도
-자동으로 되냐"고 물어서, Claude API의 web_search 서버 도구로 오늘자 실제
-뉴스를 검색·요약하는 4번째 단락(B)을 추가했다(_news_grounded_insight).
-scripts/update_reports.py가 이미 ANTHROPIC_API_KEY로 Claude를 호출하는
-전례가 있어 같은 시크릿을 재사용. ANTHROPIC_API_KEY 없거나 API 호출
-실패하면 그냥 그 단락만 생략(A 3단락은 그대로 발송) — 뉴스 인사이트는
+자동으로 되냐"고 물어서, 오늘자 실제 뉴스를 검색·요약하는 4번째 단락(B)을
+추가했다(_news_grounded_insight).
+
+2026-08-25 (같은 날 세 번째 개정): 처음엔 Anthropic Console API(anthropic
+SDK + web_search_20260209 서버 도구, ANTHROPIC_API_KEY)로 구현했는데,
+확인해보니 (1) ANTHROPIC_API_KEY가 이 저장소에 시크릿으로 등록된 적조차
+없어서 update_reports.py의 리서치 노트 자동 갱신도 그동안 매일 조용히
+스킵되고 있었고, (2) 사용자가 "추가금 내기 싫다"고 명확히 함 — Console
+API는 이미 쓰고 있는 Claude Code 구독과 별개로 종량제 과금이 붙는 상품이라.
+그래서 대신 구독 기반 Claude Code CLI를 헤드리스 모드(`claude -p`)로
+서브프로세스 호출하는 방식으로 교체했다: `claude setup-token`으로 발급한
+1년짜리 구독 기반 OAuth 토큰(CLAUDE_CODE_OAUTH_TOKEN)으로 인증하면 별도
+청구 없이 WebSearch 도구까지 그대로 쓸 수 있다(GitHub Actions는
+.github/workflows/daily-market-report.yml에서 Node.js + npm install -g
+@anthropic-ai/claude-code로 CLI를 설치). CLAUDE_CODE_OAUTH_TOKEN 없거나
+호출 실패하면 그냥 그 단락만 생략(A 3단락은 그대로 발송) — 뉴스 인사이트는
 "있으면 좋은 보너스"지 실패해도 카톡 자체가 막히면 안 됨.
 
 results/summary_signals.csv(run_analysis.py가 매일 07:00 KST에 먼저 갱신)를
@@ -46,6 +57,7 @@ GitHub Actions의 daily-market-report.yml 에서 실행.
 """
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -350,13 +362,13 @@ def _outlook_paragraph3(cycle: dict) -> str | None:
 
 def _news_grounded_insight(regime: dict, macro: dict) -> str | None:
     """2026-08-25: _outlook_paragraph1/2/3(A)는 전부 우리 데이터 안에서 만든
-    해석이라 "왜 이런 신호가 떴는지"는 못 짚는다. 여기서는 Claude API의
-    web_search 서버 도구로 오늘자 실제 뉴스를 검색해 근거를 붙인다(B).
-    ANTHROPIC_API_KEY 없거나 호출 실패하면 조용히 None — 이 단락은 "있으면
-    좋은 보너스"라 실패해도 나머지 3단락 발송은 막지 않는다(update_reports.py와
-    같은 폴백 원칙)."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    해석이라 "왜 이런 신호가 떴는지"는 못 짚는다. 여기서는 Claude Code CLI를
+    헤드리스 모드(`claude -p`)로 서브프로세스 호출해 WebSearch 도구로 오늘자
+    실제 뉴스를 검색해 근거를 붙인다(B). CLAUDE_CODE_OAUTH_TOKEN(구독 기반
+    1년짜리 토큰, `claude setup-token`으로 발급 — 종량제 Console API가 아니라
+    이미 쓰는 구독 사용량 안에서 처리됨) 없거나 호출 실패하면 조용히 None —
+    이 단락은 "있으면 좋은 보너스"라 실패해도 나머지 3단락 발송은 막지 않는다."""
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
         return None
 
     regime_kr = _REGIME_KR.get(regime.get("key"), regime.get("key"))
@@ -372,18 +384,20 @@ def _news_grounded_insight(regime: dict, macro: dict) -> str | None:
 있게 써줘. 확정적 인과관계("이것 때문에 올랐다")로 단정하지 말고 "~영향으로
 보인다" 정도의 톤을 유지하고, "사라/팔아라" 같은 매매 지시는 절대 하지 마.
 검색해봐도 오늘 흐름을 설명할 만한 뚜렷한 뉴스가 없으면, 억지로 지어내지 말고
-"오늘 특별히 부각된 뉴스는 없어 보인다"고 솔직히 말해줘."""
+"오늘 특별히 부각된 뉴스는 없어 보인다"고 솔직히 말해줘. 다른 설명 없이 그
+2~3문장만 출력해."""
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=600,
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
-            messages=[{"role": "user", "content": prompt}],
+        result = subprocess.run(
+            [
+                "claude", "-p", prompt,
+                "--allowedTools", "WebSearch",
+                "--permission-mode", "bypassPermissions",
+                "--output-format", "text",
+            ],
+            capture_output=True, text=True, timeout=90, check=True,
         )
-        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        text = result.stdout.strip()
         return text or None
     except Exception as e:
         print(f"뉴스 인사이트 생성 실패: {e} — 이 단락만 생략")
