@@ -87,9 +87,18 @@ def _text_template(text: str, url: str, button_title: str) -> dict:
     # ::send_message())가 450자짜리 text 메시지를 전혀 안 자르고 그대로 보내고
     # 있는 걸 확인 — 실제 카카오 API엔 그런 하드 제한이 없었다(과거의 잘못된
     # 가정). 완전히 안 자르진 않고(진짜 폭주 방지용) 훨씬 넉넉한 상한만 둠.
+    #
+    # 2026-08-26: 그 "넉넉한 상한"이 1000자였는데, 뉴스 인사이트 단락 추가로
+    # daily_market_report.py의 실제 메시지가 2200자를 넘어서면서 이 컷에
+    # 걸려 📰 단락 대부분과 출처 링크가 통째로 잘려나가고 있었다(발신 로그의
+    # "길이: N자"는 이 함수 호출 *전* build_message() 반환값 기준이라 실제
+    # 잘림을 못 잡아냈음 — main()에서 로그로 찍은 길이와 실제 전송 길이가
+    # 다를 수 있다는 걸 놓친 사고). 5000자로 올림 — 이 정도면 지금 나오는
+    # 어떤 메시지도 안 잘리고, 그래도 진짜 폭주(버그로 무한히 길어지는 경우)
+    # 방지용 안전장치는 남겨둠.
     return {
         "object_type": "text",
-        "text": text[:1000],
+        "text": text[:5000],
         "link": {"web_url": url, "mobile_web_url": url},
         "button_title": button_title,
     }
