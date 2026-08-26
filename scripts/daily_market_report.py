@@ -396,8 +396,11 @@ def _news_grounded_insight(regime: dict, macro: dict) -> str | None:
 확정적 인과관계("이것 때문에 올랐어요")로 단정하지 말고 "~영향으로 보여요"
 정도의 톤을 유지하고, "사라/팔아라" 같은 매매 지시는 절대 하지 마.
 검색해봐도 오늘 흐름을 설명할 만한 뚜렷한 뉴스가 없으면, 억지로 지어내지 말고
-"오늘 특별히 부각된 뉴스는 없어 보여요"라고 솔직히 말해줘. 다른 설명 없이 그
-문단만 출력해."""
+"오늘 특별히 부각된 뉴스는 없어 보여요"라고 솔직히 말해줘.
+
+출처 목록·인용·마크다운 링크·"Sources:" 같은 건 절대 붙이지 마 — 카카오톡
+메시지라 링크가 클릭도 안 되고 글자수만 잡아먹어. 다른 설명 없이 그 문단
+텍스트만 출력해."""
 
     try:
         result = subprocess.run(
@@ -410,6 +413,11 @@ def _news_grounded_insight(regime: dict, macro: dict) -> str | None:
             capture_output=True, text=True, timeout=90, check=True,
         )
         text = result.stdout.strip()
+        # 프롬프트로 막아도 가끔 붙일 수 있어 방어적으로 한 번 더 제거
+        # (Sources:/출처: 앞부분만 사용) — 카톡 실제 길이 제한에 걸리지 않게.
+        for marker in ("\nSources:", "\n출처:", "\n\nSources:", "\n\n출처:"):
+            if marker in text:
+                text = text.split(marker)[0].strip()
         return text or None
     except Exception as e:
         print(f"뉴스 인사이트 생성 실패: {e} — 이 단락만 생략")
@@ -420,7 +428,17 @@ def build_message() -> str:
     """카카오 text 템플릿(kakao_notify.send_to_self())용 메시지. 3단락 에세이:
     ①미국 증시 국면+실측 지표(+전날 대비 변화/지속일수, +VIX 1년 백분위),
     ②매크로 상세+균형 결론, ③코인(BTC) 온체인 국면+알트시즌 — 전부 실제
-    수치 그대로, 태그로 압축하지 않음."""
+    수치 그대로, 태그로 압축하지 않음.
+
+    2026-08-26: 원래 여기에 📰 뉴스 인사이트 단락까지 붙여서 한 메시지로
+    보냈는데, 합친 메시지(2200~2300자)가 카카오 text 템플릿의 실제(비공식,
+    공식 문서의 "200자"와도 다른) 길이 제한에 걸려 📰 단락이 통째로 잘려
+    나가는 걸 확인함(사용자가 "넘어서느"에서 잘렸다고 지적 → 역산해보니
+    약 997자 지점에서 컷, kakao_notify.py의 text[:5000]으로 올려도 여전히
+    거기서 잘렸으므로 우리 코드가 아니라 카카오 서버 자체의 실제 제한).
+    check_alerts.py가 매도검토/추세전환을 이미 별도 메시지로 쪼개 보내는
+    것과 같은 이유로, 뉴스 인사이트도 build_news_message()로 분리해 별도
+    카톡으로 보낸다(3단락 에세이만 있는 이 함수는 756자 안팎이라 안전)."""
     today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
     today = today_kst.strftime("%m/%d")
     today_str = today_kst.strftime("%Y-%m-%d")
@@ -456,35 +474,54 @@ def build_message() -> str:
         if coin_paragraph:
             paragraphs.append(coin_paragraph)
 
-    news_paragraph = _news_grounded_insight(regime, macro)
-    if news_paragraph:
-        paragraphs.append(f"📰 {news_paragraph}")
-
     return title + "\n\n" + "\n\n".join(paragraphs)
+
+
+def build_news_message() -> str | None:
+    """📰 뉴스 근거 인사이트 전용 메시지 — build_message()의 3단락 에세이와
+    분리해서 별도 카톡으로 보낸다(위 build_message() docstring 참고: 합쳐
+    보내면 카카오 실제 길이 제한에 걸려 이 단락이 잘려나감). SUMMARY 없거나
+    CLAUDE_CODE_OAUTH_TOKEN 없거나 검색 실패하면 None — 이 메시지 자체를
+    안 보내고, 3단락 에세이 발송은 그대로 진행된다."""
+    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%m/%d")
+    if not SUMMARY.exists():
+        return None
+    df = pd.read_csv(SUMMARY)
+    regime = market_regime(df)
+    macro = macro_signals(df)
+    news_paragraph = _news_grounded_insight(regime, macro)
+    if not news_paragraph:
+        return None
+    return f"📰 오늘의 뉴스 근거 {today}\n\n{news_paragraph}"
 
 
 def main():
     msg = build_message()
-    print("=== 발송할 메시지 ===")
-    print(msg)
-    print(f"(길이: {len(msg)}자)")
-    print("====================")
+    news_msg = build_news_message()
 
     has_env = os.environ.get("KAKAO_REST_API_KEY") and os.environ.get("KAKAO_REFRESH_TOKEN")
     has_local = (ROOT / "kakao_tokens.json").exists()
+    has_kakao = bool(has_env or has_local)
 
-    if not (has_env or has_local):
-        print("ℹ 토큰 없음 — 실제 발송 스킵 (드라이런)")
-        return 0
-
-    try:
-        from kakao_notify import send_to_self
-        send_to_self(msg)
-        print("✓ 카카오톡 발송 완료")
-        return 0
-    except Exception as e:
-        print(f"✗ 카카오 발송 실패: {e}")
-        return 1
+    exit_code = 0
+    for label, m in (("시장 조각글", msg), ("뉴스 인사이트", news_msg)):
+        if m is None:
+            continue
+        print(f"=== 발송할 메시지 ({label}) ===")
+        print(m)
+        print(f"(길이: {len(m)}자)")
+        print("====================")
+        if not has_kakao:
+            print("ℹ 토큰 없음 — 실제 발송 스킵 (드라이런)")
+            continue
+        try:
+            from kakao_notify import send_to_self
+            send_to_self(m)
+            print(f"✓ 카카오톡 발송 완료 ({label})")
+        except Exception as e:
+            print(f"✗ 카카오 발송 실패 ({label}): {e}")
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":

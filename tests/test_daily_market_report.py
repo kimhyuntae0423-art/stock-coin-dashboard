@@ -79,11 +79,44 @@ def test_news_grounded_insight_falls_back_on_subprocess_failure(monkeypatch):
 
 def test_build_message_works_without_claude_oauth_token(monkeypatch):
     """OAuth 토큰이 없는 일반적인 로컬/테스트 환경에서도 build_message()는
-    실제 서브프로세스 호출 없이 정상적으로 3단락 에세이를 반환해야 한다
-    (뉴스 단락만 생략)."""
+    실제 서브프로세스 호출 없이 정상적으로 3단락 에세이를 반환해야 한다.
+    2026-08-26: 뉴스 단락은 build_news_message()로 완전히 분리됐으므로
+    build_message()엔 애초에 📰가 절대 안 나온다(토큰 유무 무관)."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     msg = build_message()
     assert "📰" not in msg
+
+
+def test_build_news_message_none_without_token(monkeypatch):
+    """2026-08-26: build_news_message()는 CLAUDE_CODE_OAUTH_TOKEN 없으면
+    서브프로세스를 호출하지도 않고 None을 반환해야 한다."""
+    from scripts.daily_market_report import build_news_message
+
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    assert build_news_message() is None
+
+
+def test_news_grounded_insight_strips_trailing_sources_section(monkeypatch):
+    """2026-08-25(실사고): 뉴스 인사이트+출처 링크를 한 메시지에 합쳐 보냈다가
+    카카오의 실제(비공식) 길이 제한에 걸려 후반부가 통째로 잘려나간 사고가
+    있었음(사용자가 문장 중간 "넘어서느"에서 잘렸다고 지적, 역산 결과 약
+    997자 지점 — kakao_notify.py의 text[:5000]으로 올려도 그대로 잘렸으므로
+    카카오 서버 자체의 실제 제한임을 확인). 뉴스 단락을 별도 메시지로
+    분리했어도(build_news_message) 그 메시지 자체에 출처 목록이 다시 붙으면
+    똑같이 잘릴 수 있으므로, claude CLI가 프롬프트 지시를 무시하고 출처를
+    붙여도 코드에서 방어적으로 잘라내야 한다."""
+    import subprocess
+    from scripts.daily_market_report import _news_grounded_insight
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "dummy-token")
+
+    class _FakeResult:
+        stdout = "오늘은 이런 흐름이었어요.\n\nSources:\n- [기사](https://example.com/a)\n- [기사2](https://example.com/b)"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeResult())
+    result = _news_grounded_insight({"key": "bull", "vix": 15.0}, {})
+    assert result == "오늘은 이런 흐름이었어요."
+    assert "Sources" not in result and "example.com" not in result
 
 
 def test_regime_insight_detects_change_and_streak():
