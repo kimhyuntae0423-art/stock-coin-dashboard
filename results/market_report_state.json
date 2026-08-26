@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-25",
+  "date": "2026-08-26",
   "regime_key": "bull",
-  "streak": 1,
-  "prev_regime_key": null
+  "streak": 2,
+  "prev_regime_key": "bull"
 }
