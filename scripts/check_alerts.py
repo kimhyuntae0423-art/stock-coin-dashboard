@@ -11,6 +11,15 @@ Cycle 포함, 백테스트 근거 없음)을 써서 대시보드와 다른 국�
 보내던 불일치가 있었음(2026-08-21 발견·수정, ARCHITECTURE.md 38행 참고).
 
 국면이 변경된 날만 카톡 푸시 (스팸 방지).
+
+2026-08-25: 위 "국면 변경 시만" 방지는 BTC 사이클/코인 추세 전환 알림에만
+있었고, 정작 제일 자주 뜨는 개별 종목 손익/데드크로스 "매도 검토·주의"
+알림엔 이 dedup이 없었다 — 손실 구간이 그대로 유지되기만 해도 파이프라인이
+돌 때마다(매일 07:00 KST + 코드 푸시 시에도 daily-update.yml이 다시 돎)
+매번 같은 내용을 다시 보냈다("하루에 여러 번 받아서 피곤하다" 피드백).
+그래서 results/holding_alert_state.json에 로트(ticker+person+buy_price)별
+마지막 발송 severity를 저장해뒀다가, severity가 실제로 바뀔 때만(예: 주의→
+매도 검토, 매도 검토→회복) 다시 보내도록 통일했다(_dedup_holding_alert).
 """
 import json
 import os
@@ -36,6 +45,7 @@ COIN_SUMMARY = ROOT / "results" / "coin_summary.csv"
 CYCLE_METRICS = ROOT / "results" / "cycle_metrics.csv"
 CYCLE_STATE = ROOT / "results" / "cycle_alert_state.json"
 TREND_STATE = ROOT / "results" / "coin_trend_alert_state.json"
+HOLDING_ALERT_STATE = ROOT / "results" / "holding_alert_state.json"
 _RESULTS = ROOT / "results"
 
 
@@ -226,6 +236,32 @@ def format_cycle_alert(cycle: dict) -> str:
     return head
 
 
+def _load_holding_alert_state() -> dict:
+    if not HOLDING_ALERT_STATE.exists():
+        return {}
+    try:
+        with open(HOLDING_ALERT_STATE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_holding_alert_state(state: dict) -> None:
+    HOLDING_ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    with open(HOLDING_ALERT_STATE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def _dedup_holding_alert(severity: int, prev_severity: int | None) -> bool:
+    """이 로트를 이번에 알림 목록에 넣어야 하는지. severity 0(정상 복귀)은
+    애초에 알림 대상이 아니라 항상 False — 상태 저장 여부는 check()가
+    별도로 처리(이번 실행에 severity 0인 로트는 new_state에서 자연히
+    빠지므로, 나중에 다시 severity>0이 되면 "새로 걸린 것"으로 재발송됨)."""
+    if severity == 0:
+        return False
+    return prev_severity != severity
+
+
 def check() -> list[dict]:
     """보유 중인 종목 중 신호 트리거된 항목 리스트."""
     if not HOLDINGS.exists():
@@ -265,6 +301,8 @@ def check() -> list[dict]:
         if _etf_file.exists() else set()
     )
 
+    prev_state = _load_holding_alert_state()
+    new_state: dict = {}
     alerts: list[dict] = []
     for _, row in h.dropna(subset=["ticker"]).iterrows():
         ticker = str(row["ticker"]).strip().upper()
@@ -277,7 +315,12 @@ def check() -> list[dict]:
         severity, reasons = severity_for_holding(
             row, s, mvrv_z=_mvrv_z, is_etf=is_etf, is_coin=is_coin, usdkrw=_usdkrw,
         )
-        if severity > 0:
+        if severity == 0:
+            continue
+        # 로트(같은 티커라도 계좌·매수가가 다르면 손익률이 달라 별도 추적 필요)별 키
+        key = f"{ticker}|{row.get('person', '')}|{row.get('buy_price', '')}"
+        new_state[key] = severity
+        if _dedup_holding_alert(severity, prev_state.get(key)):
             alerts.append({
                 "ticker": ticker,
                 "severity": severity,
@@ -286,6 +329,7 @@ def check() -> list[dict]:
                 "rsi": s.get("rsi14"),
                 "action": s.get("action"),
             })
+    _save_holding_alert_state(new_state)
     return alerts
 
 

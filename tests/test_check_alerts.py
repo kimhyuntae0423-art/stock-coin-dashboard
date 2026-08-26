@@ -139,6 +139,57 @@ def test_alt_severity_matches_dashboard_action_text_for_every_regime():
         assert (severity == 2) == expect_sell, f"z={z} regime={regime}에서 카톡·대시보드 불일치"
 
 
+def test_dedup_holding_alert_only_fires_on_severity_change():
+    """2026-08-25: 손익 구간이 유지되기만 하면(악화·완화 없이) 매일 파이프라인이
+    돌 때마다 같은 내용을 다시 보내던 문제 — severity가 실제로 바뀔 때만
+    True를 반환해야 한다."""
+    from scripts.check_alerts import _dedup_holding_alert
+
+    assert _dedup_holding_alert(2, None) is True   # 처음 걸림 → 알림
+    assert _dedup_holding_alert(2, 2) is False      # 어제와 동일 → 생략(중복 방지)
+    assert _dedup_holding_alert(1, 2) is True        # 완화(매도 검토→주의) → 다시 알림
+    assert _dedup_holding_alert(2, 1) is True        # 악화(주의→매도 검토) → 다시 알림
+    assert _dedup_holding_alert(0, 2) is False        # 회복 — 애초에 알림 후보가 아님
+
+
+def test_check_dedups_repeated_severity_across_runs(tmp_path, monkeypatch):
+    """check() 전체를 두 번 호출했을 때, 같은 로트가 같은 severity를 유지하면
+    두 번째 호출에선 alerts에서 빠져야 한다(회귀 방지 — 2026-08-25 오늘 코드
+    푸시 4번 + 정기 스케줄 1번, 총 5번 daily-update.yml이 돌면서 매도 검토
+    알림이 그대로 반복 발송된 실사고 재발 방지). 회복 후 재악화하면 다시
+    뜨는 것까지 확인한다."""
+    import scripts.check_alerts as ca
+
+    (tmp_path / "holdings.csv").write_text(
+        "ticker,qty,buy_price,buy_date,person,notes\n"
+        "TESTX,10,10000,2026-01-01,tester,\n",
+        encoding="utf-8",
+    )
+    summary_csv = tmp_path / "summary_signals.csv"
+
+    monkeypatch.setattr(ca, "ROOT", tmp_path)
+    monkeypatch.setattr(ca, "HOLDINGS", tmp_path / "holdings.csv")
+    monkeypatch.setattr(ca, "SUMMARY", summary_csv)
+    monkeypatch.setattr(ca, "COIN_SUMMARY", tmp_path / "coin_summary.csv")
+    monkeypatch.setattr(ca, "CYCLE_METRICS", tmp_path / "cycle_metrics.csv")
+    monkeypatch.setattr(ca, "HOLDING_ALERT_STATE", tmp_path / "holding_alert_state.json")
+
+    summary_csv.write_text("ticker,close,rsi14,action\nTESTX,7000,50,매도\n", encoding="utf-8")  # -30%
+    first = ca.check()
+    assert len(first) == 1 and first[0]["severity"] == 2
+
+    second = ca.check()  # 손실 그대로 유지
+    assert second == []
+
+    summary_csv.write_text("ticker,close,rsi14,action\nTESTX,9700,50,매수\n", encoding="utf-8")  # -3% 회복
+    third = ca.check()
+    assert third == []
+
+    summary_csv.write_text("ticker,close,rsi14,action\nTESTX,7500,50,매도\n", encoding="utf-8")  # -25% 재악화
+    fourth = ca.check()
+    assert len(fourth) == 1 and fourth[0]["severity"] == 2
+
+
 def test_format_trend_flips_uses_korean_name_and_shows_direction():
     """티커만 오면 못 알아본다는 사용자 피드백(2026-08-21) — 한글명을 반드시 병기해야 한다."""
     flips = [{"ticker": "ETH-USD", "from": "bull", "to": "bear"}]
