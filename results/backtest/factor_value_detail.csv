@@ -2,7 +2,7 @@ ticker,pbr,sector,ret_36m,q
 AAPL,43.474186,Technology,89.4,Q4
 MSFT,8.389155,Technology,62.0,Q3
 AMZN,5.0533667,Consumer Cyclical,103.4,Q2
-GOOGL,6.650031,Communication Services,160.9,Q3
+GOOGL,6.650031,Communication Services,161.1,Q3
 META,6.0160947,Communication Services,107.3,Q3
 NVDA,24.291891,Technology,430.6,Q4
 TSLA,16.098204,Consumer Cyclical,41.5,Q4
@@ -19,7 +19,7 @@ NFLX,10.806519,Communication Services,107.2,Q3
 AMD,11.594037,Technology,364.5,Q4
 INTC,5.5187516,Technology,174.0,Q2
 KO,10.483275,Consumer Defensive,70.5,Q3
-PEP,8.507758,Consumer Defensive,-10.4,Q3
+PEP,8.507758,Consumer Defensive,-9.5,Q3
 ORCL,12.17638,Technology,55.3,Q4
 CRM,5.559058,Technology,30.0,Q2
 ADBE,9.232342,Technology,-47.7,Q3
@@ -32,7 +32,7 @@ KLAC,38.205025,Technology,314.4,Q4
 LRCX,30.86686,Technology,402.7,Q4
 QCOM,6.4485807,Technology,61.9,Q3
 ASML,1447.3046,Technology,198.7,Q4
-TER,16.253017,Technology,259.1,Q4
+TER,16.253017,Technology,259.3,Q4
 FORM,7.303529,Technology,197.4,Q3
 AMKR,2.5473258,Technology,121.6,Q2
 ASX,6.7156935,Technology,437.2,Q3

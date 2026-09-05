@@ -2,7 +2,7 @@ ticker,roe,profit_margin,quality_score,sector,ret_36m,q
 AAPL,148.75101,27.618998,88.2,Technology,89.4,Q1
 MSFT,34.039003,40.305,37.2,Technology,62.0,Q2
 AMZN,30.558002,17.44,24.0,Consumer Cyclical,103.4,Q2
-GOOGL,48.676,54.771,51.7,Communication Services,160.9,Q1
+GOOGL,48.676,54.771,51.7,Communication Services,161.1,Q1
 META,29.848000000000003,29.834998,29.8,Communication Services,107.3,Q2
 NVDA,117.211,63.663,90.4,Technology,430.6,Q1
 TSLA,4.6669997,3.671,4.2,Consumer Cyclical,41.5,Q4
@@ -20,7 +20,7 @@ NFLX,49.541,28.219,38.9,Communication Services,107.2,Q2
 AMD,10.196,15.577,12.9,Technology,364.5,Q3
 INTC,-10.715,-19.794,-15.3,Technology,174.0,Q4
 KO,42.054,28.558,35.3,Consumer Defensive,70.5,Q2
-PEP,51.508,10.785,31.1,Consumer Defensive,-10.4,Q2
+PEP,51.508,10.785,31.1,Consumer Defensive,-9.5,Q2
 ORCL,53.376000000000005,25.368,39.4,Technology,55.3,Q2
 CRM,19.381,21.99,20.7,Technology,30.0,Q3
 ADBE,62.953997,28.689,45.8,Technology,-47.7,Q1
@@ -33,7 +33,7 @@ KLAC,87.496,35.574,61.5,Technology,314.4,Q1
 LRCX,65.06600399999999,31.272,48.2,Technology,402.7,Q1
 QCOM,33.754003,21.013,27.4,Technology,61.9,Q2
 ASML,53.942,30.114,42.0,Technology,198.7,Q1
-TER,36.465,25.766,31.1,Technology,259.1,Q2
+TER,36.465,25.766,31.1,Technology,259.3,Q2
 FORM,10.989001,12.798001,11.9,Technology,197.4,Q3
 AMKR,12.514,7.448,10.0,Technology,121.6,Q4
 ASX,17.009,8.545999,12.8,Technology,437.2,Q3
